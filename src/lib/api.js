@@ -24,7 +24,9 @@ export async function convertImagePath(relativePath) {
   if (!relativePath) return null;
 
   const dataDir = await getAppDataDir();
-  const fullPath = `${dataDir}\\${relativePath.replace(/\//g, '\\')}`;
+  // 统一使用正斜杠
+  const normalizedPath = relativePath.replace(/\\/g, '/');
+  const fullPath = `${dataDir}\\${normalizedPath.replace(/\//g, '\\')}`;
 
   // 使用 Tauri 的 convertFileSrc 转换为可访问的 URL
   return convertFileSrc(fullPath);
