@@ -66,7 +66,6 @@ impl SettingsStore {
             max_items: settings.max_items.clamp(10, 500),
             capture_delay_ms: settings.capture_delay_ms.clamp(0, 3000),
             screenshot_hotkey: settings.screenshot_hotkey,
-            region_screenshot_hotkey: settings.region_screenshot_hotkey,
         }
     }
 }
