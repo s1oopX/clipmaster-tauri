@@ -15,18 +15,21 @@ use crate::settings::SettingsStore;
 
 pub struct ClipboardService {
     last_hash: Arc<Mutex<String>>,
+    last_sequence: Arc<Mutex<Option<u32>>>,
 }
 
 impl ClipboardService {
     pub fn new() -> Self {
         Self {
             last_hash: Arc::new(Mutex::new(String::new())),
+            last_sequence: Arc::new(Mutex::new(None)),
         }
     }
 
     /// 启动剪贴板监听服务
     pub fn start(&self, app_handle: AppHandle) {
         let last_hash = Arc::clone(&self.last_hash);
+        let last_sequence = Arc::clone(&self.last_sequence);
 
         tauri::async_runtime::spawn(async move {
             let mut clipboard = Clipboard::new().expect("Failed to initialize clipboard");
@@ -36,6 +39,23 @@ impl ClipboardService {
                 if !settings.get().clipboard_monitor_enabled {
                     sleep(Duration::from_millis(500)).await;
                     continue;
+                }
+
+                if let Some(sequence) = clipboard_sequence_number() {
+                    let should_skip = {
+                        let mut last = last_sequence.lock();
+                        if *last == Some(sequence) {
+                            true
+                        } else {
+                            *last = Some(sequence);
+                            false
+                        }
+                    };
+
+                    if should_skip {
+                        sleep(Duration::from_millis(500)).await;
+                        continue;
+                    }
                 }
 
                 // 尝试读取剪贴板内容
@@ -217,4 +237,25 @@ impl Default for ClipboardService {
 enum ClipboardContent {
     Text(String),
     Image(arboard::ImageData<'static>),
+}
+
+#[cfg(target_os = "windows")]
+fn clipboard_sequence_number() -> Option<u32> {
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetClipboardSequenceNumber() -> u32;
+    }
+
+    let sequence = unsafe { GetClipboardSequenceNumber() };
+
+    if sequence == 0 {
+        None
+    } else {
+        Some(sequence)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clipboard_sequence_number() -> Option<u32> {
+    None
 }

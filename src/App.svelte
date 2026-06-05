@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import {
     Camera,
@@ -56,6 +56,7 @@
   let pinMode = false;
   let pinImagePath = '';
   let pinImageUrl = '';
+  let unlistenNewItem = null;
 
   const filters = [
     { id: 'all', label: '全部记录' },
@@ -88,15 +89,17 @@
 
       await loadItems();
 
-      clipboardApi.onNewItem(async (item) => {
+      unlistenNewItem = await clipboardApi.onNewItem(async (item) => {
         console.log('新剪贴板记录:', item);
+
+        const nextItems = limitItems([item, ...items]);
+        items = nextItems;
 
         if (item.type === 'image' && item.image_path) {
           imageUrls[item.id] = await convertImagePath(item.image_path);
-          imageUrls = imageUrls;
         }
 
-        items = [item, ...items];
+        pruneImageUrls(nextItems);
       });
     } catch (e) {
       console.error('初始化失败:', e);
@@ -104,11 +107,21 @@
     }
   });
 
+  onDestroy(() => {
+    if (typeof unlistenNewItem === 'function') {
+      unlistenNewItem();
+    }
+
+    if (copyTimer) clearTimeout(copyTimer);
+    if (noticeTimer) clearTimeout(noticeTimer);
+  });
+
   async function loadItems() {
     loading = true;
     try {
-      items = await clipboardApi.getItems(appSettings.max_items || defaultSettings.max_items, 0);
+      items = await clipboardApi.getItems(itemLimit(), 0);
       console.log('已加载记录:', items.length);
+      pruneImageUrls(items);
       await loadImageUrls();
     } catch (e) {
       console.error('加载记录失败:', e);
@@ -136,6 +149,7 @@
     try {
       await clipboardApi.deleteItem(itemId);
       items = items.filter((item) => item.id !== itemId);
+      pruneImageUrls(items);
     } catch (e) {
       console.error('删除失败:', e);
       error = '删除失败: ' + e;
@@ -187,9 +201,10 @@
       items = await searchApi.searchItems(
         searchQuery,
         sessionId,
-        appSettings.max_items || defaultSettings.max_items
+        itemLimit()
       );
       console.log('搜索结果:', items.length);
+      pruneImageUrls(items);
       await loadImageUrls();
     } catch (e) {
       console.error('搜索失败:', e);
@@ -340,6 +355,22 @@
     return items;
   }
 
+  function itemLimit() {
+    return appSettings.max_items || defaultSettings.max_items;
+  }
+
+  function limitItems(nextItems) {
+    return nextItems.slice(0, itemLimit());
+  }
+
+  function pruneImageUrls(nextItems = items) {
+    const liveIds = new Set(nextItems.map((item) => item.id));
+
+    imageUrls = Object.fromEntries(
+      Object.entries(imageUrls).filter(([itemId]) => liveIds.has(itemId))
+    );
+  }
+
   function formatTime(timestamp) {
     const date = new Date(timestamp);
     const now = new Date();
@@ -376,7 +407,7 @@
 
     <section class="pin-image-stage" aria-label="桌面贴图">
       {#if pinImageUrl}
-        <img src={pinImageUrl} alt="桌面贴图" />
+        <img src={pinImageUrl} alt="桌面贴图" decoding="async" />
       {:else}
         <div class="image-loading">{pinImagePath || '图片加载中'}</div>
       {/if}
@@ -604,6 +635,8 @@
                       <img
                         src={imageUrls[item.id]}
                         alt="剪贴板图片预览"
+                        loading="lazy"
+                        decoding="async"
                         on:error={(event) => {
                           console.error('图片加载失败:', item.image_path);
                           event.target.style.display = 'none';

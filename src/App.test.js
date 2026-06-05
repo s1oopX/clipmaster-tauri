@@ -233,4 +233,37 @@ describe('App UI', () => {
       });
     });
   });
+
+  it('keeps live clipboard events within the configured item limit', async () => {
+    let newItemHandler;
+    api.getSettings.mockResolvedValue({
+      clipboard_monitor_enabled: true,
+      show_main_window_on_start: true,
+      max_items: 1,
+      capture_delay_ms: 150,
+    });
+    api.getItems.mockResolvedValue([
+      textItem({ id: 'old_item', content: 'Old token', preview: 'Old token' }),
+    ]);
+    api.onNewItem.mockImplementation(async (handler) => {
+      newItemHandler = handler;
+      return vi.fn();
+    });
+
+    render(App);
+
+    expect(await screen.findByText('Old token')).toBeInTheDocument();
+
+    await newItemHandler(
+      textItem({
+        id: 'new_item',
+        content: 'New token',
+        preview: 'New token',
+        timestamp: Date.now() + 1000,
+      })
+    );
+
+    expect(await screen.findByText('New token')).toBeInTheDocument();
+    expect(screen.queryByText('Old token')).not.toBeInTheDocument();
+  });
 });
