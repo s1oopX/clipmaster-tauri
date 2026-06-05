@@ -17,7 +17,6 @@
         height: 100%;
         overflow: hidden;
         background: transparent;
-        cursor: move;
       }
 
       #container {
@@ -27,6 +26,7 @@
         align-items: center;
         justify-content: center;
         position: relative;
+        cursor: default;
       }
 
       #image {
@@ -35,6 +35,7 @@
         object-fit: contain;
         user-select: none;
         -webkit-user-drag: none;
+        pointer-events: none;
       }
 
       #close-btn {
@@ -90,8 +91,8 @@
 
       if (imagePath) {
         console.log('加载图片:', imagePath);
-        // 转换为可访问的 URL
-        const imageUrl = convertFileSrc(imagePath, 'asset');
+        // 转换为可访问的 URL（不需要第二个参数）
+        const imageUrl = convertFileSrc(imagePath);
         image.src = imageUrl;
         console.log('图片 URL:', imageUrl);
       } else {

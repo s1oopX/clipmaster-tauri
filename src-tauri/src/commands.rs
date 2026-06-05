@@ -125,10 +125,13 @@ pub async fn pin_image(app: AppHandle, image_path: String) -> Result<(), String>
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(false)
+        .visible(true)
+        .accept_first_mouse(true)
         .build()
         .map_err(|e| e.to_string())?;
 
     window.set_always_on_top(true).map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
 
     Ok(())
 }
