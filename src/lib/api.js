@@ -36,13 +36,15 @@ export async function convertImagePath(relativePath) {
 
     console.log('Converting path:', { relativePath, dataDir, fullPath });
 
-    // Tauri asset 协议格式：https://asset.localhost/<path>
-    // 路径需要用正斜杠，不需要 URL 编码整个路径
-    const assetPath = fullPath.replace(/\\/g, '/');
-    const assetUrl = `https://asset.localhost/${assetPath}`;
-    console.log('Converted URL:', assetUrl);
+    // 使用 Tauri 提供的 convertFileSrc
+    const url = convertFileSrc(fullPath);
+    console.log('convertFileSrc returned:', url);
 
-    return assetUrl;
+    // 尝试替换 http:// 为 https://
+    const finalUrl = url.replace('http://', 'https://');
+    console.log('Final URL:', finalUrl);
+
+    return finalUrl;
   } catch (error) {
     console.error('Error converting image path:', error);
     return null;
