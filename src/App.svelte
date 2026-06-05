@@ -35,7 +35,6 @@
     max_items: 50,
     capture_delay_ms: 150,
     screenshot_hotkey: 'CommandOrControl+Shift+A',
-    region_screenshot_hotkey: 'CommandOrControl+Shift+X',
   };
 
   let items = [];
@@ -98,13 +97,8 @@
 
       // 监听快捷键事件
       await listen('hotkey:screenshot', async () => {
-        console.log('触发全屏截图快捷键');
-        await captureFullScreenshot();
-      });
-
-      await listen('hotkey:region-screenshot', async () => {
-        console.log('触发区域截图快捷键');
-        await startRegionScreenshot();
+        console.log('触发截图快捷键');
+        await startScreenshot();
       });
 
       unlistenNewItem = await clipboardApi.onNewItem(async (item) => {
@@ -264,33 +258,17 @@
     }
   }
 
-  async function captureScreenshot() {
+  async function startScreenshot() {
     toolLoading = 'screenshot';
     error = null;
 
     try {
-      await toolApi.captureScreenshot();
-      await loadItems();
-      showActionNotice('截图已保存');
+      // 直接进入全屏选取模式
+      await toolApi.startRegionScreenshot();
+      toolLoading = null;
     } catch (e) {
       console.error('截图失败:', e);
       error = '截图失败: ' + e;
-    } finally {
-      toolLoading = null;
-    }
-  }
-
-  async function startRegionScreenshot() {
-    toolLoading = 'region';
-    error = null;
-
-    try {
-      await toolApi.startRegionScreenshot();
-      // 不需要 loadItems，因为区域截图完成后会通过事件自动添加
-      toolLoading = null;
-    } catch (e) {
-      console.error('区域截图失败:', e);
-      error = '区域截图失败: ' + e;
       toolLoading = null;
     }
   }
@@ -567,7 +545,7 @@
           <button
             type="button"
             class="tool-button"
-            on:click={captureScreenshot}
+            on:click={startScreenshot}
             disabled={toolLoading === 'screenshot'}
           >
             {#if toolLoading === 'screenshot'}
@@ -575,21 +553,7 @@
             {:else}
               <Camera size={15} aria-hidden="true" />
             {/if}
-            <span>全屏截图</span>
-          </button>
-
-          <button
-            type="button"
-            class="tool-button"
-            on:click={startRegionScreenshot}
-            disabled={toolLoading === 'region'}
-          >
-            {#if toolLoading === 'region'}
-              <LoaderCircle size={15} aria-hidden="true" />
-            {:else}
-              <Camera size={15} aria-hidden="true" />
-            {/if}
-            <span>区域截图</span>
+            <span>截图</span>
           </button>
 
           <button
@@ -867,24 +831,13 @@
         <div class="settings-section">
           <h3>快捷键设置</h3>
           <label class="field-row">
-            <span>全屏截图</span>
+            <span>截图</span>
             <input
               type="text"
               placeholder="例如: CommandOrControl+Shift+A"
               value={settingsDraft.screenshot_hotkey}
               on:input={(event) =>
                 updateSettingsDraft('screenshot_hotkey', event.currentTarget.value)}
-            />
-          </label>
-
-          <label class="field-row">
-            <span>区域截图</span>
-            <input
-              type="text"
-              placeholder="例如: CommandOrControl+Shift+X"
-              value={settingsDraft.region_screenshot_hotkey}
-              on:input={(event) =>
-                updateSettingsDraft('region_screenshot_hotkey', event.currentTarget.value)}
             />
           </label>
           <p class="hotkey-hint">
