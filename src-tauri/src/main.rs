@@ -87,6 +87,7 @@ fn main() {
             commands::get_sessions,
             commands::clear_session,
             commands::search_items,
+            commands::update_item_content,
             commands::get_app_data_dir,
             commands::copy_to_clipboard,
             commands::get_settings,

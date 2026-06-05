@@ -78,6 +78,15 @@ export const clipboardApi = {
   },
 
   /**
+   * 更新记录内容
+   * @param {string} itemId
+   * @param {string} newContent
+   */
+  async updateItemContent(itemId, newContent) {
+    return await invoke('update_item_content', { itemId, newContent });
+  },
+
+  /**
    * 监听新记录事件
    * @param {Function} callback
    * @returns {Promise<Function>} unlisten 函数

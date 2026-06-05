@@ -193,6 +193,17 @@ pub async fn search_items(
         .map_err(|e| e.to_string())
 }
 
+/// 更新记录内容
+#[tauri::command]
+pub async fn update_item_content(
+    db: State<'_, Database>,
+    item_id: String,
+    new_content: String,
+) -> Result<(), String> {
+    db.update_item_content(&item_id, &new_content)
+        .map_err(|e| e.to_string())
+}
+
 fn save_rgba_image(
     app: &AppHandle,
     image: &screenshots::image::RgbaImage,

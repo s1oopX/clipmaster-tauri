@@ -385,6 +385,27 @@ impl Database {
         Ok(())
     }
 
+    /// 更新记录内容
+    pub fn update_item_content(&self, item_id: &str, new_content: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+
+        // 生成新的预览文本
+        let char_count = new_content.chars().count();
+        let preview = if char_count > 100 {
+            let preview_text: String = new_content.chars().take(100).collect();
+            format!("{}...", preview_text)
+        } else {
+            new_content.to_string()
+        };
+
+        conn.execute(
+            "UPDATE clipboard_items SET content = ?1, preview = ?2 WHERE id = ?3",
+            params![new_content, preview, item_id],
+        )?;
+
+        Ok(())
+    }
+
     /// 搜索记录
     pub fn search_items(
         &self,

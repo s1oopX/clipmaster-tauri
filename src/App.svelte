@@ -57,6 +57,8 @@
   let pinImagePath = '';
   let pinImageUrl = '';
   let unlistenNewItem = null;
+  let editingId = null;
+  let editContent = '';
 
   const filters = [
     { id: 'all', label: '全部记录' },
@@ -371,6 +373,48 @@
     );
   }
 
+  function startEdit(item) {
+    if (item.type !== 'text') return;
+    editingId = item.id;
+    editContent = item.content || '';
+  }
+
+  function cancelEdit() {
+    editingId = null;
+    editContent = '';
+  }
+
+  async function saveEdit(itemId) {
+    if (!editContent.trim()) {
+      showNotice('内容不能为空');
+      return;
+    }
+
+    try {
+      await clipboardApi.updateItemContent(itemId, editContent);
+
+      // 更新本地列表
+      items = items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              content: editContent,
+              preview: editContent.length > 100
+                ? editContent.substring(0, 100) + '...'
+                : editContent,
+            }
+          : item
+      );
+
+      editingId = null;
+      editContent = '';
+      showNotice('保存成功');
+    } catch (e) {
+      console.error('保存失败:', e);
+      showNotice('保存失败: ' + e);
+    }
+  }
+
   function formatTime(timestamp) {
     const date = new Date(timestamp);
     const now = new Date();
@@ -624,7 +668,43 @@
                 </div>
 
                 {#if item.type === 'text'}
-                  <p class="text-content">{item.preview || item.content}</p>
+                  {#if editingId === item.id}
+                    <div class="edit-area">
+                      <textarea
+                        bind:value={editContent}
+                        placeholder="编辑内容"
+                        rows="4"
+                      ></textarea>
+                      <div class="edit-actions">
+                        <button
+                          type="button"
+                          class="btn-save"
+                          on:click={() => saveEdit(item.id)}
+                        >
+                          <Check size={16} aria-hidden="true" />
+                          保存
+                        </button>
+                        <button
+                          type="button"
+                          class="btn-cancel"
+                          on:click={cancelEdit}
+                        >
+                          <X size={16} aria-hidden="true" />
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  {:else}
+                    <p
+                      class="text-content"
+                      on:click={() => startEdit(item)}
+                      on:keydown={(e) => e.key === 'Enter' && startEdit(item)}
+                      tabindex="0"
+                      title="点击编辑"
+                    >
+                      {item.preview || item.content}
+                    </p>
+                  {/if}
                 {:else if item.type === 'image'}
                   <div class="image-summary">
                     <strong>图片记录</strong>
@@ -1329,6 +1409,70 @@
     font-size: 0.92rem;
     line-height: 1.45;
     word-break: break-word;
+    cursor: pointer;
+    transition: background 0.15s;
+    padding: 4px;
+    border-radius: 4px;
+  }
+
+  .text-content:hover {
+    background: #f1f5f9;
+  }
+
+  .edit-area {
+    margin-top: 9px;
+  }
+
+  .edit-area textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 10px;
+    color: #172033;
+    font-size: 0.92rem;
+    line-height: 1.45;
+    background: #ffffff;
+    border: 2px solid #3b82f6;
+    border-radius: 8px;
+    outline: none;
+    resize: vertical;
+    font-family: inherit;
+  }
+
+  .edit-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .edit-actions button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 0.88rem;
+    border: 1px solid #d9e0ea;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-save {
+    color: #ffffff;
+    background: #3b82f6;
+    border-color: #3b82f6;
+  }
+
+  .btn-save:hover {
+    background: #2563eb;
+  }
+
+  .btn-cancel {
+    color: #64748b;
+    background: #ffffff;
+  }
+
+  .btn-cancel:hover {
+    background: #f1f5f9;
   }
 
   .image-summary {
