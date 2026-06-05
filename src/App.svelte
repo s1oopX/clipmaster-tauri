@@ -266,6 +266,21 @@
     }
   }
 
+  async function startRegionScreenshot() {
+    toolLoading = 'region';
+    error = null;
+
+    try {
+      await toolApi.startRegionScreenshot();
+      // 不需要 loadItems，因为区域截图完成后会通过事件自动添加
+      toolLoading = null;
+    } catch (e) {
+      console.error('区域截图失败:', e);
+      error = '区域截图失败: ' + e;
+      toolLoading = null;
+    }
+  }
+
   async function pinNewestImage() {
     const image = visibleItems().find((item) => item.type === 'image' && item.image_path)
       || items.find((item) => item.type === 'image' && item.image_path);
@@ -546,7 +561,21 @@
             {:else}
               <Camera size={15} aria-hidden="true" />
             {/if}
-            <span>截图</span>
+            <span>全屏截图</span>
+          </button>
+
+          <button
+            type="button"
+            class="tool-button"
+            on:click={startRegionScreenshot}
+            disabled={toolLoading === 'region'}
+          >
+            {#if toolLoading === 'region'}
+              <LoaderCircle size={15} aria-hidden="true" />
+            {:else}
+              <Camera size={15} aria-hidden="true" />
+            {/if}
+            <span>区域截图</span>
           </button>
 
           <button

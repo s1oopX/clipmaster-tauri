@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>区域截图</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        cursor: crosshair;
+        user-select: none;
+      }
+
+      #canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      #info {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 8px 16px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        border-radius: 4px;
+        font-size: 14px;
+        pointer-events: none;
+        z-index: 1000;
+      }
+
+      #toolbar {
+        position: absolute;
+        padding: 8px;
+        background: rgba(0, 0, 0, 0.8);
+        border-radius: 4px;
+        display: none;
+        gap: 8px;
+        z-index: 1000;
+      }
+
+      #toolbar button {
+        padding: 6px 16px;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: opacity 0.2s;
+      }
+
+      #toolbar button:hover {
+        opacity: 0.8;
+      }
+
+      #confirm {
+        background: #4caf50;
+        color: white;
+      }
+
+      #cancel {
+        background: #f44336;
+        color: white;
+      }
+
+      .size-info {
+        position: absolute;
+        padding: 4px 8px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        border-radius: 3px;
+        font-size: 12px;
+        pointer-events: none;
+        display: none;
+        z-index: 1000;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="info">拖动鼠标选择截图区域 | ESC 取消</div>
+    <canvas id="canvas"></canvas>
+    <div id="toolbar">
+      <button id="confirm">确定 (Enter)</button>
+      <button id="cancel">取消 (ESC)</button>
+    </div>
+    <div id="sizeInfo" class="size-info"></div>
+
+    <script type="module">
+      import { invoke } from '@tauri-apps/api/core';
+      import { getCurrentWindow } from '@tauri-apps/api/window';
+
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const toolbar = document.getElementById('toolbar');
+      const sizeInfo = document.getElementById('sizeInfo');
+      const confirmBtn = document.getElementById('confirm');
+      const cancelBtn = document.getElementById('cancel');
+
+      let backgroundImage = null;
+      let isSelecting = false;
+      let startX = 0;
+      let startY = 0;
+      let currentX = 0;
+      let currentY = 0;
+      let selectionComplete = false;
+
+      // 设置 canvas 尺寸
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      // 加载背景截图
+      async function loadScreenshot() {
+        try {
+          const tempPath = await invoke('get_screenshot_temp_path');
+          const { convertFileSrc } = await import('@tauri-apps/api/core');
+          const imageUrl = convertFileSrc(tempPath);
+
+          backgroundImage = new Image();
+          backgroundImage.onload = () => {
+            drawCanvas();
+          };
+          backgroundImage.src = imageUrl;
+        } catch (error) {
+          console.error('加载截图失败:', error);
+          await closeWindow();
+        }
+      }
+
+      // 绘制画布
+      function drawCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 绘制背景图片
+        if (backgroundImage) {
+          ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+        }
+
+        // 绘制半透明遮罩
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (isSelecting || selectionComplete) {
+          const x = Math.min(startX, currentX);
+          const y = Math.min(startY, currentY);
+          const width = Math.abs(currentX - startX);
+          const height = Math.abs(currentY - startY);
+
+          // 清除选区的遮罩，显示原图
+          ctx.clearRect(x, y, width, height);
+          if (backgroundImage) {
+            ctx.drawImage(
+              backgroundImage,
+              x, y, width, height,
+              x, y, width, height
+            );
+          }
+
+          // 绘制选区边框
+          ctx.strokeStyle = '#2196F3';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x, y, width, height);
+
+          // 更新尺寸信息
+          if (width > 0 && height > 0) {
+            sizeInfo.textContent = `${width} × ${height}`;
+            sizeInfo.style.display = 'block';
+            sizeInfo.style.left = `${x + width + 10}px`;
+            sizeInfo.style.top = `${y}px`;
+          }
+        }
+      }
+
+      // 鼠标按下
+      canvas.addEventListener('mousedown', (e) => {
+        if (selectionComplete) {
+          // 重新选择
+          selectionComplete = false;
+          toolbar.style.display = 'none';
+        }
+
+        isSelecting = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        currentX = e.clientX;
+        currentY = e.clientY;
+        drawCanvas();
+      });
+
+      // 鼠标移动
+      canvas.addEventListener('mousemove', (e) => {
+        if (!isSelecting) return;
+
+        currentX = e.clientX;
+        currentY = e.clientY;
+        drawCanvas();
+      });
+
+      // 鼠标释放
+      canvas.addEventListener('mouseup', (e) => {
+        if (!isSelecting) return;
+
+        isSelecting = false;
+        currentX = e.clientX;
+        currentY = e.clientY;
+
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+
+        if (width > 10 && height > 10) {
+          selectionComplete = true;
+          showToolbar();
+        }
+
+        drawCanvas();
+      });
+
+      // 显示工具栏
+      function showToolbar() {
+        const x = Math.min(startX, currentX);
+        const y = Math.min(startY, currentY);
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+
+        toolbar.style.display = 'flex';
+        toolbar.style.left = `${x + width - toolbar.offsetWidth}px`;
+        toolbar.style.top = `${y + height + 10}px`;
+
+        // 确保工具栏在屏幕内
+        const rect = toolbar.getBoundingClientRect();
+        if (rect.bottom > window.innerHeight) {
+          toolbar.style.top = `${y - toolbar.offsetHeight - 10}px`;
+        }
+        if (rect.right > window.innerWidth) {
+          toolbar.style.left = `${x}px`;
+        }
+      }
+
+      // 确认截图
+      async function confirmSelection() {
+        if (!selectionComplete) return;
+
+        const x = Math.min(startX, currentX);
+        const y = Math.min(startY, currentY);
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+
+        try {
+          // 调用后端捕获区域
+          await invoke('capture_region_screenshot', {
+            x: Math.round(x),
+            y: Math.round(y),
+            width: Math.round(width),
+            height: Math.round(height),
+          });
+
+          await closeWindow();
+        } catch (error) {
+          console.error('截图失败:', error);
+          alert('截图失败: ' + error);
+        }
+      }
+
+      // 取消截图
+      async function cancelSelection() {
+        await closeWindow();
+      }
+
+      // 关闭窗口
+      async function closeWindow() {
+        const currentWin = getCurrentWindow();
+
+        // 恢复主窗口
+        try {
+          const { Window } = await import('@tauri-apps/api/window');
+          const mainWindow = Window.getByLabel('main');
+          if (mainWindow) {
+            await mainWindow.show();
+            await mainWindow.setFocus();
+          }
+        } catch (e) {
+          console.error('恢复主窗口失败:', e);
+        }
+
+        // 关闭当前窗口
+        await currentWin.close();
+      }
+
+      // 按钮事件
+      confirmBtn.addEventListener('click', confirmSelection);
+      cancelBtn.addEventListener('click', cancelSelection);
+
+      // 键盘事件
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          cancelSelection();
+        } else if (e.key === 'Enter' && selectionComplete) {
+          e.preventDefault();
+          confirmSelection();
+        }
+      });
+
+      // 初始化
+      loadScreenshot();
+    </script>
+  </body>
+</html>

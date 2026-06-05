@@ -171,6 +171,13 @@ export const toolApi = {
   },
 
   /**
+   * 开始区域截图
+   */
+  async startRegionScreenshot() {
+    return await invoke('start_region_screenshot');
+  },
+
+  /**
    * 将图片钉到桌面
    * @param {string} imagePath - 应用数据目录下的相对图片路径
    */

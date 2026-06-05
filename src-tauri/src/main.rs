@@ -93,6 +93,9 @@ fn main() {
             commands::get_settings,
             commands::save_settings,
             commands::capture_screenshot,
+            commands::start_region_screenshot,
+            commands::get_screenshot_temp_path,
+            commands::capture_region_screenshot,
             commands::pin_image,
         ])
         .run(tauri::generate_context!())

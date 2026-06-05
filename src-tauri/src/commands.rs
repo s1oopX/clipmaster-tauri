@@ -205,6 +205,111 @@ pub async fn update_item_content(
         .map_err(|e| e.to_string())
 }
 
+/// 开始区域截图
+#[tauri::command]
+pub async fn start_region_screenshot(app: AppHandle) -> Result<(), String> {
+    // 1. 先截取整个屏幕
+    let screen = Screen::all()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "未找到可截图的屏幕".to_string())?;
+
+    let image = screen.capture().map_err(|e| e.to_string())?;
+
+    // 2. 保存临时截图
+    let temp_dir = std::env::temp_dir();
+    let temp_path = temp_dir.join("clipmaster_screenshot_temp.png");
+    image.save(&temp_path).map_err(|e| e.to_string())?;
+
+    // 3. 隐藏主窗口
+    if let Some(main_window) = app.get_webview_window("main") {
+        main_window.hide().map_err(|e| e.to_string())?;
+    }
+
+    // 4. 创建截图选择窗口
+    let _selection_window = WebviewWindowBuilder::new(
+        &app,
+        "screenshot-selector",
+        WebviewUrl::App("screenshot.html".into()),
+    )
+    .title("区域截图")
+    .fullscreen(true)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// 获取临时截图路径
+#[tauri::command]
+pub async fn get_screenshot_temp_path() -> Result<String, String> {
+    let temp_dir = std::env::temp_dir();
+    let temp_path = temp_dir.join("clipmaster_screenshot_temp.png");
+    Ok(temp_path.to_string_lossy().to_string())
+}
+
+/// 捕获选定区域的截图
+#[tauri::command]
+pub async fn capture_region_screenshot(
+    app: AppHandle,
+    db: State<'_, Database>,
+    session_mgr: State<'_, SessionManager>,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<ClipboardItem, String> {
+    // 1. 读取临时截图
+    let temp_dir = std::env::temp_dir();
+    let temp_path = temp_dir.join("clipmaster_screenshot_temp.png");
+
+    let full_image = image::open(&temp_path).map_err(|e| e.to_string())?;
+
+    // 2. 裁剪指定区域
+    let cropped = full_image.crop_imm(x as u32, y as u32, width, height);
+
+    // 3. 转换为 RgbaImage
+    let rgba_image = cropped.to_rgba8();
+
+    // 4. 计算 hash
+    let content_hash = format!("{:x}", md5::compute(rgba_image.as_raw()));
+
+    // 5. 保存图片和缩略图
+    let (image_path, thumbnail_path) = save_cropped_image(&app, &rgba_image, &content_hash)?;
+
+    // 6. 获取会话
+    let session_id = session_mgr
+        .get_current_session_id()
+        .ok_or_else(|| "当前没有活动会话".to_string())?;
+
+    // 7. 创建记录
+    let saved_item = db
+        .insert_item(CreateClipboardItem {
+            type_: ClipboardType::Image,
+            content: None,
+            image_path: Some(image_path),
+            thumbnail_path: Some(thumbnail_path),
+            source_app: Some("ClipMaster 区域截图".to_string()),
+            content_hash,
+            session_id,
+        })
+        .map_err(|e| e.to_string())?;
+
+    // 8. 通知前端
+    app.emit("clipboard:new-item", &saved_item)
+        .map_err(|e| e.to_string())?;
+
+    // 9. 清理临时文件
+    let _ = fs::remove_file(&temp_path);
+
+    Ok(saved_item)
+}
+
 fn save_rgba_image(
     app: &AppHandle,
     image: &screenshots::image::RgbaImage,
@@ -230,6 +335,50 @@ fn save_rgba_image(
     // 生成缩略图
     let thumb_filename = format!(
         "screenshot_{}_{}_thumb.png",
+        &content_hash[..8.min(content_hash.len())],
+        timestamp
+    );
+    let thumb_path = images_dir.join(&thumb_filename);
+
+    let thumb_image = image::imageops::resize(
+        image,
+        200,
+        200,
+        image::imageops::FilterType::Lanczos3,
+    );
+    thumb_image.save(&thumb_path).map_err(|e| e.to_string())?;
+
+    let relative_path = format!("images/{}/{}", year_month, filename);
+    let relative_thumb_path = format!("images/{}/{}", year_month, thumb_filename);
+
+    Ok((relative_path, relative_thumb_path))
+}
+
+fn save_cropped_image(
+    app: &AppHandle,
+    image: &image::RgbaImage,
+    content_hash: &str,
+) -> Result<(String, String), String> {
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let year_month = Local::now().format("%Y-%m").to_string();
+    let images_dir = app_data_dir.join("images").join(&year_month);
+
+    fs::create_dir_all(&images_dir).map_err(|e| e.to_string())?;
+
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let filename = format!(
+        "region_{}_{}.png",
+        &content_hash[..8.min(content_hash.len())],
+        timestamp
+    );
+    let file_path = images_dir.join(&filename);
+
+    // 保存原图
+    image.save(&file_path).map_err(|e| e.to_string())?;
+
+    // 生成缩略图
+    let thumb_filename = format!(
+        "region_{}_{}_thumb.png",
         &content_hash[..8.min(content_hash.len())],
         timestamp
     );

@@ -18,6 +18,12 @@ export default defineConfig({
     minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_DEBUG,
     outDir: 'dist',
+    rollupOptions: {
+      input: {
+        main: './index.html',
+        screenshot: './screenshot.html',
+      },
+    },
   },
   test: {
     environment: 'jsdom',
