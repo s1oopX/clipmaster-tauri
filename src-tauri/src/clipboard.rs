@@ -157,6 +157,7 @@ impl ClipboardService {
                 type_: ClipboardType::Text,
                 content: Some(text),
                 image_path: None,
+                thumbnail_path: None,
                 source_app: None,
                 content_hash,
                 session_id,

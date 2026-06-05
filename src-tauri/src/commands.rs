@@ -348,12 +348,15 @@ fn save_rgba_image(
     );
     let thumb_path = images_dir.join(&thumb_filename);
 
-    let thumb_image = image::imageops::resize(
-        image,
-        200,
-        200,
-        image::imageops::FilterType::Lanczos3,
-    );
+    // 将 screenshots 的 RgbaImage 转换为标准 image crate 的 DynamicImage
+    let width = image.width();
+    let height = image.height();
+    let raw_data = image.as_raw().to_vec();
+    let img_buffer = image::RgbaImage::from_raw(width, height, raw_data)
+        .ok_or_else(|| "无法创建图片缓冲区".to_string())?;
+    let dynamic_img = image::DynamicImage::ImageRgba8(img_buffer);
+
+    let thumb_image = dynamic_img.resize(200, 200, image::imageops::FilterType::Lanczos3);
     thumb_image.save(&thumb_path).map_err(|e| e.to_string())?;
 
     let relative_path = format!("images/{}/{}", year_month, filename);
@@ -392,12 +395,8 @@ fn save_cropped_image(
     );
     let thumb_path = images_dir.join(&thumb_filename);
 
-    let thumb_image = image::imageops::resize(
-        image,
-        200,
-        200,
-        image::imageops::FilterType::Lanczos3,
-    );
+    let dynamic_img = image::DynamicImage::ImageRgba8(image.clone());
+    let thumb_image = dynamic_img.resize(200, 200, image::imageops::FilterType::Lanczos3);
     thumb_image.save(&thumb_path).map_err(|e| e.to_string())?;
 
     let relative_path = format!("images/{}/{}", year_month, filename);
