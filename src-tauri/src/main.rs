@@ -1,15 +1,17 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod commands;
 mod clipboard;
+mod commands;
 mod database;
 mod models;
 mod session;
+mod settings;
 
 use clipboard::ClipboardService;
 use database::Database;
 use session::SessionManager;
+use settings::SettingsStore;
 use tauri::Manager;
 
 fn main() {
@@ -20,6 +22,11 @@ fn main() {
                 .path()
                 .app_data_dir()
                 .expect("Failed to get app data dir");
+
+            // 初始化设置
+            let settings_store =
+                SettingsStore::new(&app_data_dir).expect("Failed to initialize settings");
+            let show_main_window_on_start = settings_store.get().show_main_window_on_start;
 
             // 初始化数据库
             let db = Database::new(app_data_dir).expect("Failed to initialize database");
@@ -35,12 +42,19 @@ fn main() {
             println!("Session started: {}", session_id);
 
             // 将服务注入到应用状态
+            app.manage(settings_store);
             app.manage(db);
             app.manage(session_mgr);
 
             // 启动剪贴板监听服务
             let clipboard_service = ClipboardService::new();
             clipboard_service.start(app.handle().clone());
+
+            if !show_main_window_on_start {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.hide().expect("Failed to hide main window");
+                }
+            }
 
             println!("ClipMaster started successfully!");
 
@@ -57,6 +71,7 @@ fn main() {
                     if let Err(e) = db.end_session(&session_id) {
                         eprintln!("Failed to end session: {}", e);
                     } else {
+                        session_mgr.end_current_session();
                         println!("Session ended: {}", session_id);
                     }
                 }
@@ -72,6 +87,12 @@ fn main() {
             commands::get_sessions,
             commands::clear_session,
             commands::search_items,
+            commands::get_app_data_dir,
+            commands::copy_to_clipboard,
+            commands::get_settings,
+            commands::save_settings,
+            commands::capture_screenshot,
+            commands::pin_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,0 +1,236 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import App from './App.svelte';
+
+const api = vi.hoisted(() => ({
+  clearSession: vi.fn(),
+  convertImagePath: vi.fn(),
+  copyToClipboard: vi.fn(),
+  captureScreenshot: vi.fn(),
+  deleteItem: vi.fn(),
+  getSettings: vi.fn(),
+  getCurrentSession: vi.fn(),
+  getItems: vi.fn(),
+  getItemsBySession: vi.fn(),
+  getSessions: vi.fn(),
+  onNewItem: vi.fn(),
+  pinImage: vi.fn(),
+  saveSettings: vi.fn(),
+  searchItems: vi.fn(),
+  toggleFavorite: vi.fn(),
+  togglePinned: vi.fn(),
+}));
+
+vi.mock('./lib/api.js', () => ({
+  clipboardApi: {
+    getItems: api.getItems,
+    deleteItem: api.deleteItem,
+    toggleFavorite: api.toggleFavorite,
+    togglePinned: api.togglePinned,
+    copyToClipboard: api.copyToClipboard,
+    onNewItem: api.onNewItem,
+  },
+  sessionApi: {
+    getCurrentSession: api.getCurrentSession,
+    getSessions: api.getSessions,
+    getItemsBySession: api.getItemsBySession,
+    clearSession: api.clearSession,
+  },
+  searchApi: {
+    searchItems: api.searchItems,
+  },
+  toolApi: {
+    captureScreenshot: api.captureScreenshot,
+    pinImage: api.pinImage,
+  },
+  settingsApi: {
+    getSettings: api.getSettings,
+    saveSettings: api.saveSettings,
+  },
+  convertImagePath: api.convertImagePath,
+}));
+
+const session = {
+  id: 'session_1',
+  start_time: 1780650000000,
+  end_time: null,
+  item_count: 0,
+  is_active: true,
+};
+
+function textItem(overrides = {}) {
+  return {
+    id: 'text_1',
+    type: 'text',
+    content: 'Alpha token',
+    image_path: null,
+    preview: 'Alpha token',
+    timestamp: Date.now(),
+    source_app: null,
+    is_favorite: false,
+    is_pinned: false,
+    content_hash: 'hash_text',
+    session_id: 'session_1',
+    ...overrides,
+  };
+}
+
+function imageItem(overrides = {}) {
+  return {
+    id: 'image_1',
+    type: 'image',
+    content: null,
+    image_path: 'images/2026-06/image.png',
+    preview: null,
+    timestamp: Date.now() - 1000,
+    source_app: null,
+    is_favorite: true,
+    is_pinned: false,
+    content_hash: 'hash_image',
+    session_id: 'session_1',
+    ...overrides,
+  };
+}
+
+describe('App UI', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    api.getCurrentSession.mockResolvedValue(session);
+    api.getItems.mockResolvedValue([]);
+    api.getSessions.mockResolvedValue([]);
+    api.getItemsBySession.mockResolvedValue([]);
+    api.getSettings.mockResolvedValue({
+      clipboard_monitor_enabled: true,
+      show_main_window_on_start: true,
+      max_items: 50,
+      capture_delay_ms: 150,
+    });
+    api.clearSession.mockResolvedValue();
+    api.onNewItem.mockResolvedValue(vi.fn());
+    api.searchItems.mockResolvedValue([]);
+    api.captureScreenshot.mockResolvedValue(imageItem({ id: 'shot_1', image_path: 'images/2026-06/shot.png' }));
+    api.pinImage.mockResolvedValue();
+    api.saveSettings.mockImplementation(async (settings) => settings);
+    api.deleteItem.mockResolvedValue();
+    api.toggleFavorite.mockResolvedValue(true);
+    api.togglePinned.mockResolvedValue(true);
+    api.copyToClipboard.mockResolvedValue();
+    api.convertImagePath.mockResolvedValue('asset://localhost/images/2026-06/image.png');
+  });
+
+  it('renders the desktop app shell with search, filters, and an empty history state', async () => {
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+
+    expect(screen.getByRole('heading', { name: 'ClipMaster' })).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: '搜索剪贴板内容' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: '剪贴板筛选' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全部记录' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '收藏' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '图片' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '截图' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '钉住' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
+    expect(screen.getByText('剪贴板历史')).toBeInTheDocument();
+    expect(screen.getByText('复制内容后会自动出现在这里')).toBeInTheDocument();
+  });
+
+  it('shows clipboard items with accessible action buttons and image previews', async () => {
+    api.getItems.mockResolvedValue([textItem(), imageItem()]);
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+    expect(await screen.findByText('图片记录')).toBeInTheDocument();
+    expect(await screen.findByAltText('剪贴板图片预览')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '复制 Alpha token' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '置顶 Alpha token' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '收藏 Alpha token' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '删除 Alpha token' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '复制 图片记录' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '钉到桌面 图片记录' })).toBeInTheDocument();
+  });
+
+  it('searches within the current session and can clear the query', async () => {
+    render(App);
+
+    const search = await screen.findByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+
+    await waitFor(() => {
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50);
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
+
+    expect(search).toHaveValue('');
+    expect(api.getItems).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the narrow-window shell compact without page-level scrolling', async () => {
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-layout', 'compact-ready');
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-density', 'tool');
+    expect(screen.getByTestId('history-panel')).toHaveAttribute('data-scroll', 'internal');
+    expect(screen.getByRole('button', { name: '全部记录' })).toHaveClass('filter-button');
+    expect(screen.getByRole('button', { name: '收藏' })).toHaveClass('filter-button');
+    expect(screen.getByRole('button', { name: '图片' })).toHaveClass('filter-button');
+    expect(document.body).toContainElement(screen.getByTestId('app-shell'));
+  });
+
+  it('captures a screenshot and refreshes the clipboard history', async () => {
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+
+    await fireEvent.click(screen.getByRole('button', { name: '截图' }));
+
+    await waitFor(() => expect(api.captureScreenshot).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('截图已保存')).toBeInTheDocument();
+    expect(api.getItems).toHaveBeenCalledTimes(2);
+  });
+
+  it('pins the newest image globally and supports pinning an image item to desktop', async () => {
+    api.getItems.mockResolvedValue([textItem(), imageItem()]);
+
+    render(App);
+
+    await screen.findByText('图片记录');
+
+    await fireEvent.click(screen.getByRole('button', { name: '钉住' }));
+    expect(api.pinImage).toHaveBeenCalledWith('images/2026-06/image.png');
+
+    await fireEvent.click(screen.getByRole('button', { name: '钉到桌面 图片记录' }));
+    expect(api.pinImage).toHaveBeenCalledTimes(2);
+  });
+
+  it('loads and saves app settings from the settings panel', async () => {
+    render(App);
+
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+
+    expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '监听剪贴板' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '启动时显示主窗口' })).toBeChecked();
+
+    const maxItems = screen.getByLabelText('保留记录数');
+    await fireEvent.input(maxItems, { target: { value: '120' } });
+    await fireEvent.click(screen.getByRole('checkbox', { name: '启动时显示主窗口' }));
+    await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
+
+    await waitFor(() => {
+      expect(api.saveSettings).toHaveBeenCalledWith({
+        clipboard_monitor_enabled: true,
+        show_main_window_on_start: false,
+        max_items: 120,
+        capture_delay_ms: 150,
+      });
+    });
+  });
+});

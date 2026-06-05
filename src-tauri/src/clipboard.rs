@@ -1,6 +1,8 @@
 use anyhow::Result;
 use arboard::Clipboard;
+use chrono::Local;
 use parking_lot::Mutex;
+use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
@@ -9,6 +11,7 @@ use tokio::time::sleep;
 use crate::database::Database;
 use crate::models::{ClipboardType, CreateClipboardItem};
 use crate::session::SessionManager;
+use crate::settings::SettingsStore;
 
 pub struct ClipboardService {
     last_hash: Arc<Mutex<String>>,
@@ -29,6 +32,12 @@ impl ClipboardService {
             let mut clipboard = Clipboard::new().expect("Failed to initialize clipboard");
 
             loop {
+                let settings = app_handle.state::<SettingsStore>();
+                if !settings.get().clipboard_monitor_enabled {
+                    sleep(Duration::from_millis(500)).await;
+                    continue;
+                }
+
                 // 尝试读取剪贴板内容
                 if let Ok(content) = Self::get_clipboard_content(&mut clipboard) {
                     let hash = Self::calculate_hash(&content);
@@ -83,9 +92,21 @@ impl ClipboardService {
                 format!("{:x}", md5::compute(text.as_bytes()))
             }
             ClipboardContent::Image(img) => {
-                // 使用图片的宽高和部分像素数据计算哈希
-                let data = format!("{}x{}", img.width, img.height);
-                format!("{:x}", md5::compute(data.as_bytes()))
+                // 使用图片的宽高和采样像素数据计算哈希
+                let mut hash_data = Vec::new();
+
+                // 添加宽高信息
+                hash_data.extend_from_slice(&img.width.to_le_bytes());
+                hash_data.extend_from_slice(&img.height.to_le_bytes());
+
+                // 采样策略：取部分像素点（每隔100个像素取一个）
+                // 避免处理整个图片数据，提升性能
+                let sample_step = 100.min(img.bytes.len() / 100).max(1);
+                for i in (0..img.bytes.len()).step_by(sample_step) {
+                    hash_data.push(img.bytes[i]);
+                }
+
+                format!("{:x}", md5::compute(&hash_data))
             }
         }
     }
@@ -120,12 +141,14 @@ impl ClipboardService {
                 content_hash,
                 session_id,
             },
-            ClipboardContent::Image(_img) => {
-                // TODO: 保存图片到文件系统
+            ClipboardContent::Image(img) => {
+                // 保存图片到文件系统
+                let image_path = Self::save_image(app_handle, &img, &content_hash)?;
+
                 CreateClipboardItem {
                     type_: ClipboardType::Image,
                     content: None,
-                    image_path: Some("placeholder.png".to_string()),
+                    image_path: Some(image_path),
                     source_app: None,
                     content_hash,
                     session_id,
@@ -140,6 +163,47 @@ impl ClipboardService {
         app_handle.emit("clipboard:new-item", &saved_item)?;
 
         Ok(())
+    }
+
+    /// 保存图片到文件系统
+    fn save_image(
+        app_handle: &AppHandle,
+        img: &arboard::ImageData,
+        content_hash: &str,
+    ) -> Result<String> {
+        // 获取应用数据目录
+        let app_data_dir = app_handle
+            .path()
+            .app_data_dir()
+            .map_err(|e| anyhow::anyhow!("Failed to get app data dir: {}", e))?;
+
+        // 创建按月份分组的图片目录
+        let year_month = Local::now().format("%Y-%m").to_string();
+        let images_dir = app_data_dir.join("images").join(&year_month);
+
+        // 确保目录存在
+        fs::create_dir_all(&images_dir)?;
+
+        // 生成文件名: hash前8位_时间戳.png
+        let timestamp = chrono::Utc::now().timestamp();
+        let filename = format!(
+            "{}_{}.png",
+            &content_hash[..8.min(content_hash.len())],
+            timestamp
+        );
+        let file_path = images_dir.join(&filename);
+
+        // 将 arboard::ImageData 转换为 image crate 的格式
+        let image_buffer =
+            image::RgbaImage::from_raw(img.width as u32, img.height as u32, img.bytes.to_vec())
+                .ok_or_else(|| anyhow::anyhow!("Failed to create image buffer"))?;
+
+        // 保存为 PNG 格式
+        image_buffer.save(&file_path)?;
+
+        // 返回相对路径: images/2026-06/hash_timestamp.png
+        let relative_path = format!("images/{}/{}", year_month, filename);
+        Ok(relative_path)
     }
 }
 

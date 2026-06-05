@@ -2,12 +2,13 @@
   "$schema": "https://schema.tauri.app/config/2",
   "identifier": "default",
   "description": "Default permissions for the app",
-  "windows": ["main"],
+  "windows": ["main", "pin-*"],
   "permissions": [
     "core:default",
     "core:event:default",
     "core:event:allow-listen",
     "core:event:allow-emit",
-    "core:window:default"
+    "core:window:default",
+    "core:window:allow-close"
   ]
 }

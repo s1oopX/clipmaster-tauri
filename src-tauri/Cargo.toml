@@ -20,6 +20,8 @@ md5 = "0.7"
 anyhow = "1.0"
 parking_lot = "0.12"
 arboard = "3.4"
+image = "0.25"
+screenshots = "0.8.10"
 
 [features]
 default = ["custom-protocol"]

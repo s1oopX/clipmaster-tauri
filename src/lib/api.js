@@ -1,5 +1,34 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { convertFileSrc } from '@tauri-apps/api/core';
+
+// 缓存应用数据目录路径
+let appDataDir = null;
+
+/**
+ * 获取应用数据目录
+ */
+async function getAppDataDir() {
+  if (!appDataDir) {
+    appDataDir = await invoke('get_app_data_dir');
+  }
+  return appDataDir;
+}
+
+/**
+ * 将相对路径转换为可访问的文件 URL
+ * @param {string} relativePath - 相对路径，如 "images/2026-06/xxx.png"
+ * @returns {Promise<string>} 可访问的文件 URL
+ */
+export async function convertImagePath(relativePath) {
+  if (!relativePath) return null;
+
+  const dataDir = await getAppDataDir();
+  const fullPath = `${dataDir}\\${relativePath.replace(/\//g, '\\')}`;
+
+  // 使用 Tauri 的 convertFileSrc 转换为可访问的 URL
+  return convertFileSrc(fullPath);
+}
 
 /**
  * 剪贴板 API
@@ -38,6 +67,14 @@ export const clipboardApi = {
    */
   async togglePinned(itemId) {
     return await invoke('toggle_pinned', { itemId });
+  },
+
+  /**
+   * 复制文本到剪贴板
+   * @param {string} text
+   */
+  async copyToClipboard(text) {
+    return await invoke('copy_to_clipboard', { text });
   },
 
   /**
@@ -110,5 +147,45 @@ export const searchApi = {
       sessionId,
       limit,
     });
+  },
+};
+
+/**
+ * 工具 API
+ */
+export const toolApi = {
+  /**
+   * 捕获当前屏幕截图
+   */
+  async captureScreenshot() {
+    return await invoke('capture_screenshot');
+  },
+
+  /**
+   * 将图片钉到桌面
+   * @param {string} imagePath - 应用数据目录下的相对图片路径
+   */
+  async pinImage(imagePath) {
+    return await invoke('pin_image', { imagePath });
+  },
+};
+
+/**
+ * 设置 API
+ */
+export const settingsApi = {
+  /**
+   * 获取应用设置
+   */
+  async getSettings() {
+    return await invoke('get_settings');
+  },
+
+  /**
+   * 保存应用设置
+   * @param {object} settings
+   */
+  async saveSettings(settings) {
+    return await invoke('save_settings', { settings });
   },
 };

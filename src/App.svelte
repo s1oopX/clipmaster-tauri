@@ -1,26 +1,101 @@
 <script>
   import { onMount } from 'svelte';
-  import { clipboardApi, sessionApi } from './lib/api.js';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
+  import {
+    Camera,
+    Check,
+    Clipboard,
+    Copy,
+    FileText,
+    Heart,
+    Image as ImageIcon,
+    Inbox,
+    List,
+    LoaderCircle,
+    Pin,
+    Search,
+    Settings,
+    Star,
+    Trash2,
+    X,
+  } from '@lucide/svelte';
+  import {
+    clipboardApi,
+    sessionApi,
+    searchApi,
+    toolApi,
+    settingsApi,
+    convertImagePath,
+  } from './lib/api.js';
+
+  const defaultSettings = {
+    clipboard_monitor_enabled: true,
+    show_main_window_on_start: true,
+    max_items: 50,
+    capture_delay_ms: 150,
+  };
 
   let items = [];
   let currentSession = null;
   let loading = false;
   let error = null;
+  let searchQuery = '';
+  let isSearching = false;
+  let activeFilter = 'all';
+
+  let imageUrls = {};
+  let copySuccess = false;
+  let copyTimer = null;
+  let actionNotice = '';
+  let noticeTimer = null;
+  let toolLoading = null;
+  let settingsOpen = false;
+  let settingsSaving = false;
+  let appSettings = { ...defaultSettings };
+  let settingsDraft = { ...defaultSettings };
+  let pinMode = false;
+  let pinImagePath = '';
+  let pinImageUrl = '';
+
+  const filters = [
+    { id: 'all', label: '全部记录' },
+    { id: 'favorite', label: '收藏' },
+    { id: 'image', label: '图片' },
+  ];
 
   onMount(async () => {
     console.log('ClipMaster Tauri 启动成功！');
 
     try {
-      // 获取当前会话
+      const params = new URLSearchParams(window.location.search);
+      const pinPath = params.get('pin');
+
+      if (pinPath) {
+        pinMode = true;
+        pinImagePath = decodeURIComponent(pinPath);
+        pinImageUrl = await convertImagePath(pinImagePath);
+        return;
+      }
+
+      appSettings = {
+        ...defaultSettings,
+        ...(await settingsApi.getSettings()),
+      };
+      settingsDraft = { ...appSettings };
+
       currentSession = await sessionApi.getCurrentSession();
       console.log('当前会话:', currentSession);
 
-      // 获取剪贴板列表
       await loadItems();
 
-      // 监听新记录
-      clipboardApi.onNewItem((item) => {
+      clipboardApi.onNewItem(async (item) => {
         console.log('新剪贴板记录:', item);
+
+        if (item.type === 'image' && item.image_path) {
+          imageUrls[item.id] = await convertImagePath(item.image_path);
+          imageUrls = imageUrls;
+        }
+
         items = [item, ...items];
       });
     } catch (e) {
@@ -32,8 +107,9 @@
   async function loadItems() {
     loading = true;
     try {
-      items = await clipboardApi.getItems(50, 0);
+      items = await clipboardApi.getItems(appSettings.max_items || defaultSettings.max_items, 0);
       console.log('已加载记录:', items.length);
+      await loadImageUrls();
     } catch (e) {
       console.error('加载记录失败:', e);
       error = e.toString();
@@ -42,25 +118,226 @@
     }
   }
 
+  async function loadImageUrls() {
+    for (const item of items) {
+      if (item.type === 'image' && item.image_path && !imageUrls[item.id]) {
+        try {
+          imageUrls[item.id] = await convertImagePath(item.image_path);
+        } catch (e) {
+          console.error('加载图片 URL 失败:', e);
+        }
+      }
+    }
+
+    imageUrls = imageUrls;
+  }
+
   async function deleteItem(itemId) {
     try {
       await clipboardApi.deleteItem(itemId);
-      items = items.filter(item => item.id !== itemId);
+      items = items.filter((item) => item.id !== itemId);
     } catch (e) {
       console.error('删除失败:', e);
-      alert('删除失败: ' + e);
+      error = '删除失败: ' + e;
     }
   }
 
   async function toggleFavorite(itemId) {
     try {
       const isFavorite = await clipboardApi.toggleFavorite(itemId);
-      items = items.map(item =>
+      items = items.map((item) =>
         item.id === itemId ? { ...item, is_favorite: isFavorite } : item
       );
     } catch (e) {
       console.error('切换收藏失败:', e);
+      error = '切换收藏失败: ' + e;
     }
+  }
+
+  async function togglePinned(itemId) {
+    try {
+      const isPinned = await clipboardApi.togglePinned(itemId);
+      items = items.map((item) =>
+        item.id === itemId ? { ...item, is_pinned: isPinned } : item
+      );
+      sortItems();
+    } catch (e) {
+      console.error('切换置顶失败:', e);
+      error = '切换置顶失败: ' + e;
+    }
+  }
+
+  function sortItems() {
+    items = [...items].sort((a, b) => {
+      if (a.is_pinned && !b.is_pinned) return -1;
+      if (!a.is_pinned && b.is_pinned) return 1;
+      return b.timestamp - a.timestamp;
+    });
+  }
+
+  async function handleSearch() {
+    if (!searchQuery.trim()) {
+      await loadItems();
+      return;
+    }
+
+    isSearching = true;
+    try {
+      const sessionId = currentSession?.id || null;
+      items = await searchApi.searchItems(
+        searchQuery,
+        sessionId,
+        appSettings.max_items || defaultSettings.max_items
+      );
+      console.log('搜索结果:', items.length);
+      await loadImageUrls();
+    } catch (e) {
+      console.error('搜索失败:', e);
+      error = e.toString();
+    } finally {
+      isSearching = false;
+    }
+  }
+
+  function clearSearch() {
+    searchQuery = '';
+    loadItems();
+  }
+
+  async function copyItem(item) {
+    try {
+      if (item.type === 'text' && item.content) {
+        await clipboardApi.copyToClipboard(item.content);
+        showCopyToast();
+      } else if (item.type === 'image') {
+        error = '图片复制功能待实现';
+      }
+    } catch (e) {
+      console.error('复制失败:', e);
+      error = '复制失败: ' + e;
+    }
+  }
+
+  async function captureScreenshot() {
+    toolLoading = 'screenshot';
+    error = null;
+
+    try {
+      await toolApi.captureScreenshot();
+      await loadItems();
+      showActionNotice('截图已保存');
+    } catch (e) {
+      console.error('截图失败:', e);
+      error = '截图失败: ' + e;
+    } finally {
+      toolLoading = null;
+    }
+  }
+
+  async function pinNewestImage() {
+    const image = visibleItems().find((item) => item.type === 'image' && item.image_path)
+      || items.find((item) => item.type === 'image' && item.image_path);
+
+    if (!image) {
+      error = '当前没有可钉住的图片记录';
+      return;
+    }
+
+    await pinImageToDesktop(image);
+  }
+
+  async function pinImageToDesktop(item) {
+    if (!item.image_path) {
+      error = '图片路径不可用';
+      return;
+    }
+
+    toolLoading = 'pin';
+    error = null;
+
+    try {
+      await toolApi.pinImage(item.image_path);
+      showActionNotice('已钉到桌面');
+    } catch (e) {
+      console.error('贴图失败:', e);
+      error = '贴图失败: ' + e;
+    } finally {
+      toolLoading = null;
+    }
+  }
+
+  function openSettings() {
+    settingsDraft = { ...appSettings };
+    settingsOpen = true;
+  }
+
+  function updateSettingsDraft(key, value) {
+    settingsDraft = {
+      ...settingsDraft,
+      [key]: value,
+    };
+  }
+
+  async function saveSettings() {
+    settingsSaving = true;
+    error = null;
+
+    const normalized = {
+      clipboard_monitor_enabled: settingsDraft.clipboard_monitor_enabled,
+      show_main_window_on_start: settingsDraft.show_main_window_on_start,
+      max_items: Number(settingsDraft.max_items) || defaultSettings.max_items,
+      capture_delay_ms: Number(settingsDraft.capture_delay_ms) || defaultSettings.capture_delay_ms,
+    };
+
+    try {
+      appSettings = await settingsApi.saveSettings(normalized);
+      settingsDraft = { ...appSettings };
+      settingsOpen = false;
+      await loadItems();
+      showActionNotice('设置已保存');
+    } catch (e) {
+      console.error('保存设置失败:', e);
+      error = '保存设置失败: ' + e;
+    } finally {
+      settingsSaving = false;
+    }
+  }
+
+  async function closePinWindow() {
+    try {
+      await getCurrentWindow().close();
+    } catch (e) {
+      console.error('关闭贴图窗口失败:', e);
+      window.close();
+    }
+  }
+
+  function showCopyToast() {
+    copySuccess = true;
+    if (copyTimer) clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
+      copySuccess = false;
+    }, 1800);
+  }
+
+  function showActionNotice(message) {
+    actionNotice = message;
+    if (noticeTimer) clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => {
+      actionNotice = '';
+    }, 2200);
+  }
+
+  function visibleItems() {
+    if (activeFilter === 'favorite') {
+      return items.filter((item) => item.is_favorite);
+    }
+
+    if (activeFilter === 'image') {
+      return items.filter((item) => item.type === 'image');
+    }
+
+    return items;
   }
 
   function formatTime(timestamp) {
@@ -75,285 +352,1129 @@
     return date.toLocaleString('zh-CN');
   }
 
-  function getTypeIcon(type) {
-    switch (type) {
-      case 'text': return '📝';
-      case 'image': return '🖼️';
-      case 'file': return '📁';
-      default: return '📋';
+  function itemLabel(item) {
+    if (item.type === 'text') {
+      return item.preview || item.content || '文本记录';
     }
+
+    if (item.type === 'image') {
+      return '图片记录';
+    }
+
+    return '剪贴板记录';
   }
 </script>
 
-<main>
-  <div class="container">
-    <header>
-      <h1>📋 ClipMaster</h1>
-      <p class="subtitle">Tauri + Rust + Svelte</p>
+{#if pinMode}
+  <main class="pin-shell" data-testid="pin-shell">
+    <header class="pin-toolbar" data-tauri-drag-region>
+      <span>ClipMaster 贴图</span>
+      <button type="button" on:click={closePinWindow} aria-label="关闭贴图">
+        <X size={15} aria-hidden="true" />
+      </button>
+    </header>
 
-      {#if currentSession}
-        <div class="session-info">
-          <div class="status-dot"></div>
-          <span>本次会话 · {items.length} 条记录</span>
-        </div>
+    <section class="pin-image-stage" aria-label="桌面贴图">
+      {#if pinImageUrl}
+        <img src={pinImageUrl} alt="桌面贴图" />
+      {:else}
+        <div class="image-loading">{pinImagePath || '图片加载中'}</div>
       {/if}
+    </section>
+  </main>
+{:else}
+<main class="app-shell" data-testid="app-shell" data-layout="compact-ready" data-density="tool">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <Clipboard size={20} aria-hidden="true" />
+      </div>
+      <div>
+        <h1>ClipMaster</h1>
+        <p>剪贴板工作台</p>
+      </div>
+    </div>
+
+    <nav class="filter-nav" aria-label="剪贴板筛选">
+      {#each filters as filter}
+        <button
+          class="filter-button"
+          class:active={activeFilter === filter.id}
+          on:click={() => (activeFilter = filter.id)}
+          type="button"
+        >
+          {#if filter.id === 'all'}
+            <List size={16} aria-hidden="true" />
+          {:else if filter.id === 'favorite'}
+            <Heart size={16} aria-hidden="true" />
+          {:else}
+            <ImageIcon size={16} aria-hidden="true" />
+          {/if}
+          <span>{filter.label}</span>
+        </button>
+      {/each}
+    </nav>
+
+    <div class="session-card">
+      <span class="status-dot"></span>
+      <div>
+        <strong>本次会话</strong>
+        <span>{items.length} 条记录</span>
+      </div>
+    </div>
+  </aside>
+
+  <section class="workspace" aria-label="剪贴板历史">
+    <header class="toolbar">
+      <div>
+        <p class="eyebrow">Clipboard history</p>
+        <h2>剪贴板历史</h2>
+      </div>
+
+      <div class="toolbar-tools">
+        <div class="quick-actions" aria-label="快速工具">
+          <button
+            type="button"
+            class="tool-button"
+            on:click={captureScreenshot}
+            disabled={toolLoading === 'screenshot'}
+          >
+            {#if toolLoading === 'screenshot'}
+              <LoaderCircle size={15} aria-hidden="true" />
+            {:else}
+              <Camera size={15} aria-hidden="true" />
+            {/if}
+            <span>截图</span>
+          </button>
+
+          <button
+            type="button"
+            class="tool-button"
+            on:click={pinNewestImage}
+            disabled={toolLoading === 'pin'}
+          >
+            <Pin size={15} aria-hidden="true" />
+            <span>钉住</span>
+          </button>
+
+          <button type="button" class="icon-tool" on:click={openSettings} aria-label="设置">
+            <Settings size={17} aria-hidden="true" />
+          </button>
+        </div>
+
+        <label class="search-field">
+          <Search size={17} aria-hidden="true" />
+          <span class="sr-only">搜索剪贴板内容</span>
+          <input
+            type="search"
+            aria-label="搜索剪贴板内容"
+            placeholder="搜索文本、代码片段或图片记录"
+            bind:value={searchQuery}
+            on:input={handleSearch}
+          />
+          {#if searchQuery}
+            <button type="button" class="clear-search" on:click={clearSearch} aria-label="清除搜索">
+              <X size={15} aria-hidden="true" />
+            </button>
+          {/if}
+        </label>
+      </div>
     </header>
 
     {#if error}
-      <div class="error-box">
-        ⚠️ {error}
+      <div class="notice error" role="alert">{error}</div>
+    {/if}
+
+    {#if copySuccess}
+      <div class="notice success" role="status">
+        <Check size={16} aria-hidden="true" />
+        <span>已复制到剪贴板</span>
       </div>
     {/if}
 
-    <div class="content">
-      {#if loading}
-        <div class="loading">加载中...</div>
-      {:else if items.length === 0}
-        <div class="empty">
-          <p>📋</p>
-          <p>暂无剪贴板记录</p>
-          <p class="hint">复制一些内容试试吧！</p>
+    {#if actionNotice}
+      <div class="notice success" role="status">
+        <Check size={16} aria-hidden="true" />
+        <span>{actionNotice}</span>
+      </div>
+    {/if}
+
+    <div class="history-panel" data-testid="history-panel" data-scroll="internal">
+      {#if loading || isSearching}
+        <div class="loading">
+          <LoaderCircle size={20} aria-hidden="true" />
+          <span>加载中</span>
+        </div>
+      {:else if visibleItems().length === 0}
+        <div class="empty-state">
+          <Inbox size={34} aria-hidden="true" />
+          {#if searchQuery}
+            <h3>未找到匹配的记录</h3>
+            <p>换个关键词再试一次。</p>
+          {:else}
+            <h3>暂无剪贴板记录</h3>
+            <p>复制内容后会自动出现在这里</p>
+          {/if}
         </div>
       {:else}
-        <div class="items-list">
-          {#each items as item (item.id)}
-            <div class="item" class:pinned={item.is_pinned}>
-              <div class="item-header">
-                <span class="type-icon">{getTypeIcon(item.type)}</span>
-                <span class="time">{formatTime(item.timestamp)}</span>
-                {#if item.is_pinned}
-                  <span class="badge">📌 置顶</span>
-                {/if}
-                {#if item.is_favorite}
-                  <span class="badge">⭐ 收藏</span>
-                {/if}
-              </div>
+        <div class="items-list" aria-label="剪贴板记录列表">
+          {#each visibleItems() as item (item.id)}
+            <article class="item" class:pinned={item.is_pinned}>
+              <div class="item-main">
+                <div class="item-row">
+                  <div class="item-meta">
+                    <span class="type-pill">
+                      {#if item.type === 'image'}
+                        <ImageIcon size={14} aria-hidden="true" />
+                        图片
+                      {:else if item.type === 'file'}
+                        <FileText size={14} aria-hidden="true" />
+                        文件
+                      {:else}
+                        <FileText size={14} aria-hidden="true" />
+                        文本
+                      {/if}
+                    </span>
+                    <span>{formatTime(item.timestamp)}</span>
+                    {#if item.is_pinned}
+                      <span class="badge">置顶</span>
+                    {/if}
+                    {#if item.is_favorite}
+                      <span class="badge">收藏</span>
+                    {/if}
+                  </div>
 
-              <div class="item-content">
+                  <div class="item-actions">
+                    <button
+                      type="button"
+                      on:click={() => copyItem(item)}
+                      aria-label={`复制 ${itemLabel(item)}`}
+                      title="复制"
+                    >
+                      <Copy size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class:active={item.is_pinned}
+                      on:click={() => togglePinned(item.id)}
+                      aria-label={`置顶 ${itemLabel(item)}`}
+                      title="置顶"
+                    >
+                      <Pin size={16} aria-hidden="true" />
+                    </button>
+                    {#if item.type === 'image' && item.image_path}
+                      <button
+                        type="button"
+                        on:click={() => pinImageToDesktop(item)}
+                        aria-label={`钉到桌面 ${itemLabel(item)}`}
+                        title="钉到桌面"
+                      >
+                        <Pin size={16} aria-hidden="true" />
+                      </button>
+                    {/if}
+                    <button
+                      type="button"
+                      class:active={item.is_favorite}
+                      on:click={() => toggleFavorite(item.id)}
+                      aria-label={`收藏 ${itemLabel(item)}`}
+                      title="收藏"
+                    >
+                      <Star size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      on:click={() => deleteItem(item.id)}
+                      aria-label={`删除 ${itemLabel(item)}`}
+                      title="删除"
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+
                 {#if item.type === 'text'}
                   <p class="text-content">{item.preview || item.content}</p>
                 {:else if item.type === 'image'}
-                  <p class="image-placeholder">🖼️ 图片</p>
+                  <div class="image-summary">
+                    <strong>图片记录</strong>
+                    <span>{item.image_path || '等待图片路径'}</span>
+                  </div>
+                  {#if imageUrls[item.id]}
+                    <div class="image-preview">
+                      <img
+                        src={imageUrls[item.id]}
+                        alt="剪贴板图片预览"
+                        on:error={(event) => {
+                          console.error('图片加载失败:', item.image_path);
+                          event.target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  {:else}
+                    <div class="image-loading">图片加载中</div>
+                  {/if}
                 {/if}
               </div>
-
-              <div class="item-actions">
-                <button
-                  class="btn-icon"
-                  class:active={item.is_favorite}
-                  on:click={() => toggleFavorite(item.id)}
-                  title="收藏"
-                >
-                  {item.is_favorite ? '⭐' : '☆'}
-                </button>
-                <button
-                  class="btn-icon"
-                  on:click={() => deleteItem(item.id)}
-                  title="删除"
-                >
-                  🗑️
-                </button>
-              </div>
-            </div>
+            </article>
           {/each}
         </div>
       {/if}
     </div>
-  </div>
+  </section>
+  {#if settingsOpen}
+    <div class="settings-backdrop" on:click={() => (settingsOpen = false)} aria-hidden="true"></div>
+    <div
+      class="settings-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+    >
+      <header class="settings-header">
+        <h2 id="settings-title">设置</h2>
+        <button type="button" on:click={() => (settingsOpen = false)} aria-label="关闭设置">
+          <X size={16} aria-hidden="true" />
+        </button>
+      </header>
+
+      <div class="settings-content">
+        <label class="switch-row">
+          <input
+            type="checkbox"
+            checked={settingsDraft.clipboard_monitor_enabled}
+            on:change={(event) =>
+              updateSettingsDraft('clipboard_monitor_enabled', event.currentTarget.checked)}
+          />
+          <span>监听剪贴板</span>
+        </label>
+
+        <label class="switch-row">
+          <input
+            type="checkbox"
+            checked={settingsDraft.show_main_window_on_start}
+            on:change={(event) =>
+              updateSettingsDraft('show_main_window_on_start', event.currentTarget.checked)}
+          />
+          <span>启动时显示主窗口</span>
+        </label>
+
+        <label class="field-row">
+          <span>保留记录数</span>
+          <input
+            type="number"
+            min="10"
+            max="500"
+            value={settingsDraft.max_items}
+            on:input={(event) => updateSettingsDraft('max_items', Number(event.currentTarget.value))}
+          />
+        </label>
+
+        <label class="field-row">
+          <span>截图延迟</span>
+          <input
+            type="number"
+            min="0"
+            max="3000"
+            step="50"
+            value={settingsDraft.capture_delay_ms}
+            on:input={(event) =>
+              updateSettingsDraft('capture_delay_ms', Number(event.currentTarget.value))}
+          />
+        </label>
+      </div>
+
+      <footer class="settings-footer">
+        <button type="button" class="ghost-button" on:click={() => (settingsOpen = false)}>
+          取消
+        </button>
+        <button type="button" class="primary-button" on:click={saveSettings} disabled={settingsSaving}>
+          {settingsSaving ? '保存中' : '保存设置'}
+        </button>
+      </footer>
+    </div>
+  {/if}
 </main>
+{/if}
 
 <style>
   :global(body) {
     margin: 0;
-    padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #f5f5f5;
+    background: #f4f6f8;
+    color: #172033;
+    font-family:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif;
   }
 
-  main {
+  :global(button),
+  :global(input) {
+    font: inherit;
+  }
+
+  .pin-shell {
+    display: grid;
+    grid-template-rows: 34px minmax(0, 1fr);
     width: 100%;
-    min-height: 100vh;
-    padding: 20px;
+    height: 100vh;
+    overflow: hidden;
+    color: #e5edf7;
+    background: #0b1120;
   }
 
-  .container {
-    max-width: 800px;
-    margin: 0 auto;
+  .pin-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 8px 0 12px;
+    color: #dbeafe;
+    background: rgba(8, 13, 26, 0.92);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    font-size: 0.78rem;
+    font-weight: 650;
+    user-select: none;
   }
 
-  header {
-    text-align: center;
-    margin-bottom: 30px;
-    padding: 20px;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  .pin-toolbar button {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    color: #cbd5e1;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .pin-toolbar button:hover {
+    color: #ffffff;
+    background: rgba(148, 163, 184, 0.18);
+  }
+
+  .pin-image-stage {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    place-items: center;
+    padding: 8px;
+    background:
+      linear-gradient(45deg, rgba(148, 163, 184, 0.09) 25%, transparent 25%),
+      linear-gradient(-45deg, rgba(148, 163, 184, 0.09) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, 0.09) 75%),
+      linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, 0.09) 75%),
+      #0b1120;
+    background-position:
+      0 0,
+      0 8px,
+      8px -8px,
+      -8px 0;
+    background-size: 16px 16px;
+  }
+
+  .pin-image-stage img {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 4px;
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.32);
+  }
+
+  .app-shell {
+    display: grid;
+    grid-template-columns: 176px minmax(0, 1fr);
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    background: #f4f6f8;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 14px;
+    background: #111827;
+    color: #e5e7eb;
+    border-right: 1px solid #0b1220;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .brand-mark {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    color: #f8fafc;
+    background: #2563eb;
+    border-radius: 8px;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
   }
 
   h1 {
-    margin: 0 0 10px 0;
-    font-size: 2rem;
-    color: #333;
+    color: #ffffff;
+    font-size: 1.05rem;
+    font-weight: 700;
   }
 
-  .subtitle {
-    margin: 0;
-    color: #666;
-    font-size: 0.9rem;
+  .brand p {
+    margin-top: 2px;
+    color: #94a3b8;
+    font-size: 0.74rem;
   }
 
-  .session-info {
+  .filter-nav {
+    display: grid;
+    gap: 6px;
+  }
+
+  .filter-button {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
-    margin-top: 15px;
-    padding: 8px 16px;
-    background: #e8f5e9;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    color: #2e7d32;
+    gap: 9px;
+    width: 100%;
+    min-height: 34px;
+    padding: 8px 10px;
+    color: #cbd5e1;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .filter-button span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .filter-button:hover,
+  .filter-button.active {
+    color: #ffffff;
+    background: #1f2937;
+    border-color: #334155;
+  }
+
+  .session-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: auto;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+  }
+
+  .session-card strong,
+  .session-card span {
+    display: block;
+  }
+
+  .session-card strong {
+    color: #ffffff;
+    font-size: 0.84rem;
+  }
+
+  .session-card span {
+    margin-top: 2px;
+    color: #94a3b8;
+    font-size: 0.74rem;
   }
 
   .status-dot {
     width: 8px;
     height: 8px;
-    background: #4caf50;
-    border-radius: 50%;
-    animation: pulse 2s infinite;
+    flex: 0 0 auto;
+    background: #22c55e;
+    border-radius: 999px;
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
   }
 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+  .workspace {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    padding: 14px 16px;
+    gap: 10px;
+    overflow: hidden;
   }
 
-  .error-box {
-    padding: 15px;
-    background: #ffebee;
-    border: 1px solid #f44336;
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(130px, 0.58fr) minmax(250px, 1fr);
+    align-items: end;
+    gap: 12px;
+  }
+
+  .toolbar-tools {
+    display: grid;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .quick-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .tool-button,
+  .icon-tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    color: #334155;
+    background: #ffffff;
+    border: 1px solid #d9e0ea;
+    border-radius: 7px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  .tool-button {
+    padding: 0 10px;
+    white-space: nowrap;
+  }
+
+  .icon-tool {
+    width: 34px;
+    flex: 0 0 auto;
+  }
+
+  .tool-button:hover,
+  .icon-tool:hover {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+  }
+
+  .tool-button:disabled {
+    cursor: wait;
+    color: #64748b;
+    background: #f8fafc;
+  }
+
+  .tool-button:disabled :global(svg) {
+    animation: spin 900ms linear infinite;
+  }
+
+  .eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    margin-top: 2px;
+    color: #0f172a;
+    font-size: 1.22rem;
+    font-weight: 760;
+  }
+
+  .search-field {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 10px;
+    background: #ffffff;
+    border: 1px solid #d9e0ea;
     border-radius: 8px;
-    color: #c62828;
-    margin-bottom: 20px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   }
 
-  .content {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    min-height: 400px;
+  .search-field :global(svg) {
+    color: #64748b;
+    flex: 0 0 auto;
   }
 
-  .loading, .empty {
+  .search-field input {
+    width: 100%;
+    min-width: 0;
+    color: #172033;
+    background: transparent;
+    border: 0;
+    outline: 0;
+  }
+
+  .search-field input::placeholder {
+    color: #94a3b8;
+  }
+
+  .clear-search {
+    display: grid;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 auto;
+    place-items: center;
+    color: #64748b;
+    background: #f1f5f9;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.86rem;
+  }
+
+  .notice.error {
+    color: #9f1239;
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+  }
+
+  .notice.success {
+    color: #166534;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+  }
+
+  .settings-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgba(15, 23, 42, 0.28);
+  }
+
+  .settings-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 21;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    width: min(360px, 92vw);
+    height: 100vh;
+    color: #172033;
+    background: #ffffff;
+    border-left: 1px solid #d9e0ea;
+    box-shadow: -18px 0 44px rgba(15, 23, 42, 0.16);
+  }
+
+  .settings-header,
+  .settings-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px;
+    border-bottom: 1px solid #edf1f6;
+  }
+
+  .settings-header h2 {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+
+  .settings-header button {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    color: #475569;
+    background: #f8fafc;
+    border: 1px solid #d9e0ea;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+
+  .settings-content {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    min-height: 0;
+    padding: 14px;
+    overflow: auto;
+  }
+
+  .switch-row,
+  .field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-height: 42px;
+    color: #172033;
+    font-size: 0.88rem;
+  }
+
+  .switch-row input {
+    width: 18px;
+    height: 18px;
+    accent-color: #2563eb;
+  }
+
+  .field-row input {
+    width: 96px;
+    min-height: 32px;
+    padding: 0 8px;
+    color: #172033;
+    background: #ffffff;
+    border: 1px solid #d9e0ea;
+    border-radius: 7px;
+  }
+
+  .settings-footer {
+    justify-content: flex-end;
+    border-top: 1px solid #edf1f6;
+    border-bottom: 0;
+  }
+
+  .ghost-button,
+  .primary-button {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+
+  .ghost-button {
+    color: #475569;
+    background: #ffffff;
+    border: 1px solid #d9e0ea;
+  }
+
+  .primary-button {
+    color: #ffffff;
+    background: #2563eb;
+    border: 1px solid #1d4ed8;
+  }
+
+  .primary-button:disabled {
+    cursor: wait;
+    opacity: 0.7;
+  }
+
+  .history-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+    background: #ffffff;
+    border: 1px solid #d9e0ea;
+    border-radius: 7px;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.055);
+  }
+
+  .loading,
+  .empty-state {
+    display: grid;
+    min-height: 360px;
+    place-items: center;
+    align-content: center;
+    gap: 10px;
+    padding: 34px;
+    color: #64748b;
     text-align: center;
-    padding: 60px 20px;
-    color: #999;
   }
 
-  .empty p:first-child {
-    font-size: 3rem;
-    margin: 0 0 10px 0;
+  .loading :global(svg) {
+    animation: spin 900ms linear infinite;
   }
 
-  .empty .hint {
-    font-size: 0.85rem;
-    margin-top: 10px;
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .empty-state :global(svg) {
+    color: #94a3b8;
+  }
+
+  .empty-state h3 {
+    color: #172033;
+    font-size: 1rem;
+  }
+
+  .empty-state p {
+    color: #64748b;
+    font-size: 0.88rem;
   }
 
   .items-list {
-    padding: 15px;
+    display: grid;
+    min-height: 0;
+    max-height: none;
+    flex: 1;
+    overflow: auto;
   }
 
   .item {
-    padding: 15px;
-    margin-bottom: 10px;
-    background: #fafafa;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    transition: all 0.2s;
+    display: block;
+    padding: 11px 14px;
+    border-bottom: 1px solid #edf1f6;
+    background: #ffffff;
   }
 
   .item:hover {
-    background: #f5f5f5;
-    border-color: #2196f3;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    background: #f8fafc;
   }
 
   .item.pinned {
-    background: #fff9c4;
-    border-color: #fbc02d;
+    background: #fffbeb;
   }
 
-  .item-header {
-    display: flex;
+  .item-main {
+    min-width: 0;
+  }
+
+  .item-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 10px;
-    margin-bottom: 10px;
-    font-size: 0.85rem;
-    color: #666;
   }
 
-  .type-icon {
-    font-size: 1.2rem;
+  .item-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    color: #64748b;
+    font-size: 0.76rem;
   }
 
-  .time {
-    flex: 1;
+  .type-pill,
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 22px;
+    padding: 2px 7px;
+    background: #eef2ff;
+    border-radius: 999px;
+    color: #3730a3;
+    font-weight: 650;
   }
 
   .badge {
-    padding: 2px 8px;
-    background: #e3f2fd;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    color: #1976d2;
-  }
-
-  .item-content {
-    margin-bottom: 10px;
+    color: #155e75;
+    background: #ecfeff;
   }
 
   .text-content {
-    margin: 0;
-    color: #333;
-    line-height: 1.6;
+    margin-top: 9px;
+    color: #172033;
+    font-size: 0.92rem;
+    line-height: 1.45;
     word-break: break-word;
   }
 
-  .image-placeholder {
-    margin: 0;
-    padding: 20px;
-    text-align: center;
-    background: #e3f2fd;
-    border-radius: 6px;
-    color: #1976d2;
+  .image-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    min-width: 0;
+    color: #475569;
+    font-size: 0.82rem;
+  }
+
+  .image-summary strong {
+    color: #172033;
+    font-size: 0.9rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .image-summary span {
+    min-width: 0;
+    overflow: hidden;
+    color: #64748b;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .image-preview {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    margin-top: 9px;
+    max-height: 180px;
+    overflow: hidden;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+  }
+
+  .image-preview img {
+    display: block;
+    max-width: 100%;
+    max-height: 180px;
+    object-fit: contain;
+  }
+
+  .image-loading {
+    margin-top: 10px;
+    padding: 18px;
+    color: #64748b;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
   }
 
   .item-actions {
     display: flex;
-    gap: 8px;
-    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
   }
 
-  .btn-icon {
-    padding: 6px 12px;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 6px;
+  .item-actions button {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    color: #475569;
+    background: #ffffff;
+    border: 1px solid #d9e0ea;
+    border-radius: 7px;
     cursor: pointer;
-    font-size: 1rem;
-    transition: all 0.2s;
   }
 
-  .btn-icon:hover {
-    background: #f5f5f5;
-    border-color: #999;
-    transform: scale(1.1);
+  .item-actions button:hover,
+  .item-actions button.active {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #bfdbfe;
   }
 
-  .btn-icon.active {
-    background: #fff9c4;
-    border-color: #fbc02d;
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (max-width: 720px) {
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar {
+      display: grid;
+      grid-template-columns: minmax(150px, 1fr) auto;
+      grid-template-areas:
+        'brand session'
+        'filters filters';
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      padding: 10px 14px;
+    }
+
+    .brand {
+      grid-area: brand;
+      min-width: 160px;
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .filter-nav {
+      grid-area: filters;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      min-width: 0;
+      gap: 8px;
+    }
+
+    .filter-button {
+      justify-content: center;
+      width: auto;
+      min-width: 0;
+      min-height: 30px;
+      padding: 6px 8px;
+      text-align: center;
+    }
+
+    .session-card {
+      grid-area: session;
+      margin-top: 0;
+      justify-self: end;
+      min-width: 112px;
+      padding: 7px 9px;
+    }
+
+    .workspace {
+      flex: 1;
+      padding: 12px 16px 14px;
+    }
+
+    .toolbar {
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .quick-actions {
+      justify-content: stretch;
+    }
+
+    .tool-button {
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 0 8px;
+    }
+
+    h2 {
+      font-size: 1.22rem;
+    }
+
+    .search-field {
+      min-height: 34px;
+    }
+
+    .item {
+      padding: 10px 12px;
+    }
+
+    .item-row {
+      gap: 8px;
+    }
+
+    .item-actions {
+      justify-content: flex-end;
+    }
   }
 </style>

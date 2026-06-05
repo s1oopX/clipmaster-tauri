@@ -17,15 +17,14 @@ impl Database {
         std::fs::create_dir_all(&data_dir)?;
 
         let db_path = data_dir.join("clipboard.db");
-        let conn = Connection::open(&db_path)
-            .context("Failed to open database")?;
+        let conn = Connection::open(&db_path).context("Failed to open database")?;
 
         // 优化数据库配置（使用 execute_batch）
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA cache_size=-10000;
              PRAGMA synchronous=NORMAL;
-             PRAGMA mmap_size=67108864;"
+             PRAGMA mmap_size=67108864;",
         )?;
 
         let db = Self {
@@ -230,7 +229,10 @@ impl Database {
     /// 删除记录
     pub fn delete_item(&self, item_id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM clipboard_items WHERE id = ?1", params![item_id])?;
+        conn.execute(
+            "DELETE FROM clipboard_items WHERE id = ?1",
+            params![item_id],
+        )?;
         Ok(())
     }
 
@@ -392,32 +394,20 @@ impl Database {
     ) -> Result<Vec<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
 
-        let sql = if let Some(sid) = session_id {
-            format!(
+        let search_pattern = format!("%{}%", query);
+
+        // 根据是否有 session_id 分别执行不同的查询
+        let items = if let Some(sid) = session_id {
+            let mut stmt = conn.prepare(
                 "SELECT id, type, content, image_path, preview, timestamp,
                         source_app, is_favorite, is_pinned, content_hash, session_id
                  FROM clipboard_items
-                 WHERE session_id = '{}' AND (content LIKE '%{}%' OR preview LIKE '%{}%')
+                 WHERE session_id = ?1 AND (content LIKE ?2 OR preview LIKE ?2)
                  ORDER BY timestamp DESC
-                 LIMIT {}",
-                sid, query, query, limit
-            )
-        } else {
-            format!(
-                "SELECT id, type, content, image_path, preview, timestamp,
-                        source_app, is_favorite, is_pinned, content_hash, session_id
-                 FROM clipboard_items
-                 WHERE content LIKE '%{}%' OR preview LIKE '%{}%'
-                 ORDER BY timestamp DESC
-                 LIMIT {}",
-                query, query, limit
-            )
-        };
+                 LIMIT ?3",
+            )?;
 
-        let mut stmt = conn.prepare(&sql)?;
-
-        let items = stmt
-            .query_map([], |row| {
+            let rows = stmt.query_map(params![sid, &search_pattern, limit], |row| {
                 Ok(ClipboardItem {
                     id: row.get(0)?,
                     type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
@@ -432,8 +422,38 @@ impl Database {
                     content_hash: row.get(9)?,
                     session_id: row.get(10)?,
                 })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+            })?;
+
+            rows.collect::<Result<Vec<_>, _>>()?
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT id, type, content, image_path, preview, timestamp,
+                        source_app, is_favorite, is_pinned, content_hash, session_id
+                 FROM clipboard_items
+                 WHERE content LIKE ?1 OR preview LIKE ?1
+                 ORDER BY timestamp DESC
+                 LIMIT ?2",
+            )?;
+
+            let rows = stmt.query_map(params![&search_pattern, limit], |row| {
+                Ok(ClipboardItem {
+                    id: row.get(0)?,
+                    type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
+                        .unwrap_or(ClipboardType::Text),
+                    content: row.get(2)?,
+                    image_path: row.get(3)?,
+                    preview: row.get(4)?,
+                    timestamp: row.get(5)?,
+                    source_app: row.get(6)?,
+                    is_favorite: row.get::<_, i32>(7)? == 1,
+                    is_pinned: row.get::<_, i32>(8)? == 1,
+                    content_hash: row.get(9)?,
+                    session_id: row.get(10)?,
+                })
+            })?;
+
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
 
         Ok(items)
     }
