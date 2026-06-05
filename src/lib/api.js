@@ -36,8 +36,9 @@ export async function convertImagePath(relativePath) {
 
     console.log('Converting path:', { relativePath, dataDir, fullPath });
 
-    // 使用 Tauri 的 convertFileSrc 转换为可访问的 URL
-    const url = convertFileSrc(fullPath);
+    // 在 Tauri 2.x 中，convertFileSrc 的第二个参数指定协议
+    // 使用 'asset' 协议访问本地文件
+    const url = convertFileSrc(fullPath, 'asset');
     console.log('Converted URL:', url);
 
     return url;
