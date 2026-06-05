@@ -73,6 +73,12 @@ impl Database {
             [],
         )?;
 
+        // 迁移：添加 thumbnail_path 字段（如果不存在）
+        conn.execute(
+            "ALTER TABLE clipboard_items ADD COLUMN thumbnail_path TEXT",
+            [],
+        ).ok(); // 忽略错误，因为字段可能已存在
+
         // 创建索引（使用 execute_batch 避免返回结果）
         conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_timestamp ON clipboard_items(timestamp DESC);
