@@ -11,7 +11,6 @@ pub struct AppSettings {
     pub max_items: i32,
     pub capture_delay_ms: i32,
     pub screenshot_hotkey: String,
-    pub region_screenshot_hotkey: String,
 }
 
 impl Default for AppSettings {
@@ -22,7 +21,6 @@ impl Default for AppSettings {
             max_items: 50,
             capture_delay_ms: 150,
             screenshot_hotkey: "CommandOrControl+Shift+A".to_string(),
-            region_screenshot_hotkey: "CommandOrControl+Shift+X".to_string(),
         }
     }
 }

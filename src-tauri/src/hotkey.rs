@@ -11,7 +11,7 @@ impl HotkeyManager {
         let settings_store = app.state::<SettingsStore>();
         let settings = settings_store.get();
 
-        // 注册全屏截图快捷键
+        // 注册截图快捷键
         if !settings.screenshot_hotkey.is_empty() {
             if let Ok(shortcut) = settings.screenshot_hotkey.parse::<Shortcut>() {
                 let app_handle = app.clone();
@@ -19,19 +19,7 @@ impl HotkeyManager {
                     .on_shortcut(shortcut, move |_app, _shortcut, _event| {
                         let _ = app_handle.emit("hotkey:screenshot", ());
                     })
-                    .map_err(|e| format!("注册全屏截图快捷键失败: {}", e))?;
-            }
-        }
-
-        // 注册区域截图快捷键
-        if !settings.region_screenshot_hotkey.is_empty() {
-            if let Ok(shortcut) = settings.region_screenshot_hotkey.parse::<Shortcut>() {
-                let app_handle = app.clone();
-                app.global_shortcut()
-                    .on_shortcut(shortcut, move |_app, _shortcut, _event| {
-                        let _ = app_handle.emit("hotkey:region-screenshot", ());
-                    })
-                    .map_err(|e| format!("注册区域截图快捷键失败: {}", e))?;
+                    .map_err(|e| format!("注册截图快捷键失败: {}", e))?;
             }
         }
 
