@@ -36,9 +36,10 @@ export async function convertImagePath(relativePath) {
 
     console.log('Converting path:', { relativePath, dataDir, fullPath });
 
-    // 手动构造 asset:// URL
-    // Tauri 2.x 的 asset 协议格式：asset://localhost/<path>
-    const assetUrl = `https://asset.localhost/${encodeURIComponent(fullPath)}`;
+    // Tauri asset 协议格式：https://asset.localhost/<path>
+    // 路径需要用正斜杠，不需要 URL 编码整个路径
+    const assetPath = fullPath.replace(/\\/g, '/');
+    const assetUrl = `https://asset.localhost/${assetPath}`;
     console.log('Converted URL:', assetUrl);
 
     return assetUrl;
