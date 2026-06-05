@@ -43,25 +43,43 @@
 
       #toolbar {
         position: absolute;
-        padding: 8px;
-        background: rgba(0, 0, 0, 0.8);
-        border-radius: 4px;
+        padding: 4px;
+        background: rgba(30, 30, 30, 0.95);
+        border-radius: 6px;
         display: none;
-        gap: 8px;
+        gap: 4px;
         z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       }
 
       #toolbar button {
-        padding: 6px 16px;
+        padding: 8px 12px;
         border: none;
-        border-radius: 3px;
+        border-radius: 4px;
         cursor: pointer;
         font-size: 13px;
-        transition: opacity 0.2s;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
 
       #toolbar button:hover {
-        opacity: 0.8;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      #toolbar button svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      #pinBtn {
+        background: transparent;
+        color: white;
+      }
+
+      #pinBtn:hover {
+        background: rgba(255, 255, 255, 0.15);
       }
 
       #confirm {
@@ -69,9 +87,24 @@
         color: white;
       }
 
+      #confirm:hover {
+        background: #45a049;
+      }
+
       #cancel {
-        background: #f44336;
-        color: white;
+        background: transparent;
+        color: #e0e0e0;
+      }
+
+      #cancel:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .toolbar-divider {
+        width: 1px;
+        height: 24px;
+        background: rgba(255, 255, 255, 0.2);
+        margin: 0 4px;
       }
 
       .size-info {
@@ -88,11 +121,30 @@
     </style>
   </head>
   <body>
-    <div id="info">拖动鼠标选择截图区域 | ESC 取消</div>
+    <div id="info">拖动鼠标选择截图区域 | Enter 确定 | P 钉住 | ESC 取消</div>
     <canvas id="canvas"></canvas>
     <div id="toolbar">
-      <button id="confirm">确定 (Enter)</button>
-      <button id="cancel">取消 (ESC)</button>
+      <button id="pinBtn" title="钉到桌面 (P)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 17v5"></path>
+          <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path>
+        </svg>
+        钉住
+      </button>
+      <div class="toolbar-divider"></div>
+      <button id="confirm" title="确定 (Enter)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        确定
+      </button>
+      <button id="cancel" title="取消 (ESC)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+        取消
+      </button>
     </div>
     <div id="sizeInfo" class="size-info"></div>
 
@@ -106,6 +158,7 @@
       const sizeInfo = document.getElementById('sizeInfo');
       const confirmBtn = document.getElementById('confirm');
       const cancelBtn = document.getElementById('cancel');
+      const pinBtn = document.getElementById('pinBtn');
 
       let backgroundImage = null;
       let isSelecting = false;
@@ -271,6 +324,38 @@
         }
       }
 
+      // 钉住截图
+      async function pinSelection() {
+        if (!selectionComplete) return;
+
+        const x = Math.min(startX, currentX);
+        const y = Math.min(startY, currentY);
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+
+        try {
+          // 先捕获区域截图
+          const result = await invoke('capture_region_screenshot', {
+            x: Math.round(x),
+            y: Math.round(y),
+            width: Math.round(width),
+            height: Math.round(height),
+          });
+
+          // 钉到桌面
+          if (result && result.image_path) {
+            await invoke('pin_image', {
+              imagePath: result.image_path,
+            });
+          }
+
+          await closeWindow();
+        } catch (error) {
+          console.error('钉住截图失败:', error);
+          alert('钉住截图失败: ' + error);
+        }
+      }
+
       // 取消截图
       async function cancelSelection() {
         await closeWindow();
@@ -299,6 +384,7 @@
       // 按钮事件
       confirmBtn.addEventListener('click', confirmSelection);
       cancelBtn.addEventListener('click', cancelSelection);
+      pinBtn.addEventListener('click', pinSelection);
 
       // 键盘事件
       document.addEventListener('keydown', (e) => {
@@ -308,6 +394,9 @@
         } else if (e.key === 'Enter' && selectionComplete) {
           e.preventDefault();
           confirmSelection();
+        } else if ((e.key === 'p' || e.key === 'P') && selectionComplete) {
+          e.preventDefault();
+          pinSelection();
         }
       });
 

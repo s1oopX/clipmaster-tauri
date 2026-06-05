@@ -37,10 +37,18 @@ pub async fn get_settings(settings: State<'_, SettingsStore>) -> Result<AppSetti
 /// 保存应用设置
 #[tauri::command]
 pub async fn save_settings(
+    app: AppHandle,
     store: State<'_, SettingsStore>,
     settings: AppSettings,
 ) -> Result<AppSettings, String> {
-    store.save(settings).map_err(|e| e.to_string())
+    let result = store.save(settings).map_err(|e| e.to_string())?;
+
+    // 重新注册快捷键
+    if let Err(e) = crate::hotkey::HotkeyManager::re_register(&app) {
+        eprintln!("重新注册快捷键失败: {}", e);
+    }
+
+    Ok(result)
 }
 
 /// 捕获当前屏幕截图并作为图片记录保存

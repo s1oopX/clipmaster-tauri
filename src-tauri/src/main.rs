@@ -4,18 +4,21 @@
 mod clipboard;
 mod commands;
 mod database;
+mod hotkey;
 mod models;
 mod session;
 mod settings;
 
 use clipboard::ClipboardService;
 use database::Database;
+use hotkey::HotkeyManager;
 use session::SessionManager;
 use settings::SettingsStore;
 use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // 获取应用数据目录
             let app_data_dir = app
@@ -49,6 +52,11 @@ fn main() {
             // 启动剪贴板监听服务
             let clipboard_service = ClipboardService::new();
             clipboard_service.start(app.handle().clone());
+
+            // 注册全局快捷键
+            if let Err(e) = HotkeyManager::register(app.handle()) {
+                eprintln!("注册全局快捷键失败: {}", e);
+            }
 
             if !show_main_window_on_start {
                 if let Some(window) = app.get_webview_window("main") {

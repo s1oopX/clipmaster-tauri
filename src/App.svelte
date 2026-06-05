@@ -33,6 +33,8 @@
     show_main_window_on_start: true,
     max_items: 50,
     capture_delay_ms: 150,
+    screenshot_hotkey: 'CommandOrControl+Shift+A',
+    region_screenshot_hotkey: 'CommandOrControl+Shift+X',
   };
 
   let items = [];
@@ -92,6 +94,17 @@
       console.log('当前会话:', currentSession);
 
       await loadItems();
+
+      // 监听快捷键事件
+      await listen('hotkey:screenshot', async () => {
+        console.log('触发全屏截图快捷键');
+        await captureFullScreenshot();
+      });
+
+      await listen('hotkey:region-screenshot', async () => {
+        console.log('触发区域截图快捷键');
+        await startRegionScreenshot();
+      });
 
       unlistenNewItem = await clipboardApi.onNewItem(async (item) => {
         console.log('新剪贴板记录:', item);
@@ -849,6 +862,34 @@
               updateSettingsDraft('capture_delay_ms', Number(event.currentTarget.value))}
           />
         </label>
+
+        <div class="settings-section">
+          <h3>快捷键设置</h3>
+          <label class="field-row">
+            <span>全屏截图</span>
+            <input
+              type="text"
+              placeholder="例如: CommandOrControl+Shift+A"
+              value={settingsDraft.screenshot_hotkey}
+              on:input={(event) =>
+                updateSettingsDraft('screenshot_hotkey', event.currentTarget.value)}
+            />
+          </label>
+
+          <label class="field-row">
+            <span>区域截图</span>
+            <input
+              type="text"
+              placeholder="例如: CommandOrControl+Shift+X"
+              value={settingsDraft.region_screenshot_hotkey}
+              on:input={(event) =>
+                updateSettingsDraft('region_screenshot_hotkey', event.currentTarget.value)}
+            />
+          </label>
+          <p class="hotkey-hint">
+            提示：使用 CommandOrControl (Ctrl/Cmd), Shift, Alt 组合键，例如 "CommandOrControl+Shift+A"
+          </p>
+        </div>
       </div>
 
       <footer class="settings-footer">
@@ -1336,6 +1377,32 @@
     background: #ffffff;
     border: 1px solid #d9e0ea;
     border-radius: 7px;
+  }
+
+  .field-row input[type="text"] {
+    width: 240px;
+  }
+
+  .settings-section {
+    display: grid;
+    gap: 12px;
+    padding-top: 8px;
+    border-top: 1px solid #edf1f6;
+  }
+
+  .settings-section h3 {
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .hotkey-hint {
+    color: #64748b;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    margin-top: -4px;
   }
 
   .settings-footer {

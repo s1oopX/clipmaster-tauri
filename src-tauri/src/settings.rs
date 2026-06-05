@@ -10,6 +10,8 @@ pub struct AppSettings {
     pub show_main_window_on_start: bool,
     pub max_items: i32,
     pub capture_delay_ms: i32,
+    pub screenshot_hotkey: String,
+    pub region_screenshot_hotkey: String,
 }
 
 impl Default for AppSettings {
@@ -19,6 +21,8 @@ impl Default for AppSettings {
             show_main_window_on_start: true,
             max_items: 50,
             capture_delay_ms: 150,
+            screenshot_hotkey: "CommandOrControl+Shift+A".to_string(),
+            region_screenshot_hotkey: "CommandOrControl+Shift+X".to_string(),
         }
     }
 }
@@ -63,6 +67,8 @@ impl SettingsStore {
             show_main_window_on_start: settings.show_main_window_on_start,
             max_items: settings.max_items.clamp(10, 500),
             capture_delay_ms: settings.capture_delay_ms.clamp(0, 3000),
+            screenshot_hotkey: settings.screenshot_hotkey,
+            region_screenshot_hotkey: settings.region_screenshot_hotkey,
         }
     }
 }
