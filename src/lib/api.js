@@ -28,13 +28,23 @@ async function getAppDataDir() {
 export async function convertImagePath(relativePath) {
   if (!relativePath) return null;
 
-  const dataDir = await getAppDataDir();
-  // 统一使用正斜杠
-  const normalizedPath = relativePath.replace(/\\/g, '/');
-  const fullPath = `${dataDir}\\${normalizedPath.replace(/\//g, '\\')}`;
+  try {
+    const dataDir = await getAppDataDir();
+    // 将相对路径的斜杠统一转换为反斜杠（Windows路径）
+    const normalizedRelPath = relativePath.replace(/\//g, '\\');
+    const fullPath = `${dataDir}\\${normalizedRelPath}`;
 
-  // 使用 Tauri 的 convertFileSrc 转换为可访问的 URL
-  return convertFileSrc(fullPath);
+    console.log('Converting path:', { relativePath, dataDir, fullPath });
+
+    // 使用 Tauri 的 convertFileSrc 转换为可访问的 URL
+    const url = convertFileSrc(fullPath);
+    console.log('Converted URL:', url);
+
+    return url;
+  } catch (error) {
+    console.error('Error converting image path:', error);
+    return null;
+  }
 }
 
 /**
