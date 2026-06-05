@@ -1,0 +1,19 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景 -->
+  <rect width="512" height="512" rx="128" fill="#2196F3"/>
+
+  <!-- 剪贴板外框 -->
+  <rect x="140" y="100" width="232" height="312" rx="16" fill="white"/>
+
+  <!-- 剪贴板顶部夹子 -->
+  <rect x="196" y="80" width="120" height="40" rx="20" fill="#1976D2"/>
+
+  <!-- 内容线条 -->
+  <rect x="180" y="180" width="152" height="16" rx="8" fill="#E3F2FD"/>
+  <rect x="180" y="220" width="152" height="16" rx="8" fill="#E3F2FD"/>
+  <rect x="180" y="260" width="100" height="16" rx="8" fill="#E3F2FD"/>
+
+  <!-- 复制图标（角标） -->
+  <circle cx="380" cy="380" r="60" fill="#4CAF50"/>
+  <path d="M 360 380 L 370 390 L 400 360" stroke="white" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
