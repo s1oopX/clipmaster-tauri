@@ -2,6 +2,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
+// 确保 invoke 函数可用
+if (typeof invoke !== 'function') {
+  console.error('invoke function not available from @tauri-apps/api/core');
+}
+
 // 缓存应用数据目录路径
 let appDataDir = null;
 
