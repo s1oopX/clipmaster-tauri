@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>钉住的图片</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        cursor: move;
+      }
+
+      #container {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+
+      #image {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+
+      #close-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 24px;
+        height: 24px;
+        border-radius: 12px;
+        background: rgba(255, 59, 48, 0.9);
+        border: none;
+        color: white;
+        font-size: 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.2s;
+        z-index: 10;
+      }
+
+      #container:hover #close-btn {
+        opacity: 1;
+      }
+
+      #close-btn:hover {
+        background: rgba(255, 59, 48, 1);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <img id="image" alt="钉住的图片" />
+      <button id="close-btn" title="关闭">×</button>
+    </div>
+
+    <script type="module">
+      import { getCurrentWindow } from '@tauri-apps/api/window';
+      import { convertFileSrc } from '@tauri-apps/api/core';
+
+      const container = document.getElementById('container');
+      const image = document.getElementById('image');
+      const closeBtn = document.getElementById('close-btn');
+      const currentWin = getCurrentWindow();
+
+      let scale = 1;
+      let isDragging = false;
+
+      // 从 URL 参数获取图片路径
+      const urlParams = new URLSearchParams(window.location.search);
+      const imagePath = urlParams.get('path');
+
+      if (imagePath) {
+        console.log('加载图片:', imagePath);
+        // 转换为可访问的 URL
+        const imageUrl = convertFileSrc(imagePath, 'asset');
+        image.src = imageUrl;
+        console.log('图片 URL:', imageUrl);
+      } else {
+        console.error('未提供图片路径');
+      }
+
+      // 图片加载完成后调整窗口大小
+      image.onload = () => {
+        const naturalWidth = image.naturalWidth;
+        const naturalHeight = image.naturalHeight;
+
+        // 限制初始大小，最大 800x600
+        let width = naturalWidth;
+        let height = naturalHeight;
+
+        if (width > 800 || height > 600) {
+          const ratio = Math.min(800 / width, 600 / height);
+          width = Math.floor(width * ratio);
+          height = Math.floor(height * ratio);
+        }
+
+        currentWin.setSize({ width, height });
+      };
+
+      image.onerror = (e) => {
+        console.error('图片加载失败:', e);
+        alert('图片加载失败');
+      };
+
+      // Ctrl + 滚轮缩放
+      container.addEventListener('wheel', async (e) => {
+        if (e.ctrlKey) {
+          e.preventDefault();
+
+          const delta = e.deltaY < 0 ? 1.1 : 0.9;
+          scale *= delta;
+
+          // 限制缩放范围
+          scale = Math.max(0.1, Math.min(scale, 5));
+
+          const size = await currentWin.innerSize();
+          const newWidth = Math.floor(size.width * delta);
+          const newHeight = Math.floor(size.height * delta);
+
+          await currentWin.setSize({
+            width: Math.max(50, Math.min(newWidth, 2000)),
+            height: Math.max(50, Math.min(newHeight, 2000))
+          });
+        }
+      }, { passive: false });
+
+      // 拖动窗口
+      let startDragPos = null;
+
+      container.addEventListener('mousedown', async (e) => {
+        if (e.target === closeBtn) return;
+
+        isDragging = true;
+        await currentWin.startDragging();
+      });
+
+      // 关闭按钮
+      closeBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await currentWin.close();
+      });
+
+      // ESC 关闭
+      document.addEventListener('keydown', async (e) => {
+        if (e.key === 'Escape') {
+          await currentWin.close();
+        }
+      });
+    </script>
+  </body>
+</html>

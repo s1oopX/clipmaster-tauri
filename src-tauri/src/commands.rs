@@ -107,18 +107,24 @@ pub async fn pin_image(app: AppHandle, image_path: String) -> Result<(), String>
         return Err("图片文件不存在".to_string());
     }
 
-    let (width, height) = image::image_dimensions(&absolute_path).unwrap_or((360, 260));
+    let (width, height) = image::image_dimensions(&absolute_path).unwrap_or((400, 300));
     let (window_width, window_height) = fit_pin_window_size(width, height);
-    let url = WebviewUrl::App(format!("index.html?pin={}", encode_query_value(&safe_path)).into());
+
+    // 使用新的 pin.html，通过 path 参数传递完整路径
+    let url = WebviewUrl::App(
+        format!("pin.html?path={}", encode_query_value(&absolute_path.to_string_lossy())).into()
+    );
     let label = format!("pin-{}", nanoid::nanoid!(8));
 
     let window = WebviewWindowBuilder::new(&app, label, url)
-        .title("ClipMaster 贴图")
+        .title("钉住的图片")
         .inner_size(window_width, window_height)
-        .min_inner_size(220.0, 160.0)
+        .min_inner_size(100.0, 100.0)
         .resizable(true)
         .decorations(false)
+        .transparent(true)
         .always_on_top(true)
+        .skip_taskbar(false)
         .build()
         .map_err(|e| e.to_string())?;
 
