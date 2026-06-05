@@ -64,7 +64,7 @@ pub async fn capture_screenshot(
 
     let image = screen.capture().map_err(|e| e.to_string())?;
     let content_hash = format!("{:x}", md5::compute(image.as_raw()));
-    let image_path = save_rgba_image(&app, &image, &content_hash)?;
+    let (image_path, thumbnail_path) = save_rgba_image(&app, &image, &content_hash)?;
 
     let session_id = session_mgr
         .get_current_session_id()
@@ -75,6 +75,7 @@ pub async fn capture_screenshot(
             type_: ClipboardType::Image,
             content: None,
             image_path: Some(image_path),
+            thumbnail_path: Some(thumbnail_path),
             source_app: Some("ClipMaster Screenshot".to_string()),
             content_hash,
             session_id,
@@ -208,7 +209,7 @@ fn save_rgba_image(
     app: &AppHandle,
     image: &screenshots::image::RgbaImage,
     content_hash: &str,
-) -> Result<String, String> {
+) -> Result<(String, String), String> {
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let year_month = Local::now().format("%Y-%m").to_string();
     let images_dir = app_data_dir.join("images").join(&year_month);
@@ -223,9 +224,29 @@ fn save_rgba_image(
     );
     let file_path = images_dir.join(&filename);
 
+    // 保存原图
     image.save(&file_path).map_err(|e| e.to_string())?;
 
-    Ok(format!("images/{}/{}", year_month, filename))
+    // 生成缩略图
+    let thumb_filename = format!(
+        "screenshot_{}_{}_thumb.png",
+        &content_hash[..8.min(content_hash.len())],
+        timestamp
+    );
+    let thumb_path = images_dir.join(&thumb_filename);
+
+    let thumb_image = image::imageops::resize(
+        image,
+        200,
+        200,
+        image::imageops::FilterType::Lanczos3,
+    );
+    thumb_image.save(&thumb_path).map_err(|e| e.to_string())?;
+
+    let relative_path = format!("images/{}/{}", year_month, filename);
+    let relative_thumb_path = format!("images/{}/{}", year_month, thumb_filename);
+
+    Ok((relative_path, relative_thumb_path))
 }
 
 fn validate_relative_image_path(image_path: &str) -> Result<String, String> {

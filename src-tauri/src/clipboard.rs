@@ -163,12 +163,13 @@ impl ClipboardService {
             },
             ClipboardContent::Image(img) => {
                 // 保存图片到文件系统
-                let image_path = Self::save_image(app_handle, &img, &content_hash)?;
+                let (image_path, thumbnail_path) = Self::save_image(app_handle, &img, &content_hash)?;
 
                 CreateClipboardItem {
                     type_: ClipboardType::Image,
                     content: None,
                     image_path: Some(image_path),
+                    thumbnail_path: Some(thumbnail_path),
                     source_app: None,
                     content_hash,
                     session_id,
@@ -190,7 +191,7 @@ impl ClipboardService {
         app_handle: &AppHandle,
         img: &arboard::ImageData,
         content_hash: &str,
-    ) -> Result<String> {
+    ) -> Result<(String, String)> {
         // 获取应用数据目录
         let app_data_dir = app_handle
             .path()
@@ -218,12 +219,30 @@ impl ClipboardService {
             image::RgbaImage::from_raw(img.width as u32, img.height as u32, img.bytes.to_vec())
                 .ok_or_else(|| anyhow::anyhow!("Failed to create image buffer"))?;
 
-        // 保存为 PNG 格式
+        // 保存原图为 PNG 格式
         image_buffer.save(&file_path)?;
+
+        // 生成缩略图
+        let thumb_filename = format!(
+            "{}_{}_thumb.png",
+            &content_hash[..8.min(content_hash.len())],
+            timestamp
+        );
+        let thumb_path = images_dir.join(&thumb_filename);
+
+        let thumb_image = image::imageops::resize(
+            &image_buffer,
+            200,
+            200,
+            image::imageops::FilterType::Lanczos3,
+        );
+        thumb_image.save(&thumb_path)?;
 
         // 返回相对路径: images/2026-06/hash_timestamp.png
         let relative_path = format!("images/{}/{}", year_month, filename);
-        Ok(relative_path)
+        let relative_thumb_path = format!("images/{}/{}", year_month, thumb_filename);
+
+        Ok((relative_path, relative_thumb_path))
     }
 }
 

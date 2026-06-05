@@ -60,6 +60,7 @@ impl Database {
                 type TEXT NOT NULL,
                 content TEXT,
                 image_path TEXT,
+                thumbnail_path TEXT,
                 preview TEXT,
                 timestamp INTEGER NOT NULL,
                 source_app TEXT,
@@ -105,14 +106,15 @@ impl Database {
 
         conn.execute(
             "INSERT INTO clipboard_items (
-                id, type, content, image_path, preview, timestamp,
+                id, type, content, image_path, thumbnail_path, preview, timestamp,
                 source_app, content_hash, session_id
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 id,
                 item.type_.as_str(),
                 item.content,
                 item.image_path,
+                item.thumbnail_path,
                 preview,
                 timestamp,
                 item.source_app,
@@ -126,6 +128,7 @@ impl Database {
             type_: item.type_,
             content: item.content,
             image_path: item.image_path,
+            thumbnail_path: item.thumbnail_path,
             preview,
             timestamp,
             source_app: item.source_app,
@@ -141,7 +144,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
 
         let mut stmt = conn.prepare(
-            "SELECT id, type, content, image_path, preview, timestamp,
+            "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
                     source_app, is_favorite, is_pinned, content_hash, session_id
              FROM clipboard_items
              ORDER BY is_pinned DESC, timestamp DESC
@@ -156,13 +159,14 @@ impl Database {
                         .unwrap_or(ClipboardType::Text),
                     content: row.get(2)?,
                     image_path: row.get(3)?,
-                    preview: row.get(4)?,
-                    timestamp: row.get(5)?,
-                    source_app: row.get(6)?,
-                    is_favorite: row.get::<_, i32>(7)? == 1,
-                    is_pinned: row.get::<_, i32>(8)? == 1,
-                    content_hash: row.get(9)?,
-                    session_id: row.get(10)?,
+                    thumbnail_path: row.get(4)?,
+                    preview: row.get(5)?,
+                    timestamp: row.get(6)?,
+                    source_app: row.get(7)?,
+                    is_favorite: row.get::<_, i32>(8)? == 1,
+                    is_pinned: row.get::<_, i32>(9)? == 1,
+                    content_hash: row.get(10)?,
+                    session_id: row.get(11)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -180,7 +184,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
 
         let mut stmt = conn.prepare(
-            "SELECT id, type, content, image_path, preview, timestamp,
+            "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
                     source_app, is_favorite, is_pinned, content_hash, session_id
              FROM clipboard_items
              WHERE session_id = ?1
@@ -196,13 +200,14 @@ impl Database {
                         .unwrap_or(ClipboardType::Text),
                     content: row.get(2)?,
                     image_path: row.get(3)?,
-                    preview: row.get(4)?,
-                    timestamp: row.get(5)?,
-                    source_app: row.get(6)?,
-                    is_favorite: row.get::<_, i32>(7)? == 1,
-                    is_pinned: row.get::<_, i32>(8)? == 1,
-                    content_hash: row.get(9)?,
-                    session_id: row.get(10)?,
+                    thumbnail_path: row.get(4)?,
+                    preview: row.get(5)?,
+                    timestamp: row.get(6)?,
+                    source_app: row.get(7)?,
+                    is_favorite: row.get::<_, i32>(8)? == 1,
+                    is_pinned: row.get::<_, i32>(9)? == 1,
+                    content_hash: row.get(10)?,
+                    session_id: row.get(11)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -420,7 +425,7 @@ impl Database {
         // 根据是否有 session_id 分别执行不同的查询
         let items = if let Some(sid) = session_id {
             let mut stmt = conn.prepare(
-                "SELECT id, type, content, image_path, preview, timestamp,
+                "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
                         source_app, is_favorite, is_pinned, content_hash, session_id
                  FROM clipboard_items
                  WHERE session_id = ?1 AND (content LIKE ?2 OR preview LIKE ?2)
@@ -435,20 +440,21 @@ impl Database {
                         .unwrap_or(ClipboardType::Text),
                     content: row.get(2)?,
                     image_path: row.get(3)?,
-                    preview: row.get(4)?,
-                    timestamp: row.get(5)?,
-                    source_app: row.get(6)?,
-                    is_favorite: row.get::<_, i32>(7)? == 1,
-                    is_pinned: row.get::<_, i32>(8)? == 1,
-                    content_hash: row.get(9)?,
-                    session_id: row.get(10)?,
+                    thumbnail_path: row.get(4)?,
+                    preview: row.get(5)?,
+                    timestamp: row.get(6)?,
+                    source_app: row.get(7)?,
+                    is_favorite: row.get::<_, i32>(8)? == 1,
+                    is_pinned: row.get::<_, i32>(9)? == 1,
+                    content_hash: row.get(10)?,
+                    session_id: row.get(11)?,
                 })
             })?;
 
             rows.collect::<Result<Vec<_>, _>>()?
         } else {
             let mut stmt = conn.prepare(
-                "SELECT id, type, content, image_path, preview, timestamp,
+                "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
                         source_app, is_favorite, is_pinned, content_hash, session_id
                  FROM clipboard_items
                  WHERE content LIKE ?1 OR preview LIKE ?1
@@ -463,13 +469,14 @@ impl Database {
                         .unwrap_or(ClipboardType::Text),
                     content: row.get(2)?,
                     image_path: row.get(3)?,
-                    preview: row.get(4)?,
-                    timestamp: row.get(5)?,
-                    source_app: row.get(6)?,
-                    is_favorite: row.get::<_, i32>(7)? == 1,
-                    is_pinned: row.get::<_, i32>(8)? == 1,
-                    content_hash: row.get(9)?,
-                    session_id: row.get(10)?,
+                    thumbnail_path: row.get(4)?,
+                    preview: row.get(5)?,
+                    timestamp: row.get(6)?,
+                    source_app: row.get(7)?,
+                    is_favorite: row.get::<_, i32>(8)? == 1,
+                    is_pinned: row.get::<_, i32>(9)? == 1,
+                    content_hash: row.get(10)?,
+                    session_id: row.get(11)?,
                 })
             })?;
 

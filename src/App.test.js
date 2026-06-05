@@ -81,6 +81,7 @@ function imageItem(overrides = {}) {
     type: 'image',
     content: null,
     image_path: 'images/2026-06/image.png',
+    thumbnail_path: 'images/2026-06/image_thumb.png',
     preview: null,
     timestamp: Date.now() - 1000,
     source_app: null,
@@ -144,7 +145,7 @@ describe('App UI', () => {
 
     expect(await screen.findByText('Alpha token')).toBeInTheDocument();
     expect(await screen.findByText('图片记录')).toBeInTheDocument();
-    expect(await screen.findByAltText('剪贴板图片预览')).toBeInTheDocument();
+    expect(await screen.findByAltText('剪贴板图片缩略图')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '复制 Alpha token' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '置顶 Alpha token' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '收藏 Alpha token' })).toBeInTheDocument();

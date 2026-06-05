@@ -59,6 +59,8 @@
   let unlistenNewItem = null;
   let editingId = null;
   let editContent = '';
+  let thumbnailUrls = {};
+  let viewingImageId = null;
 
   const filters = [
     { id: 'all', label: '全部记录' },
@@ -99,6 +101,10 @@
 
         if (item.type === 'image' && item.image_path) {
           imageUrls[item.id] = await convertImagePath(item.image_path);
+        }
+
+        if (item.type === 'image' && item.thumbnail_path) {
+          thumbnailUrls[item.id] = await convertImagePath(item.thumbnail_path);
         }
 
         pruneImageUrls(nextItems);
@@ -142,9 +148,18 @@
           console.error('加载图片 URL 失败:', e);
         }
       }
+
+      if (item.type === 'image' && item.thumbnail_path && !thumbnailUrls[item.id]) {
+        try {
+          thumbnailUrls[item.id] = await convertImagePath(item.thumbnail_path);
+        } catch (e) {
+          console.error('加载缩略图 URL 失败:', e);
+        }
+      }
     }
 
     imageUrls = imageUrls;
+    thumbnailUrls = thumbnailUrls;
   }
 
   async function deleteItem(itemId) {
@@ -371,6 +386,10 @@
     imageUrls = Object.fromEntries(
       Object.entries(imageUrls).filter(([itemId]) => liveIds.has(itemId))
     );
+
+    thumbnailUrls = Object.fromEntries(
+      Object.entries(thumbnailUrls).filter(([itemId]) => liveIds.has(itemId))
+    );
   }
 
   function startEdit(item) {
@@ -382,6 +401,14 @@
   function cancelEdit() {
     editingId = null;
     editContent = '';
+  }
+
+  function viewFullImage(itemId) {
+    viewingImageId = itemId;
+  }
+
+  function closeImageViewer() {
+    viewingImageId = null;
   }
 
   async function saveEdit(itemId) {
@@ -710,15 +737,15 @@
                     <strong>图片记录</strong>
                     <span>{item.image_path || '等待图片路径'}</span>
                   </div>
-                  {#if imageUrls[item.id]}
-                    <div class="image-preview">
+                  {#if thumbnailUrls[item.id]}
+                    <div class="image-preview" on:click={() => viewFullImage(item.id)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && viewFullImage(item.id)} title="点击查看原图">
                       <img
-                        src={imageUrls[item.id]}
-                        alt="剪贴板图片预览"
+                        src={thumbnailUrls[item.id]}
+                        alt="剪贴板图片缩略图"
                         loading="lazy"
                         decoding="async"
                         on:error={(event) => {
-                          console.error('图片加载失败:', item.image_path);
+                          console.error('缩略图加载失败:', item.thumbnail_path);
                           event.target.style.display = 'none';
                         }}
                       />
@@ -803,6 +830,25 @@
           {settingsSaving ? '保存中' : '保存设置'}
         </button>
       </footer>
+    </div>
+  {/if}
+
+  <!-- 原图查看器 -->
+  {#if viewingImageId && imageUrls[viewingImageId]}
+    <div class="image-viewer-overlay" on:click={closeImageViewer} role="button" tabindex="0" on:keydown={(e) => e.key === 'Escape' && closeImageViewer()}>
+      <div class="image-viewer-content" on:click|stopPropagation role="presentation">
+        <button class="image-viewer-close" on:click={closeImageViewer} aria-label="关闭" title="关闭 (ESC)">
+          <X size={24} aria-hidden="true" />
+        </button>
+        <img
+          src={imageUrls[viewingImageId]}
+          alt="原图"
+          on:error={(event) => {
+            console.error('原图加载失败');
+            closeImageViewer();
+          }}
+        />
+      </div>
     </div>
   {/if}
 </main>
@@ -1510,6 +1556,13 @@
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .image-preview:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 
   .image-preview img {
@@ -1517,6 +1570,58 @@
     max-width: 100%;
     max-height: 180px;
     object-fit: contain;
+  }
+
+  .image-viewer-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(4px);
+  }
+
+  .image-viewer-content {
+    position: relative;
+    max-width: 90vw;
+    max-height: 90vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .image-viewer-content img {
+    max-width: 100%;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+
+  .image-viewer-close {
+    position: absolute;
+    top: -50px;
+    right: 0;
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .image-viewer-close:hover {
+    background: rgba(0, 0, 0, 0.7);
+    border-color: rgba(255, 255, 255, 0.4);
   }
 
   .image-loading {
