@@ -55,6 +55,8 @@
   let settingsSaving = false;
   let appSettings = { ...defaultSettings };
   let settingsDraft = { ...defaultSettings };
+  let isRecordingHotkey = false;
+  let recordingHotkeyTimeout = null;
   let pinMode = false;
   let pinImagePath = '';
   let pinImageUrl = '';
@@ -365,6 +367,85 @@
     noticeTimer = setTimeout(() => {
       actionNotice = '';
     }, 2200);
+  }
+
+  // 快捷键录制相关
+  function startRecordingHotkey(event) {
+    isRecordingHotkey = true;
+    event.target.value = '按下组合键...';
+
+    // 清除之前的超时
+    if (recordingHotkeyTimeout) {
+      clearTimeout(recordingHotkeyTimeout);
+    }
+
+    // 5秒后自动停止录制
+    recordingHotkeyTimeout = setTimeout(() => {
+      stopRecordingHotkey();
+    }, 5000);
+  }
+
+  function stopRecordingHotkey() {
+    isRecordingHotkey = false;
+    if (recordingHotkeyTimeout) {
+      clearTimeout(recordingHotkeyTimeout);
+      recordingHotkeyTimeout = null;
+    }
+  }
+
+  function handleHotkeyKeyDown(event) {
+    if (!isRecordingHotkey) return;
+
+    event.preventDefault();
+
+    // 忽略单独的修饰键
+    if (['Control', 'Shift', 'Alt', 'Meta', 'Command'].includes(event.key)) {
+      return;
+    }
+
+    // 构建快捷键字符串
+    const parts = [];
+
+    // 跨平台：使用 CommandOrControl
+    if (event.ctrlKey || event.metaKey) {
+      parts.push('CommandOrControl');
+    }
+
+    if (event.altKey) {
+      parts.push('Alt');
+    }
+
+    if (event.shiftKey) {
+      parts.push('Shift');
+    }
+
+    // 添加主键
+    let key = event.key.toUpperCase();
+
+    // 标准化某些特殊键
+    const keyMap = {
+      ' ': 'Space',
+      'ARROWUP': 'Up',
+      'ARROWDOWN': 'Down',
+      'ARROWLEFT': 'Left',
+      'ARROWRIGHT': 'Right',
+    };
+
+    key = keyMap[key] || key;
+
+    // 必须有修饰键
+    if (parts.length === 0) {
+      event.target.value = '请使用修饰键组合（如 Ctrl+Shift+A）';
+      return;
+    }
+
+    parts.push(key);
+
+    const hotkey = parts.join('+');
+    updateSettingsDraft('screenshot_hotkey', hotkey);
+
+    // 停止录制
+    stopRecordingHotkey();
   }
 
   function visibleItems() {
@@ -834,14 +915,21 @@
             <span>截图</span>
             <input
               type="text"
-              placeholder="例如: CommandOrControl+Shift+A"
+              readonly
+              placeholder="点击后按下组合键"
               value={settingsDraft.screenshot_hotkey}
-              on:input={(event) =>
-                updateSettingsDraft('screenshot_hotkey', event.currentTarget.value)}
+              on:focus={startRecordingHotkey}
+              on:blur={stopRecordingHotkey}
+              on:keydown={handleHotkeyKeyDown}
+              class:recording={isRecordingHotkey}
             />
           </label>
           <p class="hotkey-hint">
-            提示：使用 CommandOrControl (Ctrl/Cmd), Shift, Alt 组合键，例如 "CommandOrControl+Shift+A"
+            {#if isRecordingHotkey}
+              ⌨️ 正在录制... 请按下组合键（如 Ctrl+Shift+A）
+            {:else}
+              点击输入框后按下组合键自动录制，例如 Ctrl+Shift+A
+            {/if}
           </p>
         </div>
       </div>
@@ -1357,6 +1445,21 @@
     font-size: 0.78rem;
     line-height: 1.4;
     margin-top: -4px;
+  }
+
+  .field-row input.recording {
+    border-color: #007aff;
+    background: rgba(0, 122, 255, 0.05);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(0, 122, 255, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 4px rgba(0, 122, 255, 0);
+    }
   }
 
   .settings-footer {
