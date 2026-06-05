@@ -442,7 +442,7 @@
 
   async function saveEdit(itemId) {
     if (!editContent.trim()) {
-      showNotice('内容不能为空');
+      showActionNotice('内容不能为空');
       return;
     }
 
@@ -464,10 +464,10 @@
 
       editingId = null;
       editContent = '';
-      showNotice('保存成功');
+      showActionNotice('保存成功');
     } catch (e) {
       console.error('保存失败:', e);
-      showNotice('保存失败: ' + e);
+      showActionNotice('保存失败: ' + e);
     }
   }
 
