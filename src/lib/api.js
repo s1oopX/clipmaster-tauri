@@ -36,12 +36,12 @@ export async function convertImagePath(relativePath) {
 
     console.log('Converting path:', { relativePath, dataDir, fullPath });
 
-    // Tauri 2.x: convertFileSrc 自动使用 asset 协议
-    // 不需要第二个参数
-    const url = convertFileSrc(fullPath);
-    console.log('Converted URL:', url);
+    // 手动构造 asset:// URL
+    // Tauri 2.x 的 asset 协议格式：asset://localhost/<path>
+    const assetUrl = `https://asset.localhost/${encodeURIComponent(fullPath)}`;
+    console.log('Converted URL:', assetUrl);
 
-    return url;
+    return assetUrl;
   } catch (error) {
     console.error('Error converting image path:', error);
     return null;
