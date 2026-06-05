@@ -176,16 +176,26 @@
       async function loadScreenshot() {
         try {
           const tempPath = await invoke('get_screenshot_temp_path');
+          console.log('临时截图路径:', tempPath);
+
           const { convertFileSrc } = await import('@tauri-apps/api/core');
           const imageUrl = convertFileSrc(tempPath);
+          console.log('图片 URL:', imageUrl);
 
           backgroundImage = new Image();
           backgroundImage.onload = () => {
+            console.log('背景图片加载成功');
             drawCanvas();
+          };
+          backgroundImage.onerror = (e) => {
+            console.error('背景图片加载失败:', e);
+            alert('加载截图失败，请重试');
+            closeWindow();
           };
           backgroundImage.src = imageUrl;
         } catch (error) {
-          console.error('加载截图失败:', error);
+          console.error('获取截图路径失败:', error);
+          alert('加载截图失败: ' + error);
           await closeWindow();
         }
       }
@@ -199,8 +209,8 @@
           ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
         }
 
-        // 绘制半透明遮罩
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        // 绘制半透明遮罩（增强对比度）
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         if (isSelecting || selectionComplete) {
@@ -219,14 +229,26 @@
             );
           }
 
-          // 绘制选区边框
-          ctx.strokeStyle = '#2196F3';
-          ctx.lineWidth = 2;
+          // 绘制选区边框（更明显的蓝色）
+          ctx.strokeStyle = '#1E90FF';
+          ctx.lineWidth = 3;
           ctx.strokeRect(x, y, width, height);
+
+          // 绘制四个角的标记
+          const cornerSize = 6;
+          ctx.fillStyle = '#1E90FF';
+          // 左上
+          ctx.fillRect(x - cornerSize / 2, y - cornerSize / 2, cornerSize, cornerSize);
+          // 右上
+          ctx.fillRect(x + width - cornerSize / 2, y - cornerSize / 2, cornerSize, cornerSize);
+          // 左下
+          ctx.fillRect(x - cornerSize / 2, y + height - cornerSize / 2, cornerSize, cornerSize);
+          // 右下
+          ctx.fillRect(x + width - cornerSize / 2, y + height - cornerSize / 2, cornerSize, cornerSize);
 
           // 更新尺寸信息
           if (width > 0 && height > 0) {
-            sizeInfo.textContent = `${width} × ${height}`;
+            sizeInfo.textContent = `${Math.round(width)} × ${Math.round(height)}`;
             sizeInfo.style.display = 'block';
             sizeInfo.style.left = `${x + width + 10}px`;
             sizeInfo.style.top = `${y}px`;
@@ -240,6 +262,7 @@
           // 重新选择
           selectionComplete = false;
           toolbar.style.display = 'none';
+          sizeInfo.style.display = 'none';
         }
 
         isSelecting = true;
@@ -308,15 +331,18 @@
         const width = Math.abs(currentX - startX);
         const height = Math.abs(currentY - startY);
 
+        console.log('确认截图:', { x, y, width, height });
+
         try {
           // 调用后端捕获区域
-          await invoke('capture_region_screenshot', {
+          const result = await invoke('capture_region_screenshot', {
             x: Math.round(x),
             y: Math.round(y),
             width: Math.round(width),
             height: Math.round(height),
           });
 
+          console.log('截图成功:', result);
           await closeWindow();
         } catch (error) {
           console.error('截图失败:', error);
@@ -333,6 +359,8 @@
         const width = Math.abs(currentX - startX);
         const height = Math.abs(currentY - startY);
 
+        console.log('钉住截图:', { x, y, width, height });
+
         try {
           // 先捕获区域截图
           const result = await invoke('capture_region_screenshot', {
@@ -342,11 +370,15 @@
             height: Math.round(height),
           });
 
+          console.log('截图结果:', result);
+
           // 钉到桌面
           if (result && result.image_path) {
+            console.log('钉住图片:', result.image_path);
             await invoke('pin_image', {
               imagePath: result.image_path,
             });
+            console.log('钉住成功');
           }
 
           await closeWindow();
@@ -358,49 +390,82 @@
 
       // 取消截图
       async function cancelSelection() {
+        console.log('取消截图');
         await closeWindow();
       }
 
       // 关闭窗口
       async function closeWindow() {
-        const currentWin = getCurrentWindow();
+        console.log('开始关闭窗口');
 
-        // 恢复主窗口
         try {
-          const { Window } = await import('@tauri-apps/api/window');
-          const mainWindow = Window.getByLabel('main');
-          if (mainWindow) {
-            await mainWindow.show();
-            await mainWindow.setFocus();
-          }
-        } catch (e) {
-          console.error('恢复主窗口失败:', e);
-        }
+          const currentWin = getCurrentWindow();
 
-        // 关闭当前窗口
-        await currentWin.close();
+          // 恢复主窗口
+          try {
+            console.log('尝试恢复主窗口');
+            const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            const mainWindow = WebviewWindow.getByLabel('main');
+
+            if (mainWindow) {
+              console.log('找到主窗口，准备显示');
+              await mainWindow.show();
+              await mainWindow.setFocus();
+              console.log('主窗口已显示');
+            } else {
+              console.warn('未找到主窗口');
+            }
+          } catch (e) {
+            console.error('恢复主窗口失败:', e);
+          }
+
+          // 关闭当前窗口
+          console.log('关闭截图窗口');
+          await currentWin.close();
+        } catch (error) {
+          console.error('关闭窗口失败:', error);
+          // 即使失败也尝试关闭
+          window.close();
+        }
       }
 
       // 按钮事件
-      confirmBtn.addEventListener('click', confirmSelection);
-      cancelBtn.addEventListener('click', cancelSelection);
-      pinBtn.addEventListener('click', pinSelection);
+      confirmBtn.addEventListener('click', () => {
+        console.log('点击确定按钮');
+        confirmSelection();
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        console.log('点击取消按钮');
+        cancelSelection();
+      });
+
+      pinBtn.addEventListener('click', () => {
+        console.log('点击钉住按钮');
+        pinSelection();
+      });
 
       // 键盘事件
       document.addEventListener('keydown', (e) => {
+        console.log('按键:', e.key);
+
         if (e.key === 'Escape') {
           e.preventDefault();
+          console.log('ESC 取消');
           cancelSelection();
         } else if (e.key === 'Enter' && selectionComplete) {
           e.preventDefault();
+          console.log('Enter 确认');
           confirmSelection();
         } else if ((e.key === 'p' || e.key === 'P') && selectionComplete) {
           e.preventDefault();
+          console.log('P 钉住');
           pinSelection();
         }
       });
 
       // 初始化
+      console.log('初始化截图界面');
       loadScreenshot();
     </script>
   </body>
