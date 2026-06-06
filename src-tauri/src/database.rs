@@ -204,15 +204,22 @@ impl Database {
 
     /// 插入剪贴板记录；同一设置时区自然日内的相同内容只刷新记录时间。
     pub fn insert_item(&self, item: CreateClipboardItem, time_zone: &str) -> Result<ClipboardItem> {
-        let conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let session_id = item.session_id.clone();
+
+        if !session_exists(&tx, &session_id)? {
+            return Err(anyhow::anyhow!("会话不存在"));
+        }
 
         let id = nanoid::nanoid!();
         let timestamp = Utc::now().timestamp_millis();
         let date_key = date_key_from_timestamp(timestamp, time_zone);
 
         if let Some(existing) =
-            refresh_duplicate_for_date(&conn, &item.content_hash, &date_key, timestamp)?
+            refresh_duplicate_for_date(&tx, &item.content_hash, &date_key, timestamp)?
         {
+            tx.commit()?;
             return Ok(existing);
         }
 
@@ -227,7 +234,7 @@ impl Database {
             }
         });
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO clipboard_items (
                 id, type, content, image_path, thumbnail_path, preview, timestamp, date_key,
                 source_app, content_hash, session_id
@@ -246,6 +253,8 @@ impl Database {
                 item.session_id,
             ],
         )?;
+        refresh_session_item_count(&tx, &session_id)?;
+        tx.commit()?;
 
         Ok(ClipboardItem {
             id: id.clone(),
@@ -345,15 +354,23 @@ impl Database {
 
     /// 删除记录
     pub fn delete_item(&self, item_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        let deleted = conn.execute(
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let session_id: String = tx
+            .query_row(
+                "SELECT session_id FROM clipboard_items WHERE id = ?1",
+                params![item_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("记录不存在"))?;
+
+        tx.execute(
             "DELETE FROM clipboard_items WHERE id = ?1",
             params![item_id],
         )?;
-
-        if deleted == 0 {
-            return Err(anyhow::anyhow!("记录不存在"));
-        }
+        refresh_session_item_count(&tx, &session_id)?;
+        tx.commit()?;
 
         Ok(())
     }
@@ -411,7 +428,15 @@ impl Database {
 
         // 结束所有活跃会话
         conn.execute(
-            "UPDATE sessions SET is_active = 0, end_time = ?1 WHERE is_active = 1",
+            "UPDATE sessions
+             SET is_active = 0,
+                 end_time = ?1,
+                 item_count = (
+                    SELECT COUNT(*)
+                    FROM clipboard_items
+                    WHERE clipboard_items.session_id = sessions.id
+                 )
+             WHERE is_active = 1",
             params![now],
         )?;
 
@@ -689,12 +714,30 @@ impl Database {
 
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
+        let mut affected_session_ids = Vec::new();
 
         for item_id in item_ids {
+            if let Some(session_id) = tx
+                .query_row(
+                    "SELECT session_id FROM clipboard_items WHERE id = ?1",
+                    params![item_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+            {
+                if !affected_session_ids.contains(&session_id) {
+                    affected_session_ids.push(session_id);
+                }
+            }
+
             tx.execute(
                 "DELETE FROM clipboard_items WHERE id = ?1",
                 params![item_id],
             )?;
+        }
+
+        for session_id in affected_session_ids {
+            refresh_session_item_count(&tx, &session_id)?;
         }
 
         tx.commit()?;
@@ -832,6 +875,29 @@ fn parse_time_zone(time_zone: &str) -> Tz {
         .ok()
         .or_else(|| DEFAULT_TIME_ZONE.parse::<Tz>().ok())
         .unwrap_or(chrono_tz::Asia::Shanghai)
+}
+
+fn session_exists(conn: &Connection, session_id: &str) -> Result<bool> {
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM sessions WHERE id = ?1",
+        params![session_id],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+fn refresh_session_item_count(conn: &Connection, session_id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE sessions
+         SET item_count = (
+            SELECT COUNT(*)
+            FROM clipboard_items
+            WHERE session_id = ?1
+         )
+         WHERE id = ?1",
+        params![session_id],
+    )?;
+    Ok(())
 }
 
 fn refresh_duplicate_for_date(
@@ -1109,6 +1175,82 @@ mod tests {
 
         let pinned_error = db.toggle_pinned(&item.id).unwrap_err().to_string();
         assert!(pinned_error.contains("记录不存在"));
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn session_item_counts_follow_inserts_and_deletes() {
+        let (db, data_dir) = temp_database();
+        assert_eq!(db.get_current_session().unwrap().unwrap().item_count, 0);
+
+        let first = db
+            .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+        assert_eq!(db.get_current_session().unwrap().unwrap().item_count, 1);
+
+        let duplicate = db
+            .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+        assert_eq!(duplicate.id, first.id);
+        assert_eq!(db.get_current_session().unwrap().unwrap().item_count, 1);
+
+        let second = db
+            .insert_item(text_item_with_content("Beta token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+        assert_eq!(db.get_current_session().unwrap().unwrap().item_count, 2);
+
+        db.create_session("session_2").unwrap();
+        let sessions = db.get_sessions(10).unwrap();
+        let first_session = sessions
+            .iter()
+            .find(|session| session.id == "session_1")
+            .unwrap();
+        assert!(!first_session.is_active);
+        assert_eq!(first_session.item_count, 2);
+
+        db.delete_item(&first.id).unwrap();
+        let sessions = db.get_sessions(10).unwrap();
+        assert_eq!(
+            sessions
+                .iter()
+                .find(|session| session.id == "session_1")
+                .unwrap()
+                .item_count,
+            1
+        );
+
+        db.delete_items(&[second.id]).unwrap();
+        let sessions = db.get_sessions(10).unwrap();
+        assert_eq!(
+            sessions
+                .iter()
+                .find(|session| session.id == "session_1")
+                .unwrap()
+                .item_count,
+            0
+        );
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn inserting_item_requires_existing_session() {
+        let (db, data_dir) = temp_database();
+
+        let error = db
+            .insert_item(
+                CreateClipboardItem {
+                    session_id: "missing-session".to_string(),
+                    ..text_item_with_content("Alpha token")
+                },
+                DEFAULT_TIME_ZONE,
+            )
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("会话不存在"));
+        assert!(db.get_items(10, 0).unwrap().is_empty());
 
         let _ = fs::remove_dir_all(data_dir);
     }
