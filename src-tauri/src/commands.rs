@@ -326,8 +326,24 @@ pub async fn start_region_screenshot(
     }
 
     // 1. 创建截图选择窗口。窗口自身只显示灰色底版，最终截图在用户确认后再抓取。
+    // 如果窗口已经存在，直接复用并置前，避免关闭后立即重建触发 Tauri label 冲突。
     if let Some(selection_window) = app.get_webview_window("screenshot-selector") {
-        selection_window.close().map_err(|e| e.to_string())?;
+        if let Some(main_window) = app.get_webview_window("main") {
+            if let Err(error) = main_window.hide() {
+                return Err(format!("隐藏主窗口失败: {}", error));
+            }
+        }
+
+        if let Err(error) = selection_window.show() {
+            let _ = restore_main_window(&app);
+            return Err(format!("打开已有截图选择窗口失败: {}", error));
+        }
+
+        if let Err(error) = selection_window.set_focus() {
+            eprintln!("聚焦已有截图选择窗口失败: {}", error);
+        }
+
+        return Ok(());
     }
 
     let selection_window = WebviewWindowBuilder::new(

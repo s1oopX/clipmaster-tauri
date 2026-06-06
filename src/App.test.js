@@ -259,6 +259,21 @@ describe('App UI', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('截图失败: 权限不足');
   });
 
+  it('explains duplicate screenshot selector windows without exposing internal labels', async () => {
+    api.startRegionScreenshot.mockRejectedValueOnce(
+      'a webview with label `screenshot-selector` already exists'
+    );
+
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+    await fireEvent.click(screen.getByRole('button', { name: '截图' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('截图窗口已打开，请完成当前选区或按 Esc 取消后再试');
+    expect(alert).not.toHaveTextContent('screenshot-selector');
+  });
+
   it('pins the newest image globally and supports pinning an image item to desktop', async () => {
     api.getItems.mockResolvedValue([textItem(), imageItem()]);
 

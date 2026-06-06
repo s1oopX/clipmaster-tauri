@@ -424,9 +424,23 @@
       toolLoading = null;
     } catch (e) {
       console.error('截图失败:', e);
-      error = '截图失败: ' + e;
+      error = normalizeScreenshotError(e);
       toolLoading = null;
     }
+  }
+
+  function normalizeScreenshotError(errorValue) {
+    const message = String(errorValue || '');
+
+    if (message.includes('screenshot-selector') && message.includes('already exists')) {
+      return '截图窗口已打开，请完成当前选区或按 Esc 取消后再试';
+    }
+
+    if (message.trim()) {
+      return '截图失败: ' + message;
+    }
+
+    return '截图失败，请稍后再试';
   }
 
   async function pinNewestImage() {
