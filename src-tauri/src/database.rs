@@ -553,10 +553,14 @@ impl Database {
     pub fn update_item_annotation(&self, item_id: &str, annotation: Option<&str>) -> Result<()> {
         let conn = self.conn.lock().unwrap();
 
-        conn.execute(
+        let updated = conn.execute(
             "UPDATE clipboard_items SET annotation = ?1 WHERE id = ?2",
             params![annotation, item_id],
         )?;
+
+        if updated == 0 {
+            return Err(anyhow::anyhow!("记录不存在"));
+        }
 
         Ok(())
     }
@@ -980,6 +984,32 @@ mod tests {
 
         let original = db.get_item(&first.id).unwrap().unwrap();
         assert_eq!(original.content.as_deref(), Some("Alpha token"));
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn updating_annotation_requires_existing_record() {
+        let (db, data_dir) = temp_database();
+        let item = db
+            .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+
+        db.update_item_annotation(&item.id, Some("用于发票核对"))
+            .unwrap();
+        let annotated = db.get_item(&item.id).unwrap().unwrap();
+        assert_eq!(annotated.annotation.as_deref(), Some("用于发票核对"));
+        assert_eq!(annotated.content.as_deref(), Some("Alpha token"));
+
+        db.update_item_annotation(&item.id, None).unwrap();
+        let cleared = db.get_item(&item.id).unwrap().unwrap();
+        assert_eq!(cleared.annotation, None);
+
+        let error = db
+            .update_item_annotation("missing-item", Some("不会保存"))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("记录不存在"));
 
         let _ = fs::remove_dir_all(data_dir);
     }
