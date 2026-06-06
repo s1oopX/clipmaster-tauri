@@ -8,6 +8,7 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder
 use tokio::time::sleep;
 
 use crate::database::{date_key_now, Database};
+use crate::dev_port::{check_dev_server_port as check_port, PortCheckResult};
 use crate::models::{
     CleanupPlan, ClipboardDay, ClipboardItem, ClipboardType, CreateClipboardItem, Session,
 };
@@ -76,6 +77,7 @@ pub async fn save_settings(
     let result = SettingsStore::normalize_candidate(settings).map_err(|e| e.to_string())?;
     let hotkey_changed = previous.screenshot_hotkey != result.screenshot_hotkey;
     let time_zone_changed = previous.time_zone != result.time_zone;
+    let dev_server_port_changed = previous.dev_server_port != result.dev_server_port;
 
     if hotkey_changed {
         if let Err(error) =
@@ -89,14 +91,47 @@ pub async fn save_settings(
     if time_zone_changed {
         if let Err(error) = db.rebuild_date_keys(&result.time_zone) {
             let rollback_error =
-                rollback_settings_side_effects(&app, &db, &previous, hotkey_changed, false);
+                rollback_settings_side_effects(&app, &db, &previous, hotkey_changed, false, false);
+            return Err(append_rollback_error(error.to_string(), rollback_error));
+        }
+    }
+
+    if dev_server_port_changed {
+        let port_check = check_port(result.dev_server_port)?;
+        if !port_check.available {
+            let rollback_error = rollback_settings_side_effects(
+                &app,
+                &db,
+                &previous,
+                hotkey_changed,
+                time_zone_changed,
+                false,
+            );
+            return Err(append_rollback_error(port_check.message, rollback_error));
+        }
+
+        if let Err(error) = crate::dev_port::write_project_dev_server_port(result.dev_server_port) {
+            let rollback_error = rollback_settings_side_effects(
+                &app,
+                &db,
+                &previous,
+                hotkey_changed,
+                time_zone_changed,
+                true,
+            );
             return Err(append_rollback_error(error.to_string(), rollback_error));
         }
     }
 
     if let Err(error) = store.save_normalized(result.clone()) {
-        let rollback_error =
-            rollback_settings_side_effects(&app, &db, &previous, hotkey_changed, time_zone_changed);
+        let rollback_error = rollback_settings_side_effects(
+            &app,
+            &db,
+            &previous,
+            hotkey_changed,
+            time_zone_changed,
+            dev_server_port_changed,
+        );
         return Err(append_rollback_error(error.to_string(), rollback_error));
     }
 
@@ -123,6 +158,7 @@ fn rollback_settings_side_effects(
     previous: &AppSettings,
     hotkey_changed: bool,
     time_zone_changed: bool,
+    dev_server_port_changed: bool,
 ) -> Option<String> {
     let mut errors = Vec::new();
 
@@ -134,6 +170,13 @@ fn rollback_settings_side_effects(
 
     if let Some(error) = rollback_settings_hotkey(app, previous, hotkey_changed) {
         errors.push(error);
+    }
+
+    if dev_server_port_changed {
+        if let Err(error) = crate::dev_port::write_project_dev_server_port(previous.dev_server_port)
+        {
+            errors.push(format!("开发端口回滚失败: {}", error));
+        }
     }
 
     if errors.is_empty() {
@@ -148,6 +191,19 @@ fn append_rollback_error(error: String, rollback_error: Option<String>) -> Strin
         Some(rollback_error) => format!("{}（{}）", error, rollback_error),
         None => error,
     }
+}
+
+/// 检查开发端口是否可用，并在占用时给出替代端口
+#[tauri::command]
+pub async fn check_dev_server_port(port: i32) -> Result<PortCheckResult, String> {
+    check_port(port)
+}
+
+/// 重启应用，让需要重启的设置立即进入下一次启动流程
+#[tauri::command]
+pub async fn restart_app(app: AppHandle) -> Result<(), String> {
+    app.request_restart();
+    Ok(())
 }
 
 /// 预览自定义清理结果

@@ -247,6 +247,21 @@ export const settingsApi = {
   },
 
   /**
+   * 检查开发端口是否可用
+   * @param {number} port
+   */
+  async checkDevServerPort(port) {
+    return await invoke('check_dev_server_port', { port });
+  },
+
+  /**
+   * 重启应用
+   */
+  async restartApp() {
+    return await invoke('restart_app');
+  },
+
+  /**
    * 预览自定义清理
    * @param {number} maxItems
    * @param {number} keepDays

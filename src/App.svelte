@@ -45,6 +45,7 @@
     auto_cleanup_enabled: false,
     cleanup_max_items: 200,
     cleanup_keep_days: 30,
+    dev_server_port: 5174,
   };
 
   const timeZoneOptions = [
@@ -63,6 +64,7 @@
     { id: 'basic', label: '基础' },
     { id: 'locale', label: '日期语言' },
     { id: 'cleanup', label: '清理' },
+    { id: 'port', label: '端口' },
     { id: 'hotkey', label: '快捷键' },
     { id: 'about', label: '关于' },
   ];
@@ -94,6 +96,10 @@
   let settingsSaving = false;
   let cleanupLoading = false;
   let cleanupPlan = null;
+  let portCheckLoading = false;
+  let portCheckResult = null;
+  let pendingRestartPort = null;
+  let restartingApp = false;
   let appSettings = { ...defaultSettings };
   let settingsDraft = { ...defaultSettings };
   let isRecordingHotkey = false;
@@ -137,6 +143,13 @@
 
   $: recordsScope = selectedDay
     || (searchQuery.trim() ? todayDateKey(appSettings.time_zone) : '全部日期');
+
+  $: currentDraftPort = numberSettingValue(
+    settingsDraft.dev_server_port,
+    defaultSettings.dev_server_port
+  );
+  $: settingsPortChanged = currentDraftPort
+    !== (appSettings.dev_server_port || defaultSettings.dev_server_port);
 
   function formatDateKey(date) {
     const year = date.getFullYear();
@@ -679,11 +692,17 @@
   function openSettings() {
     settingsDraft = { ...appSettings };
     cleanupPlan = null;
+    portCheckResult = null;
     activeSettingsView = 'basic';
     settingsOpen = true;
   }
 
   function updateSettingsDraft(key, value) {
+    if (key === 'dev_server_port') {
+      portCheckResult = null;
+      pendingRestartPort = null;
+    }
+
     settingsDraft = {
       ...settingsDraft,
       [key]: value,
@@ -697,6 +716,44 @@
   function numberSettingValue(value, fallback) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  async function checkDevServerPort() {
+    portCheckLoading = true;
+    portCheckResult = null;
+    error = null;
+
+    try {
+      portCheckResult = await settingsApi.checkDevServerPort(currentDraftPort);
+    } catch (e) {
+      console.error('检查端口失败:', e);
+      showActionError('检查端口失败: ' + e);
+    } finally {
+      portCheckLoading = false;
+    }
+  }
+
+  function applySuggestedPort(port) {
+    updateSettingsDraft('dev_server_port', port);
+    portCheckResult = {
+      port,
+      available: true,
+      suggested_port: null,
+      message: `端口 ${port} 可用`,
+    };
+  }
+
+  async function restartApplication() {
+    restartingApp = true;
+    error = null;
+
+    try {
+      await settingsApi.restartApp();
+    } catch (e) {
+      console.error('重启应用失败:', e);
+      showActionError('重启应用失败: ' + e);
+      restartingApp = false;
+    }
   }
 
   async function saveSettings() {
@@ -723,10 +780,16 @@
         settingsDraft.cleanup_keep_days,
         defaultSettings.cleanup_keep_days
       ),
+      dev_server_port: numberSettingValue(
+        settingsDraft.dev_server_port,
+        defaultSettings.dev_server_port
+      ),
     };
 
     try {
       const timeZoneChanged = normalized.time_zone !== appSettings.time_zone;
+      const devServerPortChanged = normalized.dev_server_port
+        !== (appSettings.dev_server_port || defaultSettings.dev_server_port);
       const savedSettings = await settingsApi.saveSettings(normalized);
       let autoCleanupPlan = null;
       let autoCleanupError = null;
@@ -746,7 +809,13 @@
       appSettings = savedSettings;
       settingsDraft = { ...appSettings };
       cleanupPlan = autoCleanupPlan;
-      settingsOpen = false;
+      if (devServerPortChanged) {
+        pendingRestartPort = savedSettings.dev_server_port;
+        activeSettingsView = 'port';
+        settingsOpen = true;
+      } else {
+        settingsOpen = false;
+      }
       if (timeZoneChanged) {
         selectedDay = '';
       }
@@ -757,6 +826,8 @@
         showActionError('设置已保存，自动清理失败: ' + autoCleanupError);
       } else if (autoCleanupPlan) {
         showActionNotice(`设置已保存，已清理 ${autoCleanupPlan.item_count} 条记录`);
+      } else if (devServerPortChanged) {
+        showActionNotice('端口已保存，重启后生效');
       } else {
         showActionNotice('设置已保存');
       }
@@ -1565,6 +1636,8 @@
                 <CalendarDays class="settings-tab-icon" size={15} aria-hidden="true" />
               {:else if view.id === 'cleanup'}
                 <Trash2 class="settings-tab-icon" size={15} aria-hidden="true" />
+              {:else if view.id === 'port'}
+                <Settings class="settings-tab-icon" size={15} aria-hidden="true" />
               {:else if view.id === 'hotkey'}
                 <Camera class="settings-tab-icon" size={15} aria-hidden="true" />
               {:else}
@@ -1731,6 +1804,84 @@
                   {cleanupLoading ? '清理中' : '立即清理'}
                 </button>
               </div>
+            </div>
+          {:else if activeSettingsView === 'port'}
+            <div
+              class="settings-section settings-view"
+              id="settings-view-port"
+              role="tabpanel"
+              aria-labelledby="settings-tab-port"
+            >
+              <div class="settings-section-title">
+                <h3>端口设置</h3>
+                <p>开发服务 / 占用检测</p>
+              </div>
+
+              <div class="field-row port-field">
+                <label for="dev-server-port">开发端口</label>
+                <div class="port-input-group">
+                  <input
+                    id="dev-server-port"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value={settingsDraft.dev_server_port}
+                    on:input={(event) =>
+                      updateSettingsDraft('dev_server_port', Number(event.currentTarget.value))}
+                  />
+                  <button
+                    type="button"
+                    class="ghost-button compact-button"
+                    on:click={checkDevServerPort}
+                    disabled={portCheckLoading}
+                  >
+                    {portCheckLoading ? '检查中' : '检查端口'}
+                  </button>
+                </div>
+              </div>
+
+              <div
+                class:available={portCheckResult?.available}
+                class:occupied={portCheckResult && !portCheckResult.available}
+                class="port-check-result"
+                aria-live="polite"
+              >
+                {#if portCheckResult}
+                  <p>{portCheckResult.message}</p>
+                  {#if !portCheckResult.available && portCheckResult.suggested_port}
+                    <button
+                      type="button"
+                      class="ghost-button compact-button"
+                      on:click={() => applySuggestedPort(portCheckResult.suggested_port)}
+                    >
+                      使用 {portCheckResult.suggested_port}
+                    </button>
+                  {/if}
+                {:else}
+                  <p>用于本地开发服务；生产版不占用端口。</p>
+                {/if}
+              </div>
+
+              {#if settingsPortChanged}
+                <p class="port-hint">端口变化需要保存并重启应用后生效。</p>
+              {/if}
+
+              {#if pendingRestartPort}
+                <div class="restart-card" role="status">
+                  <div>
+                    <strong>端口 {pendingRestartPort} 已保存</strong>
+                    <span>重启后应用会切到新的开发端口。</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="primary-button"
+                    on:click={restartApplication}
+                    disabled={restartingApp}
+                  >
+                    {restartingApp ? '重启中' : '重启应用'}
+                  </button>
+                </div>
+              {/if}
             </div>
           {:else if activeSettingsView === 'hotkey'}
             <div
@@ -2822,6 +2973,93 @@
     gap: 8px;
   }
 
+  .port-field {
+    align-items: flex-start;
+  }
+
+  .port-field > label {
+    padding-top: 8px;
+  }
+
+  .port-input-group {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .compact-button {
+    min-height: 32px;
+    padding: 0 10px;
+    white-space: nowrap;
+  }
+
+  .port-check-result {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 46px;
+    padding: 9px 10px;
+    color: #64748b;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .port-check-result p {
+    margin: 0;
+  }
+
+  .port-check-result.available {
+    color: #166534;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+  }
+
+  .port-check-result.occupied {
+    color: #9f1239;
+    background: #fff1f2;
+    border-color: #fecdd3;
+  }
+
+  .port-hint {
+    margin: -4px 0 0;
+    color: #64748b;
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  .restart-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 12px;
+    color: #172033;
+    background: #ecfeff;
+    border: 1px solid #a5f3fc;
+    border-radius: 9px;
+  }
+
+  .restart-card div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .restart-card strong {
+    color: #164e63;
+    font-size: 0.84rem;
+  }
+
+  .restart-card span {
+    color: #64748b;
+    font-size: 0.76rem;
+  }
+
   .field-row input.recording {
     border-color: #007aff;
     background: rgba(0, 122, 255, 0.05);
@@ -2880,6 +3118,13 @@
 
     .about-links {
       grid-template-columns: 1fr;
+    }
+
+    .port-input-group,
+    .restart-card {
+      align-items: stretch;
+      flex-direction: column;
+      width: min(220px, 58vw);
     }
   }
 
@@ -4582,6 +4827,43 @@
     background: #eefaf2;
     border-color: #bee4ca;
     border-radius: 8px;
+  }
+
+  .port-check-result {
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.58);
+    border-color: var(--line-soft);
+    border-radius: 8px;
+  }
+
+  .port-check-result.available {
+    color: var(--success);
+    background: #eefaf2;
+    border-color: #bee4ca;
+  }
+
+  .port-check-result.occupied {
+    color: var(--danger);
+    background: #fff1f2;
+    border-color: #fecdd3;
+  }
+
+  .port-hint {
+    color: var(--muted);
+  }
+
+  .restart-card {
+    color: var(--ink);
+    background: rgba(238, 250, 252, 0.86);
+    border-color: #bae6ed;
+  }
+
+  .restart-card strong {
+    color: #155e75;
+  }
+
+  .restart-card span {
+    color: var(--muted);
   }
 
   .ghost-button,

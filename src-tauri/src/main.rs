@@ -4,6 +4,7 @@
 mod clipboard;
 mod commands;
 mod database;
+mod dev_port;
 mod hotkey;
 mod models;
 mod session;
@@ -17,6 +18,9 @@ use settings::SettingsStore;
 use tauri::Manager;
 
 fn main() {
+    let mut context = tauri::generate_context!();
+    dev_port::apply_project_dev_port_to_context(&mut context);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
@@ -118,12 +122,14 @@ fn main() {
             commands::copy_image_to_clipboard,
             commands::get_settings,
             commands::save_settings,
+            commands::check_dev_server_port,
+            commands::restart_app,
             commands::preview_custom_cleanup,
             commands::run_custom_cleanup,
             commands::start_region_screenshot,
             commands::capture_region_screenshot,
             commands::pin_image,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }

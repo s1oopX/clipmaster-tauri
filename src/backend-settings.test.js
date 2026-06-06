@@ -11,11 +11,15 @@ describe('Backend settings commands', () => {
     const hotkeyIndex = commandsSource.indexOf(
       'HotkeyManager::re_register_with_hotkey(&app, &result.screenshot_hotkey)'
     );
+    const devPortIndex = commandsSource.indexOf(
+      'write_project_dev_server_port(result.dev_server_port)'
+    );
     const saveIndex = commandsSource.indexOf('store.save_normalized(result.clone())');
 
     expect(normalizeIndex).toBeGreaterThan(-1);
     expect(hotkeyIndex).toBeGreaterThan(normalizeIndex);
-    expect(saveIndex).toBeGreaterThan(hotkeyIndex);
+    expect(devPortIndex).toBeGreaterThan(hotkeyIndex);
+    expect(saveIndex).toBeGreaterThan(devPortIndex);
     expect(commandsSource).not.toContain('let result = store.save(settings)');
     expect(commandsSource).toContain('rollback_settings_side_effects');
   });

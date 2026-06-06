@@ -5,6 +5,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri_plugin_global_shortcut::Shortcut;
 
+use crate::dev_port::{
+    default_dev_server_port, normalize_dev_server_port, validate_dev_server_port,
+};
+
 pub const DEFAULT_TIME_ZONE: &str = "Asia/Shanghai";
 pub const DEFAULT_LANGUAGE: &str = "zh-CN";
 
@@ -30,6 +34,7 @@ pub struct AppSettings {
     pub auto_cleanup_enabled: bool,
     pub cleanup_max_items: i32,
     pub cleanup_keep_days: i32,
+    pub dev_server_port: i32,
 }
 
 impl Default for AppSettings {
@@ -45,6 +50,7 @@ impl Default for AppSettings {
             auto_cleanup_enabled: false,
             cleanup_max_items: 200,
             cleanup_keep_days: 30,
+            dev_server_port: default_dev_server_port(),
         }
     }
 }
@@ -78,11 +84,13 @@ impl SettingsStore {
 
     pub fn normalize_candidate(settings: AppSettings) -> Result<AppSettings> {
         validate_screenshot_hotkey(&settings.screenshot_hotkey).map_err(anyhow::Error::msg)?;
+        validate_dev_server_port(settings.dev_server_port).map_err(anyhow::Error::msg)?;
         Ok(Self::normalize(settings))
     }
 
     pub fn save_normalized(&self, settings: AppSettings) -> Result<AppSettings> {
         validate_screenshot_hotkey(&settings.screenshot_hotkey).map_err(anyhow::Error::msg)?;
+        validate_dev_server_port(settings.dev_server_port).map_err(anyhow::Error::msg)?;
         let normalized = Self::normalize(settings);
         let raw = serde_json::to_string_pretty(&normalized)?;
         fs::write(&self.path, raw)?;
@@ -106,6 +114,7 @@ impl SettingsStore {
             auto_cleanup_enabled: settings.auto_cleanup_enabled,
             cleanup_max_items: settings.cleanup_max_items.clamp(10, 5000),
             cleanup_keep_days: settings.cleanup_keep_days.clamp(1, 3650),
+            dev_server_port: normalize_dev_server_port(settings.dev_server_port),
         }
     }
 }
@@ -179,6 +188,7 @@ mod tests {
                 auto_cleanup_enabled: true,
                 cleanup_max_items: 9000,
                 cleanup_keep_days: -5,
+                dev_server_port: 6123,
             })
             .unwrap();
 
@@ -188,6 +198,7 @@ mod tests {
         assert_eq!(saved.language, "en-US");
         assert_eq!(saved.cleanup_max_items, 5000);
         assert_eq!(saved.cleanup_keep_days, 1);
+        assert_eq!(saved.dev_server_port, 6123);
         assert_eq!(saved.screenshot_hotkey, "CommandOrControl+Alt+S");
 
         let reloaded = SettingsStore::new(&data_dir).unwrap();
@@ -260,6 +271,31 @@ mod tests {
         assert_eq!(
             store.get().screenshot_hotkey,
             AppSettings::default().screenshot_hotkey
+        );
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn rejects_invalid_dev_server_ports_on_save() {
+        let data_dir =
+            std::env::temp_dir().join(format!("clipmaster-settings-{}", nanoid::nanoid!()));
+        let store = SettingsStore::new(&data_dir).unwrap();
+
+        for dev_server_port in [0, 65_536] {
+            let err = store
+                .save_normalized(AppSettings {
+                    dev_server_port,
+                    ..AppSettings::default()
+                })
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("开发端口"), "{dev_server_port}: {err}");
+        }
+
+        assert_eq!(
+            store.get().dev_server_port,
+            AppSettings::default().dev_server_port
         );
 
         let _ = fs::remove_dir_all(data_dir);

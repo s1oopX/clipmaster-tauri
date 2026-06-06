@@ -68,7 +68,7 @@ npm install
 npm run tauri:dev
 ```
 
-开发端口固定为 `5174`，配置在 [vite.config.js](./vite.config.js) 和 [src-tauri/tauri.conf.json](./src-tauri/tauri.conf.json)。
+开发端口默认为 `5174`。应用内“设置 / 端口”可以检查占用并切换端口；本机开发配置会写入被忽略的 `.clipmaster-dev.json`，`npm run tauri:dev`、Vite 和 Tauri 开发窗口会读取同一份端口配置。
 
 ## 项目结构
 

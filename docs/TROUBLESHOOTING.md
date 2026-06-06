@@ -25,12 +25,15 @@ Desktop development with C++
 
 ## 端口被占用
 
-当前开发端口是 `5174`。
+默认开发端口是 `5174`，可以在应用内“设置 / 端口”检查占用并切换。
 
-需要同步修改两个文件：
+端口变更会写入本机 `.clipmaster-dev.json`，该文件不会提交到 Git。开发模式请使用：
 
-- `vite.config.js` 的 `server.port`
-- `src-tauri/tauri.conf.json` 的 `build.devUrl`
+```powershell
+npm run tauri:dev
+```
+
+这个脚本会把同一端口同步给 Vite 和 Tauri。
 
 ## `frontendDist` 不存在
 

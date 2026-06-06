@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   copyImageToClipboard: vi.fn(),
   startRegionScreenshot: vi.fn(),
   deleteItem: vi.fn(),
+  checkDevServerPort: vi.fn(),
   getSettings: vi.fn(),
   getCurrentSession: vi.fn(),
   getItems: vi.fn(),
@@ -22,6 +23,7 @@ const api = vi.hoisted(() => ({
   previewCustomCleanup: vi.fn(),
   runCustomCleanup: vi.fn(),
   saveSettings: vi.fn(),
+  restartApp: vi.fn(),
   searchItems: vi.fn(),
   toggleFavorite: vi.fn(),
   togglePinned: vi.fn(),
@@ -69,6 +71,8 @@ vi.mock('./lib/api.js', () => ({
   settingsApi: {
     getSettings: api.getSettings,
     saveSettings: api.saveSettings,
+    checkDevServerPort: api.checkDevServerPort,
+    restartApp: api.restartApp,
     previewCustomCleanup: api.previewCustomCleanup,
     runCustomCleanup: api.runCustomCleanup,
   },
@@ -165,6 +169,7 @@ describe('App UI', () => {
       auto_cleanup_enabled: false,
       cleanup_max_items: 200,
       cleanup_keep_days: 30,
+      dev_server_port: 5174,
     });
     api.clearSession.mockResolvedValue();
     api.listen.mockResolvedValue(vi.fn());
@@ -187,6 +192,13 @@ describe('App UI', () => {
       newest_timestamp: null,
     });
     api.saveSettings.mockImplementation(async (settings) => settings);
+    api.checkDevServerPort.mockResolvedValue({
+      port: 5174,
+      available: true,
+      suggested_port: null,
+      message: '端口 5174 可用',
+    });
+    api.restartApp.mockResolvedValue();
     api.deleteItem.mockResolvedValue();
     api.toggleFavorite.mockResolvedValue(true);
     api.togglePinned.mockResolvedValue(true);
@@ -943,8 +955,54 @@ describe('App UI', () => {
         auto_cleanup_enabled: false,
         cleanup_max_items: 200,
         cleanup_keep_days: 30,
+        dev_server_port: 5174,
       });
     });
+  });
+
+  it('checks custom dev ports, applies a suggestion, and offers app restart after saving', async () => {
+    api.checkDevServerPort.mockResolvedValueOnce({
+      port: 5175,
+      available: false,
+      suggested_port: 5176,
+      message: '端口 5175 已被占用，可切换到 5176',
+    });
+    api.saveSettings.mockImplementationOnce(async (settings) => ({
+      ...settings,
+      dev_server_port: 5176,
+    }));
+
+    render(App);
+
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '端口' }));
+
+    const portInput = screen.getByLabelText('开发端口');
+    await fireEvent.input(portInput, { target: { value: '5175' } });
+    await fireEvent.click(screen.getByRole('button', { name: '检查端口' }));
+
+    await waitFor(() => {
+      expect(api.checkDevServerPort).toHaveBeenCalledWith(5175);
+    });
+    expect(screen.getByText('端口 5175 已被占用，可切换到 5176')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '使用 5176' }));
+    expect(portInput).toHaveValue(5176);
+    expect(screen.getByText('端口 5176 可用')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
+
+    await waitFor(() => {
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ dev_server_port: 5176 })
+      );
+    });
+    expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
+    expect(screen.getByText('端口 5176 已保存')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '重启应用' }));
+    expect(api.restartApp).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the active search after saving settings', async () => {
@@ -1168,6 +1226,7 @@ describe('App UI', () => {
       auto_cleanup_enabled: false,
       cleanup_max_items: 200,
       cleanup_keep_days: 30,
+      dev_server_port: 5174,
     });
     api.getItems.mockResolvedValue([
       textItem({ id: 'old_item', content: 'Old token', preview: 'Old token' }),
@@ -1208,6 +1267,7 @@ describe('App UI', () => {
       auto_cleanup_enabled: false,
       cleanup_max_items: 200,
       cleanup_keep_days: 30,
+      dev_server_port: 5174,
     });
     api.getItems.mockResolvedValue([
       textItem({ id: 'old_item', content: 'Old token', preview: 'Old token', is_favorite: true }),

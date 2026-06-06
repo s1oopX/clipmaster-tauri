@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+.clipmaster-dev.json
 
 # Editor directories and files
 .vscode/*
