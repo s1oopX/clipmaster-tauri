@@ -294,7 +294,7 @@
 
       currentSession = await sessionApi.getCurrentSession();
       await loadAvailableDays();
-      await loadItems();
+      await refreshVisibleRecords();
       document.addEventListener('click', handleDocumentClick);
       document.addEventListener('keydown', handleDocumentKeyDown);
 
@@ -857,6 +857,17 @@
     );
   }
 
+  function updateVisibleItem(itemId, updater) {
+    const nextItems = items.map((item) =>
+      item.id === itemId ? updater(item) : item
+    );
+
+    items = searchQuery.trim()
+      ? nextItems.filter(itemMatchesLiveScope)
+      : nextItems;
+    pruneImageUrls(items);
+  }
+
   function startContentEdit(item) {
     if (item.type !== 'text') return;
     editingId = item.id;
@@ -899,17 +910,13 @@
     try {
       await clipboardApi.updateItemContent(itemId, editContent);
 
-      items = items.map((item) =>
-        item.id === itemId
-          ? {
-              ...item,
-              content: editContent,
-              preview: editContent.length > 100
-                ? editContent.substring(0, 100) + '...'
-                : editContent,
-            }
-          : item
-      );
+      updateVisibleItem(itemId, (item) => ({
+        ...item,
+        content: editContent,
+        preview: editContent.length > 100
+          ? editContent.substring(0, 100) + '...'
+          : editContent,
+      }));
 
       editingId = null;
       editContent = '';
@@ -924,14 +931,10 @@
     try {
       const savedAnnotation = await clipboardApi.updateItemAnnotation(itemId, annotationDraft);
 
-      items = items.map((item) =>
-        item.id === itemId
-          ? {
-              ...item,
-              annotation: savedAnnotation,
-            }
-          : item
-      );
+      updateVisibleItem(itemId, (item) => ({
+        ...item,
+        annotation: savedAnnotation,
+      }));
 
       annotationEditingId = null;
       annotationDraft = '';

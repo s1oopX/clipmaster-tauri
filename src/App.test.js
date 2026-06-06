@@ -345,7 +345,9 @@ describe('App UI', () => {
     await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
 
     expect(search).toHaveValue('');
-    expect(api.getItems).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(api.getItems).toHaveBeenCalledWith(50, 0);
+    });
   });
 
   it('searches within the selected calendar day', async () => {
@@ -587,6 +589,53 @@ describe('App UI', () => {
     expect(screen.getByText('来自右键菜单')).toBeInTheDocument();
   });
 
+  it('removes edited content from active search results when it no longer matches', async () => {
+    api.searchItems.mockResolvedValue([textItem()]);
+
+    render(App);
+
+    const search = await screen.findByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+
+    const content = await screen.findByText('Alpha token');
+    await fireEvent.contextMenu(content, { clientX: 120, clientY: 160 });
+    await fireEvent.click(screen.getByRole('menuitem', { name: '编辑原文' }));
+
+    const contentInput = screen.getByLabelText('编辑 Alpha token 的原文');
+    await fireEvent.input(contentInput, { target: { value: 'Beta token' } });
+    await fireEvent.click(screen.getByRole('button', { name: '保存原文' }));
+
+    await waitFor(() => {
+      expect(api.updateItemContent).toHaveBeenCalledWith('text_1', 'Beta token');
+    });
+    expect(screen.queryByText('Beta token')).not.toBeInTheDocument();
+    expect(screen.getByText('未找到匹配的记录')).toBeInTheDocument();
+  });
+
+  it('removes cleared annotations from active search results when the note was the match', async () => {
+    api.searchItems.mockResolvedValue([
+      textItem({ annotation: 'invoice note' }),
+    ]);
+
+    render(App);
+
+    const search = await screen.findByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'invoice' } });
+
+    expect(await screen.findByText('invoice note')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '标注 Alpha token' }));
+    const annotationInput = screen.getByLabelText('编辑 Alpha token 的标注');
+    await fireEvent.input(annotationInput, { target: { value: '' } });
+    await fireEvent.click(screen.getByRole('button', { name: '保存标注' }));
+
+    await waitFor(() => {
+      expect(api.updateItemAnnotation).toHaveBeenCalledWith('text_1', '');
+    });
+    expect(screen.queryByText('Alpha token')).not.toBeInTheDocument();
+    expect(screen.getByText('未找到匹配的记录')).toBeInTheDocument();
+  });
+
   it('loads and saves app settings from the settings panel', async () => {
     render(App);
 
@@ -683,7 +732,7 @@ describe('App UI', () => {
         todayDateKey()
       );
     });
-    expect(api.getItems).toHaveBeenCalledTimes(1);
+    expect(api.getItems).not.toHaveBeenCalled();
   });
 
   it('previews and runs custom cleanup from the settings panel', async () => {
@@ -772,6 +821,7 @@ describe('App UI', () => {
     render(App);
 
     expect(await screen.findByText('Old token')).toBeInTheDocument();
+    await waitFor(() => expect(api.onNewItem).toHaveBeenCalledTimes(1));
 
     await newItemHandler(
       textItem({
@@ -804,6 +854,7 @@ describe('App UI', () => {
     render(App);
 
     expect(await screen.findByText('Old token')).toBeInTheDocument();
+    await waitFor(() => expect(api.onNewItem).toHaveBeenCalledTimes(1));
 
     await newItemHandler(
       textItem({
