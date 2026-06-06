@@ -21,15 +21,17 @@ describe('Pinned image window', () => {
     expect(pinHtml).toContain('runWindowAction');
   });
 
-  it('zooms the image content and pinned window together', () => {
-    expect(pinHtml).toContain('transform: scale(var(--image-scale, 1))');
-    expect(pinHtml).toContain('function syncImageTransform()');
-    expect(pinHtml).toContain("image.style.setProperty('--image-scale'");
-    expect(pinHtml).toContain('imageScale = Math.max(0.25, Math.min(imageScale * delta, 5))');
+  it('keeps the pinned window fitted to the image while zooming', () => {
+    expect(pinHtml).toContain('width: 100%');
+    expect(pinHtml).toContain('height: 100%');
+    expect(pinHtml).toContain('object-fit: fill');
     expect(pinHtml).toContain('function resizePinnedWindow(delta)');
     expect(pinHtml).toContain('window.innerWidth * delta');
     expect(pinHtml).toContain('window.innerHeight * delta');
     expect(pinHtml).toContain('new LogicalSize(nextWidth, nextHeight)');
+    expect(pinHtml).not.toContain('transform: scale');
+    expect(pinHtml).not.toContain('imageScale');
+    expect(pinHtml).not.toContain('--image-scale');
     expect(pinHtml).not.toContain('PhysicalSize');
     expect(pinHtml).not.toContain('currentWin.innerSize()');
     expect(pinHtml).toContain("'同步缩放贴图窗口'");
