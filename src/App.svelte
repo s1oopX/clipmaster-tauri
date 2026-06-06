@@ -1132,6 +1132,7 @@
       updateVisibleItem(itemId, (item) => ({
         ...item,
         annotation: savedAnnotation,
+        is_favorite: savedAnnotation ? true : item.is_favorite,
       }));
 
       annotationEditingId = null;

@@ -603,10 +603,17 @@ impl Database {
     pub fn update_item_annotation(&self, item_id: &str, annotation: Option<&str>) -> Result<()> {
         let conn = self.conn.lock().unwrap();
 
-        let updated = conn.execute(
-            "UPDATE clipboard_items SET annotation = ?1 WHERE id = ?2",
-            params![annotation, item_id],
-        )?;
+        let updated = if annotation.is_some() {
+            conn.execute(
+                "UPDATE clipboard_items SET annotation = ?1, is_favorite = 1 WHERE id = ?2",
+                params![annotation, item_id],
+            )?
+        } else {
+            conn.execute(
+                "UPDATE clipboard_items SET annotation = ?1 WHERE id = ?2",
+                params![annotation, item_id],
+            )?
+        };
 
         if updated == 0 {
             return Err(anyhow::anyhow!("记录不存在"));
@@ -1141,10 +1148,12 @@ mod tests {
         let annotated = db.get_item(&item.id).unwrap().unwrap();
         assert_eq!(annotated.annotation.as_deref(), Some("用于发票核对"));
         assert_eq!(annotated.content.as_deref(), Some("Alpha token"));
+        assert!(annotated.is_favorite);
 
         db.update_item_annotation(&item.id, None).unwrap();
         let cleared = db.get_item(&item.id).unwrap().unwrap();
         assert_eq!(cleared.annotation, None);
+        assert!(cleared.is_favorite);
 
         let error = db
             .update_item_annotation("missing-item", Some("不会保存"))

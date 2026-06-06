@@ -764,6 +764,7 @@ describe('App UI', () => {
       expect(api.updateItemAnnotation).toHaveBeenCalledWith('text_1', '用于发票核对');
     });
     expect(screen.getByText('用于发票核对')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '收藏 Alpha token' })).toHaveClass('active');
 
     await fireEvent.click(screen.getByRole('button', { name: '复制 Alpha token' }));
 
