@@ -85,7 +85,9 @@
   let copySuccess = false;
   let copyTimer = null;
   let actionNotice = '';
+  let actionError = '';
   let noticeTimer = null;
+  let errorNoticeTimer = null;
   let toolLoading = null;
   let settingsOpen = false;
   let activeSettingsView = 'basic';
@@ -341,6 +343,7 @@
 
     if (copyTimer) clearTimeout(copyTimer);
     if (noticeTimer) clearTimeout(noticeTimer);
+    if (errorNoticeTimer) clearTimeout(errorNoticeTimer);
     if (recordingHotkeyTimeout) clearTimeout(recordingHotkeyTimeout);
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('keydown', handleDocumentKeyDown);
@@ -748,10 +751,20 @@
 
   function showActionNotice(message) {
     actionNotice = message;
+    actionError = '';
     if (noticeTimer) clearTimeout(noticeTimer);
     noticeTimer = setTimeout(() => {
       actionNotice = '';
     }, 2200);
+  }
+
+  function showActionError(message) {
+    actionError = message;
+    actionNotice = '';
+    if (errorNoticeTimer) clearTimeout(errorNoticeTimer);
+    errorNoticeTimer = setTimeout(() => {
+      actionError = '';
+    }, 3200);
   }
 
   // 快捷键录制相关
@@ -903,7 +916,7 @@
 
   async function saveContentEdit(itemId) {
     if (!editContent.trim()) {
-      showActionNotice('原文不能为空');
+      showActionError('原文不能为空');
       return;
     }
 
@@ -923,7 +936,7 @@
       showActionNotice('原文已更新');
     } catch (e) {
       console.error('保存原文失败:', e);
-      showActionNotice('保存原文失败: ' + e);
+      showActionError('保存原文失败: ' + e);
     }
   }
 
@@ -941,7 +954,7 @@
       showActionNotice(savedAnnotation ? '标注已保存' : '标注已清除');
     } catch (e) {
       console.error('保存标注失败:', e);
-      showActionNotice('保存标注失败: ' + e);
+      showActionError('保存标注失败: ' + e);
     }
   }
 
@@ -1354,7 +1367,7 @@
       {/if}
     </div>
 
-    {#if copySuccess || actionNotice}
+    {#if copySuccess || actionNotice || actionError}
       <div class="toast-stack" data-testid="toast-stack" aria-live="polite">
         {#if copySuccess}
           <div class="toast success" role="status">
@@ -1367,6 +1380,13 @@
           <div class="toast success" role="status">
             <Check size={16} aria-hidden="true" />
             <span>{actionNotice}</span>
+          </div>
+        {/if}
+
+        {#if actionError}
+          <div class="toast error" role="alert">
+            <X size={16} aria-hidden="true" />
+            <span>{actionError}</span>
           </div>
         {/if}
       </div>
@@ -2246,6 +2266,12 @@
     color: #166534;
     background: #f0fdf4;
     border: 1px solid #bbf7d0;
+  }
+
+  .toast.error {
+    color: #9f1239;
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
   }
 
   .settings-backdrop {
@@ -3864,6 +3890,12 @@
     color: var(--success);
     background: #f0faf4;
     border-color: #b8e5c9;
+  }
+
+  .toast.error {
+    color: var(--danger);
+    background: #fff4f5;
+    border-color: #f2bdc5;
   }
 
   .history-panel {

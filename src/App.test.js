@@ -589,6 +589,46 @@ describe('App UI', () => {
     expect(screen.getByText('来自右键菜单')).toBeInTheDocument();
   });
 
+  it('shows an error toast when content edit fails', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+    api.updateItemContent.mockRejectedValueOnce('当日已存在相同内容');
+
+    render(App);
+
+    const content = await screen.findByText('Alpha token');
+    await fireEvent.contextMenu(content, { clientX: 120, clientY: 160 });
+    await fireEvent.click(screen.getByRole('menuitem', { name: '编辑原文' }));
+
+    const contentInput = screen.getByLabelText('编辑 Alpha token 的原文');
+    await fireEvent.input(contentInput, { target: { value: 'Beta token' } });
+    await fireEvent.click(screen.getByRole('button', { name: '保存原文' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('保存原文失败: 当日已存在相同内容');
+    expect(alert).toHaveClass('error');
+    expect(screen.getByRole('button', { name: '保存原文' })).toBeInTheDocument();
+    expect(screen.queryByText('原文已更新')).not.toBeInTheDocument();
+  });
+
+  it('shows an error toast when annotation save fails', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+    api.updateItemAnnotation.mockRejectedValueOnce('权限不足');
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '标注 Alpha token' }));
+    const annotationInput = screen.getByLabelText('编辑 Alpha token 的标注');
+    await fireEvent.input(annotationInput, { target: { value: '来自右键菜单' } });
+    await fireEvent.click(screen.getByRole('button', { name: '保存标注' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('保存标注失败: 权限不足');
+    expect(alert).toHaveClass('error');
+    expect(screen.queryByText('来自右键菜单')).not.toBeInTheDocument();
+  });
+
   it('removes edited content from active search results when it no longer matches', async () => {
     api.searchItems.mockResolvedValue([textItem()]);
 
