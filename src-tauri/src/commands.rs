@@ -219,7 +219,7 @@ pub async fn delete_item(
     db.delete_item(&item_id).map_err(|e| e.to_string())?;
 
     if let Some(item) = item {
-        cleanup_item_files(&app, &item)?;
+        cleanup_item_files_best_effort(&app, &item);
     }
 
     Ok(())
@@ -267,7 +267,7 @@ pub async fn clear_session(
     db.clear_session(&session_id).map_err(|e| e.to_string())?;
 
     for item in &items {
-        cleanup_item_files(&app, item)?;
+        cleanup_item_files_best_effort(&app, item);
     }
 
     Ok(())
@@ -537,10 +537,16 @@ fn run_cleanup(
     db.delete_items(&item_ids).map_err(|e| e.to_string())?;
 
     for item in &items {
-        cleanup_item_files(app, item)?;
+        cleanup_item_files_best_effort(app, item);
     }
 
     Ok(plan)
+}
+
+fn cleanup_item_files_best_effort(app: &AppHandle, item: &ClipboardItem) {
+    if let Err(error) = cleanup_item_files(app, item) {
+        eprintln!("清理记录文件失败（{}）: {}", item.id, error);
+    }
 }
 
 fn remove_app_data_file(app: &AppHandle, relative_path: &str) -> Result<(), String> {
