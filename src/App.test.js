@@ -995,6 +995,22 @@ describe('App UI', () => {
     expect(document.querySelector('.notice.error')).toBeNull();
   });
 
+  it('keeps the hotkey settings open when the screenshot shortcut is rejected', async () => {
+    api.saveSettings.mockRejectedValueOnce('截图快捷键格式无效，请重新录制快捷键');
+
+    render(App);
+
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '快捷键' }));
+    await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('保存设置失败: 截图快捷键格式无效，请重新录制快捷键');
+    expect(screen.getByRole('heading', { name: '快捷键设置' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
+  });
+
   it('previews and runs custom cleanup from the settings panel', async () => {
     api.previewCustomCleanup.mockResolvedValue({
       item_count: 3,

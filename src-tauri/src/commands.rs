@@ -80,10 +80,7 @@ pub async fn save_settings(
             .map_err(|e| e.to_string())?;
     }
 
-    // 重新注册快捷键
-    if let Err(e) = crate::hotkey::HotkeyManager::re_register(&app) {
-        eprintln!("重新注册快捷键失败: {}", e);
-    }
+    crate::hotkey::HotkeyManager::re_register(&app)?;
 
     if result.auto_cleanup_enabled {
         cleanup_by_settings(&app, &db, &result)?;

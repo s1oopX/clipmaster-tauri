@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
-use crate::settings::SettingsStore;
+use crate::settings::{validate_screenshot_hotkey, SettingsStore};
 
 pub struct HotkeyManager;
 
@@ -13,14 +13,17 @@ impl HotkeyManager {
 
         // 注册截图快捷键
         if !settings.screenshot_hotkey.is_empty() {
-            if let Ok(shortcut) = settings.screenshot_hotkey.parse::<Shortcut>() {
-                let app_handle = app.clone();
-                app.global_shortcut()
-                    .on_shortcut(shortcut, move |_app, _shortcut, _event| {
-                        let _ = app_handle.emit("hotkey:screenshot", ());
-                    })
-                    .map_err(|e| format!("注册截图快捷键失败: {}", e))?;
-            }
+            validate_screenshot_hotkey(&settings.screenshot_hotkey)?;
+            let shortcut = settings
+                .screenshot_hotkey
+                .parse::<Shortcut>()
+                .map_err(|_| "截图快捷键格式无效，请重新录制快捷键".to_string())?;
+            let app_handle = app.clone();
+            app.global_shortcut()
+                .on_shortcut(shortcut, move |_app, _shortcut, _event| {
+                    let _ = app_handle.emit("hotkey:screenshot", ());
+                })
+                .map_err(|e| format!("注册截图快捷键失败: {}", e))?;
         }
 
         Ok(())
