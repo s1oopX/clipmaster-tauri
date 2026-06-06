@@ -31,7 +31,15 @@ impl ClipboardService {
         let last_sequence = Arc::clone(&self.last_sequence);
 
         tauri::async_runtime::spawn(async move {
-            let mut clipboard = Clipboard::new().expect("Failed to initialize clipboard");
+            let mut clipboard = loop {
+                match Clipboard::new() {
+                    Ok(clipboard) => break clipboard,
+                    Err(error) => {
+                        eprintln!("初始化剪贴板失败，将在 500ms 后重试: {}", error);
+                        sleep(Duration::from_millis(500)).await;
+                    }
+                }
+            };
 
             loop {
                 let settings = app_handle.state::<SettingsStore>();
