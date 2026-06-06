@@ -324,8 +324,13 @@ pub async fn get_sessions(
 pub async fn clear_session(
     app: AppHandle,
     db: State<'_, Database>,
+    session_mgr: State<'_, SessionManager>,
     session_id: String,
 ) -> Result<(), String> {
+    if session_mgr.get_current_session_id().as_deref() == Some(session_id.as_str()) {
+        return Err("不能清空当前活动会话".to_string());
+    }
+
     let items = db
         .get_items_by_session(&session_id, i32::MAX, 0)
         .map_err(|e| e.to_string())?;
