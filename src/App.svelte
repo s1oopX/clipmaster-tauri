@@ -58,6 +58,14 @@
     { value: 'en-US', label: 'English' },
   ];
 
+  const settingsViews = [
+    { id: 'basic', label: '基础' },
+    { id: 'locale', label: '日期语言' },
+    { id: 'cleanup', label: '清理' },
+    { id: 'hotkey', label: '快捷键' },
+    { id: 'about', label: '关于' },
+  ];
+
   const appVersion = '0.1.0';
 
   let items = [];
@@ -76,6 +84,7 @@
   let noticeTimer = null;
   let toolLoading = null;
   let settingsOpen = false;
+  let activeSettingsView = 'basic';
   let settingsSaving = false;
   let cleanupLoading = false;
   let cleanupPlan = null;
@@ -539,6 +548,7 @@
   function openSettings() {
     settingsDraft = { ...appSettings };
     cleanupPlan = null;
+    activeSettingsView = 'basic';
     settingsOpen = true;
   }
 
@@ -1320,196 +1330,253 @@
         </button>
       </header>
 
-      <div class="settings-content">
-        <section class="settings-section" aria-labelledby="settings-basic-title">
-          <div class="settings-section-title">
-            <h3 id="settings-basic-title">基础设置</h3>
-            <p>控制启动、监听和历史容量。</p>
-          </div>
-
-          <label class="switch-row">
-            <input
-              type="checkbox"
-              checked={settingsDraft.clipboard_monitor_enabled}
-              on:change={(event) =>
-                updateSettingsDraft('clipboard_monitor_enabled', event.currentTarget.checked)}
-            />
-            <span>监听剪贴板</span>
-          </label>
-
-          <label class="switch-row">
-            <input
-              type="checkbox"
-              checked={settingsDraft.show_main_window_on_start}
-              on:change={(event) =>
-                updateSettingsDraft('show_main_window_on_start', event.currentTarget.checked)}
-            />
-            <span>启动时显示主窗口</span>
-          </label>
-
-          <label class="field-row">
-            <span>保留记录数</span>
-            <input
-              type="number"
-              min="10"
-              max="500"
-              value={settingsDraft.max_items}
-              on:input={(event) => updateSettingsDraft('max_items', Number(event.currentTarget.value))}
-            />
-          </label>
-
-          <label class="field-row">
-            <span>截图延迟</span>
-            <input
-              type="number"
-              min="0"
-              max="3000"
-              step="50"
-              value={settingsDraft.capture_delay_ms}
-              on:input={(event) =>
-                updateSettingsDraft('capture_delay_ms', Number(event.currentTarget.value))}
-            />
-          </label>
-        </section>
-
-        <section class="settings-section" aria-labelledby="settings-locale-title">
-          <div class="settings-section-title">
-            <h3 id="settings-locale-title">界面与日期</h3>
-            <p>选择语言，以及记录按哪座城市的自然日归档。</p>
-          </div>
-
-          <label class="field-row">
-            <span>日期划分时区</span>
-            <select
-              value={settingsDraft.time_zone}
-              on:change={(event) => updateSettingsDraft('time_zone', event.currentTarget.value)}
+      <div class="settings-workspace">
+        <div class="settings-nav" aria-label="设置分类" role="tablist">
+          {#each settingsViews as view}
+            <button
+              type="button"
+              role="tab"
+              id={`settings-tab-${view.id}`}
+              class:active={activeSettingsView === view.id}
+              aria-selected={activeSettingsView === view.id}
+              aria-controls={`settings-view-${view.id}`}
+              on:click={() => (activeSettingsView = view.id)}
             >
-              {#each timeZoneOptions as option}
-                <option value={option.value}>{option.label}</option>
-              {/each}
-            </select>
-          </label>
+              {#if view.id === 'basic'}
+                <Settings class="settings-tab-icon" size={15} aria-hidden="true" />
+              {:else if view.id === 'locale'}
+                <CalendarDays class="settings-tab-icon" size={15} aria-hidden="true" />
+              {:else if view.id === 'cleanup'}
+                <Trash2 class="settings-tab-icon" size={15} aria-hidden="true" />
+              {:else if view.id === 'hotkey'}
+                <Camera class="settings-tab-icon" size={15} aria-hidden="true" />
+              {:else}
+                <Clipboard class="settings-tab-icon" size={15} aria-hidden="true" />
+              {/if}
+              <span>{view.label}</span>
+            </button>
+          {/each}
+        </div>
 
-          <label class="field-row">
-            <span>应用语言</span>
-            <select
-              value={settingsDraft.language}
-              on:change={(event) => updateSettingsDraft('language', event.currentTarget.value)}
+        <div class="settings-content">
+          {#if activeSettingsView === 'basic'}
+            <div
+              class="settings-section settings-view"
+              id="settings-view-basic"
+              role="tabpanel"
+              aria-labelledby="settings-tab-basic"
             >
-              {#each languageOptions as option}
-                <option value={option.value}>{option.label}</option>
-              {/each}
-            </select>
-          </label>
-        </section>
+              <div class="settings-section-title">
+                <h3>基础设置</h3>
+                <p>启动 / 监听 / 容量</p>
+              </div>
 
-        <section class="settings-section" aria-labelledby="settings-cleanup-title">
-          <div class="settings-section-title">
-            <h3 id="settings-cleanup-title">自定义清理</h3>
-            <p>只清理普通记录，保留置顶、收藏和重要标注。</p>
-          </div>
+              <label class="switch-row">
+                <input
+                  type="checkbox"
+                  checked={settingsDraft.clipboard_monitor_enabled}
+                  on:change={(event) =>
+                    updateSettingsDraft('clipboard_monitor_enabled', event.currentTarget.checked)}
+                />
+                <span>监听剪贴板</span>
+              </label>
 
-          <label class="switch-row">
-            <input
-              type="checkbox"
-              checked={settingsDraft.auto_cleanup_enabled}
-              on:change={(event) =>
-                updateSettingsDraft('auto_cleanup_enabled', event.currentTarget.checked)}
-            />
-            <span>保存设置后自动清理</span>
-          </label>
+              <label class="switch-row">
+                <input
+                  type="checkbox"
+                  checked={settingsDraft.show_main_window_on_start}
+                  on:change={(event) =>
+                    updateSettingsDraft('show_main_window_on_start', event.currentTarget.checked)}
+                />
+                <span>启动时显示主窗口</span>
+              </label>
 
-          <label class="field-row">
-            <span>普通记录最多保留</span>
-            <input
-              type="number"
-              min="10"
-              max="5000"
-              value={settingsDraft.cleanup_max_items}
-              on:input={(event) =>
-                updateSettingsDraft('cleanup_max_items', Number(event.currentTarget.value))}
-            />
-          </label>
+              <label class="field-row">
+                <span>保留记录数</span>
+                <input
+                  type="number"
+                  min="10"
+                  max="500"
+                  value={settingsDraft.max_items}
+                  on:input={(event) =>
+                    updateSettingsDraft('max_items', Number(event.currentTarget.value))}
+                />
+              </label>
 
-          <label class="field-row">
-            <span>普通记录保留天数</span>
-            <input
-              type="number"
-              min="1"
-              max="3650"
-              value={settingsDraft.cleanup_keep_days}
-              on:input={(event) =>
-                updateSettingsDraft('cleanup_keep_days', Number(event.currentTarget.value))}
-            />
-          </label>
+              <label class="field-row">
+                <span>截图延迟</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="3000"
+                  step="50"
+                  value={settingsDraft.capture_delay_ms}
+                  on:input={(event) =>
+                    updateSettingsDraft('capture_delay_ms', Number(event.currentTarget.value))}
+                />
+              </label>
+            </div>
+          {:else if activeSettingsView === 'locale'}
+            <div
+              class="settings-section settings-view"
+              id="settings-view-locale"
+              role="tabpanel"
+              aria-labelledby="settings-tab-locale"
+            >
+              <div class="settings-section-title">
+                <h3>界面与日期</h3>
+                <p>语言 / 自然日</p>
+              </div>
 
-          <p class="cleanup-hint">清理仅影响未置顶、未收藏的普通记录；图片文件会同步删除。</p>
+              <label class="field-row">
+                <span>日期划分时区</span>
+                <select
+                  value={settingsDraft.time_zone}
+                  on:change={(event) => updateSettingsDraft('time_zone', event.currentTarget.value)}
+                >
+                  {#each timeZoneOptions as option}
+                    <option value={option.value}>{option.label}</option>
+                  {/each}
+                </select>
+              </label>
 
-          {#if cleanupPlan}
-            <p class="cleanup-plan" role="status">
-              将清理 {cleanupPlan.item_count} 条记录（文本 {cleanupPlan.text_count}，图片 {cleanupPlan.image_count}）
-            </p>
+              <label class="field-row">
+                <span>应用语言</span>
+                <select
+                  value={settingsDraft.language}
+                  on:change={(event) => updateSettingsDraft('language', event.currentTarget.value)}
+                >
+                  {#each languageOptions as option}
+                    <option value={option.value}>{option.label}</option>
+                  {/each}
+                </select>
+              </label>
+            </div>
+          {:else if activeSettingsView === 'cleanup'}
+            <div
+              class="settings-section settings-view"
+              id="settings-view-cleanup"
+              role="tabpanel"
+              aria-labelledby="settings-tab-cleanup"
+            >
+              <div class="settings-section-title">
+                <h3>自定义清理</h3>
+                <p>规则 / 预览 / 执行</p>
+              </div>
+
+              <label class="switch-row">
+                <input
+                  type="checkbox"
+                  checked={settingsDraft.auto_cleanup_enabled}
+                  on:change={(event) =>
+                    updateSettingsDraft('auto_cleanup_enabled', event.currentTarget.checked)}
+                />
+                <span>保存设置后自动清理</span>
+              </label>
+
+              <label class="field-row">
+                <span>普通记录最多保留</span>
+                <input
+                  type="number"
+                  min="10"
+                  max="5000"
+                  value={settingsDraft.cleanup_max_items}
+                  on:input={(event) =>
+                    updateSettingsDraft('cleanup_max_items', Number(event.currentTarget.value))}
+                />
+              </label>
+
+              <label class="field-row">
+                <span>普通记录保留天数</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="3650"
+                  value={settingsDraft.cleanup_keep_days}
+                  on:input={(event) =>
+                    updateSettingsDraft('cleanup_keep_days', Number(event.currentTarget.value))}
+                />
+              </label>
+
+              <p class="cleanup-hint">清理仅影响未置顶、未收藏的普通记录；图片文件会同步删除。</p>
+
+              {#if cleanupPlan}
+                <p class="cleanup-plan" role="status">
+                  将清理 {cleanupPlan.item_count} 条记录（文本 {cleanupPlan.text_count}，图片 {cleanupPlan.image_count}）
+                </p>
+              {/if}
+
+              <div class="cleanup-actions">
+                <button type="button" class="ghost-button" on:click={previewCleanup} disabled={cleanupLoading}>
+                  {cleanupLoading ? '计算中' : '预览清理'}
+                </button>
+                <button type="button" class="ghost-button" on:click={runCleanupNow} disabled={cleanupLoading}>
+                  {cleanupLoading ? '清理中' : '立即清理'}
+                </button>
+              </div>
+            </div>
+          {:else if activeSettingsView === 'hotkey'}
+            <div
+              class="settings-section settings-view"
+              id="settings-view-hotkey"
+              role="tabpanel"
+              aria-labelledby="settings-tab-hotkey"
+            >
+              <div class="settings-section-title">
+                <h3>快捷键设置</h3>
+                <p>截图入口</p>
+              </div>
+
+              <label class="field-row">
+                <span>截图</span>
+                <input
+                  type="text"
+                  readonly
+                  placeholder="点击后按下组合键"
+                  value={settingsDraft.screenshot_hotkey}
+                  on:focus={startRecordingHotkey}
+                  on:blur={stopRecordingHotkey}
+                  on:keydown={handleHotkeyKeyDown}
+                  class:recording={isRecordingHotkey}
+                />
+              </label>
+              <p class="hotkey-hint">
+                {#if isRecordingHotkey}
+                  正在录制，请按下组合键（如 Ctrl+Shift+A）
+                {:else}
+                  点击输入框后按下组合键自动录制，例如 Ctrl+Shift+A
+                {/if}
+              </p>
+            </div>
+          {:else}
+            <div
+              class="settings-section settings-view about-section"
+              id="settings-view-about"
+              role="tabpanel"
+              aria-labelledby="settings-tab-about"
+            >
+              <div class="settings-section-title">
+                <h3>关于我</h3>
+                <p>我是 ClipMaster，帮你把复制、截图、标注和贴图留在本机，按日期整理，随用随取。</p>
+              </div>
+
+              <dl class="about-list">
+                <div>
+                  <dt>版本</dt>
+                  <dd>{appVersion}</dd>
+                </div>
+                <div>
+                  <dt>数据</dt>
+                  <dd>本地保存</dd>
+                </div>
+                <div>
+                  <dt>日期规则</dt>
+                  <dd>{optionLabel(timeZoneOptions, settingsDraft.time_zone)}</dd>
+                </div>
+              </dl>
+            </div>
           {/if}
-
-          <div class="cleanup-actions">
-            <button type="button" class="ghost-button" on:click={previewCleanup} disabled={cleanupLoading}>
-              {cleanupLoading ? '计算中' : '预览清理'}
-            </button>
-            <button type="button" class="ghost-button" on:click={runCleanupNow} disabled={cleanupLoading}>
-              {cleanupLoading ? '清理中' : '立即清理'}
-            </button>
-          </div>
-        </section>
-
-        <section class="settings-section" aria-labelledby="settings-hotkey-title">
-          <div class="settings-section-title">
-            <h3 id="settings-hotkey-title">快捷键设置</h3>
-            <p>记录当前截图入口，便于统一修改。</p>
-          </div>
-
-          <label class="field-row">
-            <span>截图</span>
-            <input
-              type="text"
-              readonly
-              placeholder="点击后按下组合键"
-              value={settingsDraft.screenshot_hotkey}
-              on:focus={startRecordingHotkey}
-              on:blur={stopRecordingHotkey}
-              on:keydown={handleHotkeyKeyDown}
-              class:recording={isRecordingHotkey}
-            />
-          </label>
-          <p class="hotkey-hint">
-            {#if isRecordingHotkey}
-              正在录制，请按下组合键（如 Ctrl+Shift+A）
-            {:else}
-              点击输入框后按下组合键自动录制，例如 Ctrl+Shift+A
-            {/if}
-          </p>
-        </section>
-
-        <section class="settings-section about-section" aria-labelledby="settings-about-title">
-          <div class="settings-section-title">
-            <h3 id="settings-about-title">关于我</h3>
-            <p>我是 ClipMaster，帮你把复制、截图、标注和贴图留在本机，按日期整理，随用随取。</p>
-          </div>
-
-          <dl class="about-list">
-            <div>
-              <dt>版本</dt>
-              <dd>{appVersion}</dd>
-            </div>
-            <div>
-              <dt>数据</dt>
-              <dd>本地保存</dd>
-            </div>
-            <div>
-              <dt>日期规则</dt>
-              <dd>{optionLabel(timeZoneOptions, settingsDraft.time_zone)}</dd>
-            </div>
-          </dl>
-        </section>
+        </div>
       </div>
 
       <footer class="settings-footer">
@@ -2146,7 +2213,7 @@
     z-index: 21;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
-    width: min(360px, 92vw);
+    width: min(560px, 96vw);
     height: 100vh;
     color: #172033;
     background: #ffffff;
@@ -2181,12 +2248,60 @@
     cursor: pointer;
   }
 
+  .settings-workspace {
+    display: grid;
+    grid-template-columns: 136px minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .settings-nav {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-width: 0;
+    padding: 14px 10px;
+    overflow: auto;
+    background: #f8fafc;
+    border-right: 1px solid #edf1f6;
+  }
+
+  .settings-nav button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 36px;
+    padding: 0 10px;
+    color: #64748b;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.84rem;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .settings-nav button:hover {
+    color: #172033;
+    background: #ffffff;
+    border-color: #e2e8f0;
+  }
+
+  .settings-nav button.active {
+    color: #0f766e;
+    background: #ffffff;
+    border-color: #cbdadd;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  }
+
   .settings-content {
     display: grid;
     align-content: start;
     gap: 16px;
     min-height: 0;
-    padding: 14px;
+    padding: 16px;
     overflow: auto;
   }
 
@@ -2228,12 +2343,8 @@
 
   .settings-section {
     display: grid;
-    gap: 12px;
-    padding-top: 14px;
-    border-top: 1px solid #edf1f6;
-  }
-
-  .settings-section:first-child {
+    align-content: start;
+    gap: 14px;
     padding-top: 0;
     border-top: 0;
   }
@@ -2328,6 +2439,33 @@
     justify-content: flex-end;
     border-top: 1px solid #edf1f6;
     border-bottom: 0;
+  }
+
+  @media (max-width: 560px) {
+    .settings-panel {
+      width: min(420px, 96vw);
+    }
+
+    .settings-workspace {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .settings-nav {
+      display: flex;
+      gap: 6px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      background: #f8fafc;
+      border-right: 0;
+      border-bottom: 1px solid #edf1f6;
+    }
+
+    .settings-nav button {
+      width: auto;
+      flex: 0 0 auto;
+      padding: 0 10px;
+    }
   }
 
   .ghost-button,
@@ -3813,7 +3951,7 @@
 
   .settings-panel {
     z-index: 21;
-    width: min(374px, 94vw);
+    width: min(560px, 96vw);
     color: var(--ink);
     background:
       linear-gradient(180deg, #fbfcfc, #f3f7f7),
@@ -3846,9 +3984,42 @@
     border-color: var(--accent-line);
   }
 
+  .settings-workspace {
+    background: rgba(255, 255, 255, 0.46);
+  }
+
+  .settings-nav {
+    background:
+      linear-gradient(180deg, rgba(245, 249, 249, 0.96), rgba(238, 245, 245, 0.9)),
+      #f5f8f8;
+    border-right-color: var(--line-soft);
+    scrollbar-width: thin;
+  }
+
+  .settings-nav button {
+    color: var(--muted);
+    border-radius: 9px;
+    font-weight: 680;
+  }
+
+  .settings-nav button:hover {
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.82);
+    border-color: #d6e2e4;
+  }
+
+  .settings-nav button.active {
+    color: var(--accent-strong);
+    background: #ffffff;
+    border-color: var(--accent-line);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 10px 22px rgba(25, 44, 49, 0.1);
+  }
+
   .settings-content {
     gap: 16px;
-    padding: 14px;
+    padding: 16px;
     scrollbar-width: thin;
   }
 
@@ -3890,14 +4061,7 @@
   }
 
   .settings-section {
-    gap: 10px;
-    padding-top: 14px;
-    border-top-color: var(--line-soft);
-  }
-
-  .settings-section:first-child {
-    padding-top: 0;
-    border-top: 0;
+    gap: 12px;
   }
 
   .settings-section-title {

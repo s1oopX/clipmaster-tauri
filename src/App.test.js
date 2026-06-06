@@ -467,27 +467,33 @@ describe('App UI', () => {
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
 
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: '设置分类' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '基础' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: '基础设置' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '界面与日期' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '自定义清理' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '快捷键设置' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '关于我' })).toBeInTheDocument();
-    expect(screen.getByText(/我是 ClipMaster/)).toBeInTheDocument();
-    expect(screen.getByText('本地保存')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: '监听剪贴板' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: '启动时显示主窗口' })).toBeChecked();
-    expect(screen.getByLabelText('日期划分时区')).toHaveValue('Asia/Shanghai');
-    expect(screen.getByLabelText('应用语言')).toHaveValue('zh-CN');
 
     const maxItems = screen.getByLabelText('保留记录数');
     await fireEvent.input(maxItems, { target: { value: '120' } });
+    await fireEvent.click(screen.getByRole('checkbox', { name: '启动时显示主窗口' }));
+
+    await fireEvent.click(screen.getByRole('tab', { name: '日期语言' }));
+    expect(screen.getByRole('heading', { name: '界面与日期' })).toBeInTheDocument();
+    expect(screen.getByLabelText('日期划分时区')).toHaveValue('Asia/Shanghai');
+    expect(screen.getByLabelText('应用语言')).toHaveValue('zh-CN');
     await fireEvent.change(screen.getByLabelText('日期划分时区'), {
       target: { value: 'America/New_York' },
     });
     await fireEvent.change(screen.getByLabelText('应用语言'), {
       target: { value: 'en-US' },
     });
-    await fireEvent.click(screen.getByRole('checkbox', { name: '启动时显示主窗口' }));
+
+    await fireEvent.click(screen.getByRole('tab', { name: '关于' }));
+    expect(screen.getByRole('heading', { name: '关于我' })).toBeInTheDocument();
+    expect(screen.getByText(/我是 ClipMaster/)).toBeInTheDocument();
+    expect(screen.getByText('本地保存')).toBeInTheDocument();
+    expect(screen.getByText('纽约（自动夏令时）')).toBeInTheDocument();
+
     await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
 
     await waitFor(() => {
@@ -526,6 +532,7 @@ describe('App UI', () => {
 
     await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '清理' }));
 
     const maxItems = screen.getByLabelText('普通记录最多保留');
     const keepDays = screen.getByLabelText('普通记录保留天数');
