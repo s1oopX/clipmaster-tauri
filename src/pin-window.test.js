@@ -16,10 +16,18 @@ describe('Pinned image window', () => {
     expect(pinHtml).toContain('data-direction="SouthWest"');
     expect(pinHtml).toContain('data-direction="SouthEast"');
     expect(pinHtml).toContain('new LogicalSize(width, height)');
-    expect(pinHtml).toContain('new PhysicalSize(');
     expect(pinHtml).toContain('border-radius: 12px');
     expect(pinHtml).toContain('overflow: hidden');
     expect(pinHtml).toContain('runWindowAction');
+  });
+
+  it('zooms only the image content without resizing the pinned window', () => {
+    expect(pinHtml).toContain('transform: scale(var(--image-scale, 1))');
+    expect(pinHtml).toContain('function syncImageScale()');
+    expect(pinHtml).toContain("image.style.setProperty('--image-scale'");
+    expect(pinHtml).toContain('imageScale = Math.max(0.25, Math.min(imageScale * delta, 5))');
+    expect(pinHtml).not.toContain('PhysicalSize');
+    expect(pinHtml).not.toContain('currentWin.innerSize()');
   });
 
   it('grants the window APIs required by the pinned image interactions', () => {

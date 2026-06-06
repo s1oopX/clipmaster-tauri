@@ -37,6 +37,8 @@
         max-height: 100%;
         object-fit: contain;
         border-radius: inherit;
+        transform: scale(var(--image-scale, 1));
+        transform-origin: center;
         user-select: none;
         -webkit-user-drag: none;
         pointer-events: none;
@@ -135,7 +137,7 @@
     </div>
 
     <script type="module">
-      import { getCurrentWindow, LogicalSize, PhysicalSize } from '@tauri-apps/api/window';
+      import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
       import { convertFileSrc } from '@tauri-apps/api/core';
 
       const container = document.getElementById('container');
@@ -144,7 +146,7 @@
       const resizeHandles = document.querySelectorAll('.resize-handle');
       const currentWin = getCurrentWindow();
 
-      let scale = 1;
+      let imageScale = 1;
 
       async function runWindowAction(action, label) {
         try {
@@ -191,28 +193,18 @@
         image.alt = '图片加载失败';
       };
 
-      // Ctrl + 滚轮缩放
+      function syncImageScale() {
+        image.style.setProperty('--image-scale', imageScale.toFixed(3));
+      }
+
+      // Ctrl + 滚轮只缩放图片本身，窗口大小保持不变。
       container.addEventListener('wheel', async (e) => {
         if (e.ctrlKey) {
           e.preventDefault();
 
           const delta = e.deltaY < 0 ? 1.1 : 0.9;
-          scale *= delta;
-
-          // 限制缩放范围
-          scale = Math.max(0.1, Math.min(scale, 5));
-
-          const size = await currentWin.innerSize();
-          const newWidth = Math.floor(size.width * delta);
-          const newHeight = Math.floor(size.height * delta);
-
-          await runWindowAction(
-            () => currentWin.setSize(new PhysicalSize(
-              Math.max(50, Math.min(newWidth, 2000)),
-              Math.max(50, Math.min(newHeight, 2000))
-            )),
-            '缩放贴图'
-          );
+          imageScale = Math.max(0.25, Math.min(imageScale * delta, 5));
+          syncImageScale();
         }
       }, { passive: false });
 
