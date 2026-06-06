@@ -195,8 +195,8 @@
       disableMobile: true,
       locale: Mandarin,
       monthSelectorType: 'static',
-      nextArrow: '›',
-      prevArrow: '‹',
+      nextArrow: '<span class="date-nav-label">下月</span>',
+      prevArrow: '<span class="date-nav-label">上月</span>',
       shorthandCurrentMonth: false,
       onChange: (_selectedDates, dateStr) => {
         if (suppressChange) return;
@@ -210,6 +210,8 @@
     });
 
     picker.calendarContainer.classList.add('clipmaster-date-picker');
+    picker.prevMonthNav?.setAttribute('aria-label', '上个月');
+    picker.nextMonthNav?.setAttribute('aria-label', '下个月');
 
     function sync(nextParams) {
       availableDateKeys = new Set(nextParams.availableDays.map((day) => day.date_key));
@@ -3744,8 +3746,8 @@
     justify-content: center;
     gap: 6px;
     height: 34px;
-    left: 38px;
-    width: calc(100% - 76px);
+    left: 50px;
+    width: calc(100% - 100px);
     padding: 0;
     font-size: 0.92rem;
     font-weight: 760;
@@ -3773,13 +3775,24 @@
   :global(.clipmaster-date-picker .flatpickr-prev-month),
   :global(.clipmaster-date-picker .flatpickr-next-month) {
     display: grid;
-    width: 30px;
+    width: 42px;
     height: 30px;
     place-items: center;
     color: #51686c;
     border-radius: 9px;
     top: 10px;
     padding: 0;
+  }
+
+  :global(.clipmaster-date-picker .date-nav-label) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    font-size: 0.72rem;
+    font-weight: 760;
+    line-height: 1;
+    letter-spacing: 0;
   }
 
   :global(.clipmaster-date-picker .flatpickr-prev-month:hover),

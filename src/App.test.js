@@ -510,6 +510,23 @@ describe('App UI', () => {
     expect(document.body).toContainElement(screen.getByTestId('app-shell'));
   });
 
+  it('uses plain text month navigation in the date picker without special arrow glyphs', async () => {
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+
+    const picker = document.querySelector('.clipmaster-date-picker');
+    const previousMonth = picker?.querySelector('.flatpickr-prev-month');
+    const nextMonth = picker?.querySelector('.flatpickr-next-month');
+
+    expect(previousMonth).toHaveTextContent('上月');
+    expect(previousMonth).toHaveAttribute('aria-label', '上个月');
+    expect(previousMonth).not.toHaveTextContent('‹');
+    expect(nextMonth).toHaveTextContent('下月');
+    expect(nextMonth).toHaveAttribute('aria-label', '下个月');
+    expect(nextMonth).not.toHaveTextContent('›');
+  });
+
   it('starts region screenshot selection from the toolbar', async () => {
     render(App);
 
