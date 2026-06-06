@@ -309,6 +309,7 @@
       items = day
         ? await clipboardApi.getItemsByDay(day, itemLimit(), 0)
         : await clipboardApi.getItems(itemLimit(), 0);
+      error = null;
       pruneImageUrls(items);
       loading = false;
       void loadImageUrls();
@@ -379,6 +380,7 @@
       items = items.filter((item) => item.id !== itemId);
       pruneImageUrls(items);
       await loadAvailableDays();
+      error = null;
       showActionNotice('已删除记录');
     } catch (e) {
       console.error('删除失败:', e);
@@ -420,6 +422,7 @@
       items = items.map((item) =>
         item.id === itemId ? { ...item, is_favorite: isFavorite } : item
       );
+      error = null;
     } catch (e) {
       console.error('切换收藏失败:', e);
       error = '切换收藏失败: ' + e;
@@ -433,6 +436,7 @@
         item.id === itemId ? { ...item, is_pinned: isPinned } : item
       );
       sortItems();
+      error = null;
     } catch (e) {
       console.error('切换置顶失败:', e);
       error = '切换置顶失败: ' + e;
@@ -461,6 +465,7 @@
         sessionId,
         itemLimit()
       );
+      error = null;
       pruneImageUrls(items);
       isSearching = false;
       void loadImageUrls();
@@ -481,9 +486,11 @@
     try {
       if (item.type === 'text' && item.content) {
         await clipboardApi.copyToClipboard(item.content);
+        error = null;
         showCopyToast();
       } else if (item.type === 'image' && item.image_path) {
         await clipboardApi.copyImageToClipboard(item.image_path);
+        error = null;
         showCopyToast();
       } else if (item.type === 'image') {
         error = '图片路径不可用';

@@ -361,6 +361,25 @@ describe('App UI', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('截图失败: 权限不足');
   });
 
+  it('clears stale action errors after a successful search', async () => {
+    api.startRegionScreenshot.mockRejectedValueOnce('权限不足');
+
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+    await fireEvent.click(screen.getByRole('button', { name: '截图' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('截图失败: 权限不足');
+
+    const search = screen.getByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+
+    await waitFor(() => {
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
+
   it('explains duplicate screenshot selector windows without exposing internal labels', async () => {
     api.startRegionScreenshot.mockRejectedValueOnce(
       'a webview with label `screenshot-selector` already exists'
