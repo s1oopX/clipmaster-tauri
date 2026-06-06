@@ -49,45 +49,36 @@ impl ClipboardService {
                 }
 
                 let clipboard_sequence = clipboard_sequence_number();
-                let has_sequence = clipboard_sequence.is_some();
 
-                if let Some(sequence) = clipboard_sequence {
-                    let should_skip = {
-                        let mut last = last_sequence.lock();
-                        if *last == Some(sequence) {
-                            true
-                        } else {
-                            *last = Some(sequence);
-                            false
-                        }
-                    };
-
-                    if should_skip {
-                        sleep(Duration::from_millis(500)).await;
-                        continue;
-                    }
+                if Self::should_skip_sequence(&last_sequence, clipboard_sequence) {
+                    sleep(Duration::from_millis(500)).await;
+                    continue;
                 }
 
                 // 尝试读取剪贴板内容
                 if let Ok(content) = Self::get_clipboard_content(&mut clipboard) {
                     let hash = Self::calculate_hash(&content);
 
-                    let should_save = {
-                        let mut last = last_hash.lock();
-                        let hash_changed = hash != *last;
-                        if has_sequence || hash_changed {
-                            *last = hash.clone();
-                            true
-                        } else {
-                            false
-                        }
-                    }; // 锁在这里自动释放
+                    let hash_changed = {
+                        let last = last_hash.lock();
+                        hash.as_str() != last.as_str()
+                    };
+                    let should_save = clipboard_sequence.is_some() || hash_changed;
 
                     if should_save {
                         // 保存到数据库
-                        if let Err(e) = Self::save_clipboard_item(&app_handle, content, hash).await
-                        {
-                            eprintln!("Failed to save clipboard item: {}", e);
+                        match Self::save_clipboard_item(&app_handle, content, hash.clone()).await {
+                            Ok(()) => {
+                                Self::mark_clipboard_item_saved(
+                                    &last_hash,
+                                    &last_sequence,
+                                    &hash,
+                                    clipboard_sequence,
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to save clipboard item: {}", e);
+                            }
                         }
                     }
                 }
@@ -96,6 +87,27 @@ impl ClipboardService {
                 sleep(Duration::from_millis(500)).await;
             }
         });
+    }
+
+    fn should_skip_sequence(
+        last_sequence: &Arc<Mutex<Option<u32>>>,
+        clipboard_sequence: Option<u32>,
+    ) -> bool {
+        clipboard_sequence
+            .map(|sequence| *last_sequence.lock() == Some(sequence))
+            .unwrap_or(false)
+    }
+
+    fn mark_clipboard_item_saved(
+        last_hash: &Arc<Mutex<String>>,
+        last_sequence: &Arc<Mutex<Option<u32>>>,
+        hash: &str,
+        clipboard_sequence: Option<u32>,
+    ) {
+        *last_hash.lock() = hash.to_string();
+        if let Some(sequence) = clipboard_sequence {
+            *last_sequence.lock() = Some(sequence);
+        }
     }
 
     /// 获取剪贴板内容
