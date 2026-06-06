@@ -1220,7 +1220,6 @@
                       type="button"
                       on:click={() => copyItem(item)}
                       aria-label={`复制 ${itemLabel(item)}`}
-                      title="复制"
                     >
                       <Copy size={16} aria-hidden="true" />
                     </button>
@@ -1229,7 +1228,6 @@
                       class:active={item.is_pinned}
                       on:click={() => togglePinned(item.id)}
                       aria-label={`置顶 ${itemLabel(item)}`}
-                      title="置顶"
                     >
                       <Pin size={16} aria-hidden="true" />
                     </button>
@@ -1238,7 +1236,6 @@
                         type="button"
                         on:click={() => pinImageToDesktop(item)}
                         aria-label={`钉到桌面 ${itemLabel(item)}`}
-                        title="钉到桌面"
                       >
                         <Pin size={16} aria-hidden="true" />
                       </button>
@@ -1248,7 +1245,6 @@
                       class:active={annotationEditingId === item.id}
                       on:click={() => startAnnotationEdit(item)}
                       aria-label={`标注 ${itemLabel(item)}`}
-                      title="标注"
                     >
                       <FileText size={16} aria-hidden="true" />
                     </button>
@@ -1257,7 +1253,6 @@
                       class:active={item.is_favorite}
                       on:click={() => toggleFavorite(item.id)}
                       aria-label={`收藏 ${itemLabel(item)}`}
-                      title="收藏"
                     >
                       <Star size={16} aria-hidden="true" />
                     </button>
@@ -1265,7 +1260,6 @@
                       type="button"
                       on:click={() => requestDeleteItem(item)}
                       aria-label={`删除 ${itemLabel(item)}`}
-                      title="删除"
                     >
                       <Trash2 size={16} aria-hidden="true" />
                     </button>
@@ -1325,7 +1319,7 @@
                     <span>{item.image_path || '等待图片路径'}</span>
                   </div>
                   {#if thumbnailUrls[item.id]}
-                    <div class="image-preview" on:click={() => viewFullImage(item.id)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && viewFullImage(item.id)} title="点击查看原图">
+                    <div class="image-preview" on:click={() => viewFullImage(item.id)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && viewFullImage(item.id)}>
                       <img
                         src={thumbnailUrls[item.id]}
                         alt="剪贴板图片缩略图"
@@ -1806,7 +1800,7 @@
   {#if viewingImageId && imageUrls[viewingImageId]}
     <div class="image-viewer-overlay" on:click={closeImageViewer} role="button" tabindex="0" on:keydown={(e) => e.key === 'Escape' && closeImageViewer()}>
       <div class="image-viewer-content" on:click|stopPropagation role="presentation">
-        <button class="image-viewer-close" on:click={closeImageViewer} aria-label="关闭" title="关闭 (ESC)">
+        <button class="image-viewer-close" on:click={closeImageViewer} aria-label="关闭">
           <X size={24} aria-hidden="true" />
         </button>
         <img
