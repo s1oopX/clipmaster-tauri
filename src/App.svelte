@@ -1218,103 +1218,104 @@
       {/each}
     </nav>
 
-    <div class="session-card">
-      <span class="status-dot"></span>
-      <div>
-        <strong>当前范围</strong>
-        <span>{recordsScope} · {items.length} 条记录</span>
-      </div>
-    </div>
   </aside>
 
   <section class="workspace" aria-label="剪贴板历史">
     <header class="toolbar">
       <div class="toolbar-title">
-        <p class="eyebrow">Clipboard history</p>
-        <h2>剪贴板历史</h2>
-        <p class="toolbar-context">{recordsScope} · 当前视图 {filteredItems.length} 条</p>
+        <p class="eyebrow">History</p>
+        <div class="toolbar-heading">
+          <h2>剪贴板历史</h2>
+          <p class="toolbar-context" aria-label="当前范围">
+            <span class="status-dot"></span>
+            {recordsScope} · {filteredItems.length} 条
+          </p>
+        </div>
       </div>
 
       <div class="toolbar-tools">
-        <div class="quick-actions" aria-label="快速工具">
-          <button
-            type="button"
-            class="tool-button"
-            on:click={startScreenshot}
-            disabled={toolLoading === 'screenshot'}
-          >
-            {#if toolLoading === 'screenshot'}
-              <LoaderCircle size={15} aria-hidden="true" />
-            {:else}
-              <Camera size={15} aria-hidden="true" />
-            {/if}
-            <span>截图</span>
-          </button>
-
-          <button
-            type="button"
-            class="tool-button"
-            on:click={pinNewestImage}
-            disabled={toolLoading === 'pin'}
-          >
-            <Pin size={15} aria-hidden="true" />
-            <span>钉住</span>
-          </button>
-
-          <button type="button" class="icon-tool" on:click={openSettings} aria-label="设置">
-            <Settings size={17} aria-hidden="true" />
-          </button>
-        </div>
-
-        <div class="day-field calendar-field">
-          <label for="day-picker">日期</label>
-          <CalendarDays size={15} aria-hidden="true" />
-          <input
-            id="day-picker"
-            type="text"
-            value={selectedDay}
-            placeholder="选择日期"
-            readonly
-            use:datePicker={{ selectedDay, availableDays }}
-            aria-label="按日期精确选择剪贴板记录"
-          />
-          {#if selectedDay}
-            <button type="button" class="clear-date" on:click={clearDayFilter} aria-label="清除日期筛选">
-              <X size={14} aria-hidden="true" />
+        <div class="toolbar-primary">
+          <div class="quick-actions" aria-label="快速工具">
+            <button
+              type="button"
+              class="tool-button"
+              on:click={startScreenshot}
+              disabled={toolLoading === 'screenshot'}
+            >
+              {#if toolLoading === 'screenshot'}
+                <LoaderCircle size={15} aria-hidden="true" />
+              {:else}
+                <Camera size={15} aria-hidden="true" />
+              {/if}
+              <span>截图</span>
             </button>
-          {/if}
-        </div>
 
-        {#if availableDays.length > 0}
-          <div class="date-shortcuts" aria-label="有记录的日期快捷选择">
-            {#each availableDays.slice(0, 4) as day}
-              <button
-                type="button"
-                class:active={selectedDay === day.date_key}
-                on:click={() => selectDay(day.date_key)}
-              >
-                {day.date_key.slice(5)} · {day.item_count}
-              </button>
-            {/each}
+            <button
+              type="button"
+              class="tool-button"
+              on:click={pinNewestImage}
+              disabled={toolLoading === 'pin'}
+            >
+              <Pin size={15} aria-hidden="true" />
+              <span>钉住</span>
+            </button>
+
+            <button type="button" class="icon-tool" on:click={openSettings} aria-label="设置">
+              <Settings size={17} aria-hidden="true" />
+            </button>
           </div>
-        {/if}
+        </div>
 
-        <label class="search-field">
-          <Search size={17} aria-hidden="true" />
-          <span class="sr-only">搜索剪贴板内容</span>
-          <input
-            type="search"
-            aria-label="搜索剪贴板内容"
-            placeholder="搜索文本、代码片段或图片记录"
-            bind:value={searchQuery}
-            on:input={handleSearch}
-          />
-          {#if searchQuery}
-            <button type="button" class="clear-search" on:click={clearSearch} aria-label="清除搜索">
-              <X size={15} aria-hidden="true" />
-            </button>
+        <div class="toolbar-secondary">
+          <div class="day-field calendar-field">
+            <CalendarDays size={15} aria-hidden="true" />
+            <input
+              id="day-picker"
+              type="text"
+              value={selectedDay}
+              placeholder="全部日期"
+              readonly
+              use:datePicker={{ selectedDay, availableDays }}
+              aria-label="按日期精确选择剪贴板记录"
+            />
+            {#if selectedDay}
+              <button type="button" class="clear-date" on:click={clearDayFilter} aria-label="清除日期筛选">
+                <X size={14} aria-hidden="true" />
+              </button>
+            {/if}
+          </div>
+
+          {#if availableDays.length > 0}
+            <div class="date-shortcuts" aria-label="有记录的日期快捷选择">
+              {#each availableDays.slice(0, 4) as day}
+                <button
+                  type="button"
+                  class:active={selectedDay === day.date_key}
+                  on:click={() => selectDay(day.date_key)}
+                >
+                  {day.date_key.slice(5)} · {day.item_count}
+                </button>
+              {/each}
+            </div>
           {/if}
-        </label>
+
+          <label class="search-field">
+            <Search size={17} aria-hidden="true" />
+            <span class="sr-only">搜索剪贴板内容</span>
+            <input
+              type="search"
+              aria-label="搜索剪贴板内容"
+              placeholder="搜索内容"
+              bind:value={searchQuery}
+              on:input={handleSearch}
+            />
+            {#if searchQuery}
+              <button type="button" class="clear-search" on:click={clearSearch} aria-label="清除搜索">
+                <X size={15} aria-hidden="true" />
+              </button>
+            {/if}
+          </label>
+        </div>
       </div>
     </header>
 
@@ -1388,6 +1389,7 @@
                   <div class="item-actions">
                     <button
                       type="button"
+                      class="item-action primary-action"
                       on:click={() => copyItem(item)}
                       aria-label={`复制 ${itemLabel(item)}`}
                     >
@@ -1395,6 +1397,7 @@
                     </button>
                     <button
                       type="button"
+                      class="item-action secondary-action"
                       class:active={item.is_pinned}
                       on:click={() => togglePinned(item.id)}
                       aria-label={`置顶 ${itemLabel(item)}`}
@@ -1404,6 +1407,7 @@
                     {#if item.type === 'image' && item.image_path}
                       <button
                         type="button"
+                        class="item-action secondary-action"
                         on:click={() => pinImageToDesktop(item)}
                         aria-label={`钉到桌面 ${itemLabel(item)}`}
                       >
@@ -1412,6 +1416,7 @@
                     {/if}
                     <button
                       type="button"
+                      class="item-action secondary-action"
                       class:active={annotationEditingId === item.id}
                       on:click={() => startAnnotationEdit(item)}
                       aria-label={`标注 ${itemLabel(item)}`}
@@ -1420,6 +1425,7 @@
                     </button>
                     <button
                       type="button"
+                      class="item-action primary-action"
                       class:active={item.is_favorite}
                       on:click={() => toggleFavorite(item.id)}
                       aria-label={`收藏 ${itemLabel(item)}`}
@@ -1428,6 +1434,7 @@
                     </button>
                     <button
                       type="button"
+                      class="item-action secondary-action danger-action"
                       on:click={() => requestDeleteItem(item)}
                       aria-label={`删除 ${itemLabel(item)}`}
                     >
@@ -2256,33 +2263,6 @@
     border-color: #334155;
   }
 
-  .session-card {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: auto;
-    padding: 10px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-  }
-
-  .session-card strong,
-  .session-card span {
-    display: block;
-  }
-
-  .session-card strong {
-    color: #ffffff;
-    font-size: 0.84rem;
-  }
-
-  .session-card span {
-    margin-top: 2px;
-    color: #94a3b8;
-    font-size: 0.74rem;
-  }
-
   .status-dot {
     width: 8px;
     height: 8px;
@@ -2304,15 +2284,32 @@
 
   .toolbar {
     display: grid;
-    grid-template-columns: minmax(130px, 0.58fr) minmax(250px, 1fr);
-    align-items: end;
-    gap: 12px;
+    grid-template-columns: minmax(150px, 0.42fr) minmax(320px, 1fr);
+    align-items: start;
+    gap: 10px;
+  }
+
+  .toolbar-heading {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    margin-top: 1px;
   }
 
   .toolbar-tools {
     display: grid;
     min-width: 0;
-    gap: 8px;
+    gap: 7px;
+  }
+
+  .toolbar-primary,
+  .toolbar-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
   }
 
   .quick-actions {
@@ -2385,17 +2382,14 @@
     gap: 8px;
     min-height: 34px;
     padding: 0 10px;
+    width: 132px;
+    flex: 0 0 auto;
     color: #475569;
     background: #ffffff;
     border: 1px solid #d9e0ea;
     border-radius: 8px;
     font-size: 0.82rem;
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  }
-
-  .day-field label {
-    flex: 0 0 auto;
-    font-weight: 700;
   }
 
   .day-field input {
@@ -2424,6 +2418,7 @@
     display: flex;
     gap: 6px;
     min-width: 0;
+    flex: 1 1 auto;
     overflow-x: auto;
     padding-bottom: 1px;
   }
@@ -2453,6 +2448,8 @@
     align-items: center;
     gap: 8px;
     min-height: 38px;
+    width: min(230px, 42vw);
+    flex: 0 1 230px;
     padding: 0 10px;
     background: #ffffff;
     border: 1px solid #d9e0ea;
@@ -3286,7 +3283,7 @@
 
   .item {
     display: block;
-    padding: 11px 14px;
+    padding: 9px 12px;
     border-bottom: 1px solid #edf1f6;
     background: #ffffff;
   }
@@ -3307,7 +3304,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
   }
 
   .item-meta {
@@ -3324,8 +3321,8 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    min-height: 22px;
-    padding: 2px 7px;
+    min-height: 20px;
+    padding: 1px 6px;
     background: #eef2ff;
     border-radius: 999px;
     color: #3730a3;
@@ -3340,7 +3337,9 @@
   .text-content {
     display: block;
     width: 100%;
-    margin-top: 9px;
+    margin-top: 7px;
+    max-height: 4.9em;
+    overflow: hidden;
     color: #172033;
     font: inherit;
     font-size: 0.92rem;
@@ -3349,7 +3348,7 @@
     word-break: break-word;
     background: #f8fafc;
     border: 1px solid transparent;
-    padding: 4px;
+    padding: 6px 7px;
     border-radius: 4px;
     transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
   }
@@ -3573,19 +3572,36 @@
   .item-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
   }
 
   .item-actions button {
     display: grid;
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     place-items: center;
-    color: #475569;
-    background: #ffffff;
-    border: 1px solid #d9e0ea;
+    color: #64748b;
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 7px;
     cursor: pointer;
+  }
+
+  .item-actions .primary-action,
+  .item-actions button.active {
+    color: #334155;
+    background: #ffffff;
+    border-color: #d9e0ea;
+  }
+
+  .item-actions .secondary-action {
+    opacity: 0.54;
+  }
+
+  .item:hover .item-actions .secondary-action,
+  .item:focus-within .item-actions .secondary-action,
+  .item-actions .secondary-action.active {
+    opacity: 1;
   }
 
   .item-actions button:hover,
@@ -3593,6 +3609,13 @@
     color: #1d4ed8;
     background: #eff6ff;
     border-color: #bfdbfe;
+  }
+
+  .item-actions .danger-action:hover,
+  .item-actions .danger-action:focus-visible {
+    color: #b42338;
+    background: #fff1f2;
+    border-color: #fecdd3;
   }
 
   .context-menu {
@@ -3649,10 +3672,10 @@
 
     .sidebar {
       display: grid;
-      grid-template-columns: minmax(150px, 1fr) auto;
+      grid-template-columns: 1fr;
       grid-template-areas:
-        'brand session'
-        'filters filters';
+        'brand'
+        'filters';
       align-items: center;
       gap: 8px;
       flex: 0 0 auto;
@@ -3681,14 +3704,6 @@
       min-height: 30px;
       padding: 6px 8px;
       text-align: center;
-    }
-
-    .session-card {
-      grid-area: session;
-      margin-top: 0;
-      justify-self: end;
-      min-width: 112px;
-      padding: 7px 9px;
     }
 
     .workspace {
@@ -3893,28 +3908,6 @@
     box-shadow: inset 3px 0 0 #54d0c4;
   }
 
-  .session-card {
-    gap: 9px;
-    padding: 9px;
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04)),
-      rgba(7, 27, 29, 0.62);
-    border-color: rgba(214, 228, 229, 0.12);
-    border-radius: 10px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  }
-
-  .session-card strong {
-    color: #f7fbfb;
-    font-size: 0.8rem;
-    font-weight: 680;
-  }
-
-  .session-card span {
-    color: #aab7b7;
-    font-size: 0.72rem;
-  }
-
   .status-dot {
     width: 7px;
     height: 7px;
@@ -3956,41 +3949,71 @@
   }
 
   .toolbar {
-    grid-template-columns: minmax(120px, 0.52fr) minmax(260px, 1fr);
+    grid-template-columns: minmax(156px, 0.38fr) minmax(330px, 1fr);
     align-items: start;
-    gap: 12px;
+    gap: 10px;
   }
 
   .toolbar-title {
     min-width: 0;
-    padding-top: 2px;
+    padding-top: 0;
+  }
+
+  .toolbar-heading {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    margin-top: 1px;
   }
 
   .eyebrow {
-    color: var(--accent);
-    font-size: 0.68rem;
+    color: #789093;
+    font-size: 0.62rem;
     font-weight: 760;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.07em;
   }
 
   h2 {
     margin-top: 1px;
     color: var(--ink);
-    font-size: clamp(1.22rem, 4vw, 1.52rem);
+    font-size: clamp(1.14rem, 3.2vw, 1.34rem);
     font-weight: 780;
     line-height: 1.08;
     text-wrap: balance;
   }
 
   .toolbar-context {
-    margin-top: 5px;
-    color: var(--muted);
-    font-size: 0.76rem;
-    line-height: 1.3;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 25px;
+    margin: 0;
+    padding: 0 9px;
+    color: #3f575b;
+    background: rgba(255, 255, 255, 0.74);
+    border: 1px solid var(--line-soft);
+    border-radius: 999px;
+    font-size: 0.72rem;
+    line-height: 1;
+    white-space: nowrap;
   }
 
   .toolbar-tools {
-    gap: 7px;
+    gap: 6px;
+  }
+
+  .toolbar-primary,
+  .toolbar-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .toolbar-secondary {
+    justify-content: stretch;
   }
 
   .quick-actions {
@@ -4015,7 +4038,7 @@
 
   .tool-button,
   .icon-tool {
-    min-height: 32px;
+    min-height: 30px;
     color: #2d4547;
     background: rgba(255, 255, 255, 0.86);
     border-color: rgba(188, 204, 208, 0.88);
@@ -4043,19 +4066,15 @@
   }
 
   .day-field {
-    min-height: 34px;
+    width: 130px;
+    min-height: 32px;
+    flex: 0 0 130px;
     color: var(--muted);
   }
 
   .calendar-field {
     position: relative;
     overflow: visible;
-  }
-
-  .day-field label {
-    color: #2d4547;
-    font-size: 0.76rem;
-    font-weight: 720;
   }
 
   .calendar-field :global(svg) {
@@ -4095,11 +4114,12 @@
 
   .date-shortcuts {
     gap: 5px;
+    flex: 1 1 auto;
     scrollbar-width: thin;
   }
 
   .date-shortcuts button {
-    min-height: 27px;
+    min-height: 26px;
     color: #506468;
     background: rgba(255, 255, 255, 0.72);
     border-color: rgba(193, 207, 211, 0.82);
@@ -4188,6 +4208,12 @@
     border-radius: 9px;
     top: 10px;
     padding: 0;
+  }
+
+  .search-field {
+    width: min(220px, 38vw);
+    min-height: 32px;
+    flex: 0 1 220px;
   }
 
   :global(.clipmaster-date-picker .date-nav-label) {
@@ -4281,7 +4307,7 @@
   }
 
   .search-field {
-    min-height: 38px;
+    min-height: 32px;
   }
 
   .search-field :global(svg) {
@@ -4446,7 +4472,7 @@
 
   .item {
     position: relative;
-    padding: 12px 14px;
+    padding: 9px 12px;
     background: rgba(255, 255, 255, 0.72);
     border-bottom-color: var(--line-soft);
     transition:
@@ -4477,7 +4503,7 @@
   }
 
   .item-row {
-    gap: 8px;
+    gap: 7px;
   }
 
   .item-meta {
@@ -4488,8 +4514,8 @@
 
   .type-pill,
   .badge {
-    min-height: 21px;
-    padding: 2px 7px;
+    min-height: 20px;
+    padding: 1px 6px;
     color: #194a48;
     background: #e7f3f1;
     border: 1px solid #c9dfdb;
@@ -4504,14 +4530,15 @@
   }
 
   .text-content {
-    margin-top: 8px;
-    padding: 7px 8px;
+    margin-top: 6px;
+    padding: 6px 8px;
+    max-height: 4.7em;
     color: var(--ink);
     background: #f7fbfa;
     border: 1px solid #dce8e6;
     border-radius: 8px;
     font-size: 0.91rem;
-    line-height: 1.48;
+    line-height: 1.42;
     text-wrap: pretty;
   }
 
@@ -4621,15 +4648,36 @@
   }
 
   .item-actions {
-    gap: 5px;
+    gap: 4px;
   }
 
   .item-actions button {
-    width: 29px;
-    height: 29px;
-    color: #4d6265;
-    background: rgba(255, 255, 255, 0.78);
-    border-color: #d5e0e2;
+    width: 28px;
+    height: 28px;
+    color: #63777a;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .item-actions .primary-action,
+  .item-actions button.active {
+    color: #2d4547;
+    background: rgba(255, 255, 255, 0.84);
+    border-color: #d7e3e4;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.84) inset,
+      0 6px 14px rgba(34, 58, 63, 0.045);
+  }
+
+  .item-actions .secondary-action {
+    opacity: 0.48;
+  }
+
+  .item:hover .item-actions .secondary-action,
+  .item:focus-within .item-actions .secondary-action,
+  .item-actions .secondary-action.active {
+    opacity: 1;
   }
 
   .item-actions button:hover,
@@ -4894,6 +4942,13 @@
     border-color: var(--accent-line);
   }
 
+  .item-actions .danger-action:hover,
+  .item-actions .danger-action:focus-visible {
+    color: var(--danger);
+    background: #fff1f2;
+    border-color: #fecdd3;
+  }
+
   .hotkey-hint,
   .cleanup-hint {
     color: var(--muted);
@@ -5011,10 +5066,10 @@
 
     .sidebar {
       display: grid;
-      grid-template-columns: minmax(142px, 1fr) auto;
+      grid-template-columns: 1fr;
       grid-template-areas:
-        'brand session'
-        'filters filters';
+        'brand'
+        'filters';
       align-items: center;
       gap: 8px;
       flex: 0 0 auto;
@@ -5052,12 +5107,6 @@
       display: inline;
     }
 
-    .session-card {
-      min-width: 108px;
-      padding: 7px 8px;
-      border-radius: 9px;
-    }
-
     .workspace {
       flex: 1;
       min-height: 0;
@@ -5071,20 +5120,16 @@
     }
 
     .toolbar-title {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: end;
-      column-gap: 10px;
+      display: block;
     }
 
-    .toolbar-title .eyebrow {
-      grid-column: 1 / -1;
+    .toolbar-heading {
+      justify-content: space-between;
+      flex-wrap: wrap;
     }
 
     .toolbar-context {
-      margin: 0 0 2px;
-      text-align: right;
-      white-space: nowrap;
+      margin: 0;
     }
 
     h2 {
@@ -5095,17 +5140,25 @@
       justify-content: stretch;
     }
 
+    .toolbar-secondary {
+      flex-wrap: wrap;
+    }
+
     .tool-button,
     .icon-tool {
       min-height: 32px;
     }
 
     .day-field {
+      width: 130px;
+      flex: 0 0 130px;
       min-height: 33px;
     }
 
     .search-field {
-      min-height: 36px;
+      width: auto;
+      flex: 1 1 190px;
+      min-height: 34px;
     }
 
     .history-panel {
