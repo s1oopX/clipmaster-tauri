@@ -169,7 +169,7 @@ pub async fn get_clipboard_items(
     limit: Option<i32>,
     offset: Option<i32>,
 ) -> Result<Vec<ClipboardItem>, String> {
-    db.get_items(limit.unwrap_or(100), offset.unwrap_or(0))
+    db.get_items(bounded_limit(limit, 100, 500), bounded_offset(offset))
         .map_err(|e| e.to_string())
 }
 
@@ -181,8 +181,12 @@ pub async fn get_items_by_session(
     limit: Option<i32>,
     offset: Option<i32>,
 ) -> Result<Vec<ClipboardItem>, String> {
-    db.get_items_by_session(&session_id, limit.unwrap_or(100), offset.unwrap_or(0))
-        .map_err(|e| e.to_string())
+    db.get_items_by_session(
+        &session_id,
+        bounded_limit(limit, 100, 500),
+        bounded_offset(offset),
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// 按日期获取记录
@@ -194,8 +198,12 @@ pub async fn get_items_by_day(
     offset: Option<i32>,
 ) -> Result<Vec<ClipboardItem>, String> {
     validate_date_key(&date_key)?;
-    db.get_items_by_day(&date_key, limit.unwrap_or(100), offset.unwrap_or(0))
-        .map_err(|e| e.to_string())
+    db.get_items_by_day(
+        &date_key,
+        bounded_limit(limit, 100, 500),
+        bounded_offset(offset),
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// 获取可用日期列表
@@ -204,7 +212,7 @@ pub async fn get_available_days(
     db: State<'_, Database>,
     limit: Option<i32>,
 ) -> Result<Vec<ClipboardDay>, String> {
-    db.get_available_days(limit.unwrap_or(365))
+    db.get_available_days(bounded_limit(limit, 365, 3650))
         .map_err(|e| e.to_string())
 }
 
@@ -249,7 +257,7 @@ pub async fn get_sessions(
     db: State<'_, Database>,
     limit: Option<i32>,
 ) -> Result<Vec<Session>, String> {
-    db.get_sessions(limit.unwrap_or(50))
+    db.get_sessions(bounded_limit(limit, 50, 500))
         .map_err(|e| e.to_string())
 }
 
@@ -296,7 +304,7 @@ pub async fn search_items(
         &query,
         session_id.as_deref(),
         &effective_date_key,
-        limit.unwrap_or(100),
+        bounded_limit(limit, 100, 500),
     )
     .map_err(|e| e.to_string())
 }
@@ -498,6 +506,14 @@ fn validate_date_key(date_key: &str) -> Result<(), String> {
     NaiveDate::parse_from_str(date_key, "%Y-%m-%d")
         .map(|_| ())
         .map_err(|_| "日期格式必须为 YYYY-MM-DD".to_string())
+}
+
+fn bounded_limit(limit: Option<i32>, default: i32, max: i32) -> i32 {
+    limit.unwrap_or(default).clamp(1, max)
+}
+
+fn bounded_offset(offset: Option<i32>) -> i32 {
+    offset.unwrap_or(0).max(0)
 }
 
 pub fn restore_main_window(app: &AppHandle) -> Result<(), String> {
@@ -710,5 +726,18 @@ mod tests {
         ] {
             assert!(validate_relative_image_path(path).is_err(), "{path}");
         }
+    }
+
+    #[test]
+    fn bounds_public_query_pagination_inputs() {
+        assert_eq!(bounded_limit(None, 100, 500), 100);
+        assert_eq!(bounded_limit(Some(-1), 100, 500), 1);
+        assert_eq!(bounded_limit(Some(0), 100, 500), 1);
+        assert_eq!(bounded_limit(Some(42), 100, 500), 42);
+        assert_eq!(bounded_limit(Some(50_000), 100, 500), 500);
+
+        assert_eq!(bounded_offset(None), 0);
+        assert_eq!(bounded_offset(Some(-20)), 0);
+        assert_eq!(bounded_offset(Some(30)), 30);
     }
 }
