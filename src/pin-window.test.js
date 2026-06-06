@@ -22,9 +22,7 @@ describe('Pinned image window', () => {
   });
 
   it('zooms the image content and pinned window together', () => {
-    expect(pinHtml).toContain('var(--image-offset-x, 0px)');
-    expect(pinHtml).toContain('var(--image-offset-y, 0px)');
-    expect(pinHtml).toContain('scale(var(--image-scale, 1))');
+    expect(pinHtml).toContain('transform: scale(var(--image-scale, 1))');
     expect(pinHtml).toContain('function syncImageTransform()');
     expect(pinHtml).toContain("image.style.setProperty('--image-scale'");
     expect(pinHtml).toContain('imageScale = Math.max(0.25, Math.min(imageScale * delta, 5))');
@@ -37,16 +35,14 @@ describe('Pinned image window', () => {
     expect(pinHtml).toContain("'同步缩放贴图窗口'");
   });
 
-  it('pans the image with ctrl and left drag without moving the pinned window', () => {
-    expect(pinHtml).toContain('let imageOffsetX = 0');
-    expect(pinHtml).toContain('let imageOffsetY = 0');
-    expect(pinHtml).toContain('function startImagePan(e)');
-    expect(pinHtml).toContain('container.setPointerCapture?.(e.pointerId)');
-    expect(pinHtml).toContain("image.style.setProperty('--image-offset-x'");
-    expect(pinHtml).toContain("image.style.setProperty('--image-offset-y'");
-    expect(pinHtml).toContain('if (e.ctrlKey)');
-    expect(pinHtml).toContain('startImagePan(e)');
-    expect(pinHtml).toContain('return;');
+  it('does not include ctrl-left image panning', () => {
+    expect(pinHtml).not.toContain('imageOffsetX');
+    expect(pinHtml).not.toContain('imageOffsetY');
+    expect(pinHtml).not.toContain('function startImagePan');
+    expect(pinHtml).not.toContain('setPointerCapture');
+    expect(pinHtml).not.toContain("'--image-offset-x'");
+    expect(pinHtml).not.toContain("'--image-offset-y'");
+    expect(pinHtml).not.toContain('if (e.ctrlKey) {\n          e.preventDefault();\n          startImagePan(e);');
     expect(pinHtml).toContain("currentWin.startDragging(), '移动贴图'");
   });
 

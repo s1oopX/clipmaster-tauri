@@ -37,12 +37,7 @@
         max-height: 100%;
         object-fit: contain;
         border-radius: inherit;
-        transform: translate3d(
-            var(--image-offset-x, 0px),
-            var(--image-offset-y, 0px),
-            0
-          )
-          scale(var(--image-scale, 1));
+        transform: scale(var(--image-scale, 1));
         transform-origin: center;
         will-change: transform;
         user-select: none;
@@ -153,14 +148,6 @@
       const currentWin = getCurrentWindow();
 
       let imageScale = 1;
-      let imageOffsetX = 0;
-      let imageOffsetY = 0;
-      let isPanningImage = false;
-      let panPointerId = null;
-      let panStartX = 0;
-      let panStartY = 0;
-      let panStartOffsetX = 0;
-      let panStartOffsetY = 0;
 
       async function runWindowAction(action, label) {
         try {
@@ -209,8 +196,6 @@
 
       function syncImageTransform() {
         image.style.setProperty('--image-scale', imageScale.toFixed(3));
-        image.style.setProperty('--image-offset-x', `${Math.round(imageOffsetX)}px`);
-        image.style.setProperty('--image-offset-y', `${Math.round(imageOffsetY)}px`);
       }
 
       async function resizePinnedWindow(delta) {
@@ -235,47 +220,10 @@
         }
       }, { passive: false });
 
-      function startImagePan(e) {
-        isPanningImage = true;
-        panPointerId = e.pointerId;
-        panStartX = e.clientX;
-        panStartY = e.clientY;
-        panStartOffsetX = imageOffsetX;
-        panStartOffsetY = imageOffsetY;
-        container.setPointerCapture?.(e.pointerId);
-      }
-
-      function stopImagePan(e) {
-        if (!isPanningImage) return;
-
-        isPanningImage = false;
-        if (panPointerId !== null) {
-          container.releasePointerCapture?.(panPointerId);
-        }
-        panPointerId = null;
-      }
-
-      container.addEventListener('pointermove', (e) => {
-        if (!isPanningImage) return;
-
-        imageOffsetX = panStartOffsetX + e.clientX - panStartX;
-        imageOffsetY = panStartOffsetY + e.clientY - panStartY;
-        syncImageTransform();
-      });
-
-      container.addEventListener('pointerup', stopImagePan);
-      container.addEventListener('pointercancel', stopImagePan);
-
       // 拖动窗口
       container.addEventListener('pointerdown', async (e) => {
         if (e.button !== 0) return;
         if (e.target.closest('button')) return;
-
-        if (e.ctrlKey) {
-          e.preventDefault();
-          startImagePan(e);
-          return;
-        }
 
         await runWindowAction(() => currentWin.startDragging(), '移动贴图');
       });
