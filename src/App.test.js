@@ -583,4 +583,36 @@ describe('App UI', () => {
     expect(await screen.findByText('New token')).toBeInTheDocument();
     expect(screen.queryByText('Old token')).not.toBeInTheDocument();
   });
+
+  it('replaces refreshed live clipboard records instead of duplicating them', async () => {
+    let newItemHandler;
+    api.getItems.mockResolvedValue([
+      textItem({
+        id: 'same_item',
+        content: 'Old token',
+        preview: 'Old token',
+        timestamp: 1000,
+      }),
+    ]);
+    api.onNewItem.mockImplementation(async (handler) => {
+      newItemHandler = handler;
+      return vi.fn();
+    });
+
+    render(App);
+
+    expect(await screen.findByText('Old token')).toBeInTheDocument();
+
+    await newItemHandler(
+      textItem({
+        id: 'same_item',
+        content: 'New token',
+        preview: 'New token',
+        timestamp: 2000,
+      })
+    );
+
+    expect(await screen.findByText('New token')).toBeInTheDocument();
+    expect(screen.queryByText('Old token')).not.toBeInTheDocument();
+  });
 });

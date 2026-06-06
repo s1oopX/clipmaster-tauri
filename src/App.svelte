@@ -234,8 +234,11 @@
         await loadAvailableDays();
 
         if (!selectedDay || item.date_key === selectedDay) {
-          const nextItems = limitItems([item, ...items]);
-          items = nextItems;
+          items = limitItems([
+            item,
+            ...items.filter((existing) => existing.id !== item.id),
+          ]);
+          sortItems();
 
           if (item.type === 'image' && item.image_path) {
             imageUrls[item.id] = await convertImagePath(item.image_path);
@@ -245,7 +248,7 @@
             thumbnailUrls[item.id] = await convertImagePath(item.thumbnail_path);
           }
 
-          pruneImageUrls(nextItems);
+          pruneImageUrls(items);
         }
       });
     } catch (e) {

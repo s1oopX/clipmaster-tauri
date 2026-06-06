@@ -1,4 +1,4 @@
-use chrono::{Local, NaiveDate};
+use chrono::NaiveDate;
 use screenshots::Screen;
 use std::fs;
 use std::io::ErrorKind;
@@ -7,7 +7,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tokio::time::sleep;
 
-use crate::database::Database;
+use crate::database::{beijing_date_key_now, Database};
 use crate::models::{
     CleanupPlan, ClipboardDay, ClipboardItem, ClipboardType, CreateClipboardItem, Session,
 };
@@ -415,6 +415,15 @@ pub async fn capture_region_screenshot(
     // 2. 计算 hash
     let content_hash = format!("{:x}", md5::compute(rgba_image.as_raw()));
 
+    if let Some(saved_item) = db
+        .refresh_today_duplicate(&content_hash)
+        .map_err(|e| e.to_string())?
+    {
+        app.emit("clipboard:new-item", &saved_item)
+            .map_err(|e| e.to_string())?;
+        return Ok(saved_item);
+    }
+
     // 3. 保存图片和缩略图
     let (image_path, thumbnail_path) = save_cropped_image(&app, &rgba_image, &content_hash)?;
 
@@ -526,7 +535,7 @@ fn save_cropped_image(
     content_hash: &str,
 ) -> Result<(String, String), String> {
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let date_key = Local::now().format("%Y-%m-%d").to_string();
+    let date_key = beijing_date_key_now();
     let images_dir = app_data_dir.join("images").join(&date_key);
 
     fs::create_dir_all(&images_dir).map_err(|e| e.to_string())?;

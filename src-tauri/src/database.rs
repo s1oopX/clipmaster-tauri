@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use chrono::{Local, TimeZone, Utc};
-use rusqlite::{params, Connection, Row};
+use chrono::{FixedOffset, TimeZone, Utc};
+use rusqlite::{params, Connection, OptionalExtension, Row};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -16,6 +16,8 @@ pub struct Database {
 const CLIPBOARD_ITEM_COLUMNS: &str = "\
     id, type, content, image_path, thumbnail_path, preview, timestamp,
     date_key, source_app, is_favorite, is_pinned, content_hash, session_id, annotation";
+
+const BEIJING_OFFSET_SECONDS: i32 = 8 * 60 * 60;
 
 impl Database {
     /// 初始化数据库
@@ -131,7 +133,7 @@ impl Database {
         drop(stmt);
 
         for (id, timestamp) in items {
-            let date_key = date_key_from_timestamp(timestamp);
+            let date_key = beijing_date_key_from_timestamp(timestamp);
             conn.execute(
                 "UPDATE clipboard_items SET date_key = ?1 WHERE id = ?2",
                 params![date_key, id],
@@ -176,13 +178,20 @@ impl Database {
         Ok(())
     }
 
-    /// 插入剪贴板记录
+    /// 插入剪贴板记录；同一北京时间自然日内的相同内容只刷新记录时间。
     pub fn insert_item(&self, item: CreateClipboardItem) -> Result<ClipboardItem> {
         let conn = self.conn.lock().unwrap();
 
         let id = nanoid::nanoid!();
         let timestamp = Utc::now().timestamp_millis();
-        let date_key = Local::now().format("%Y-%m-%d").to_string();
+        let date_key = beijing_date_key_from_timestamp(timestamp);
+
+        if let Some(existing) =
+            refresh_duplicate_for_date(&conn, &item.content_hash, &date_key, timestamp)?
+        {
+            return Ok(existing);
+        }
+
         let preview = item.content.as_ref().map(|c| {
             // 安全地截取字符串，避免切断多字节字符
             let char_count = c.chars().count();
@@ -278,20 +287,13 @@ impl Database {
         Ok(items)
     }
 
-    /// 检查是否存在重复内容（5分钟内）
-    pub fn has_duplicate(&self, content_hash: &str, time_window_ms: i64) -> Result<bool> {
+    /// 如果北京时间当天已有相同内容，刷新该记录时间并返回它。
+    pub fn refresh_today_duplicate(&self, content_hash: &str) -> Result<Option<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
-        let now = Utc::now().timestamp_millis();
-        let threshold = now - time_window_ms;
+        let timestamp = Utc::now().timestamp_millis();
+        let date_key = beijing_date_key_from_timestamp(timestamp);
 
-        let count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM clipboard_items
-             WHERE content_hash = ?1 AND timestamp > ?2",
-            params![content_hash, threshold],
-            |row| row.get(0),
-        )?;
-
-        Ok(count > 0)
+        refresh_duplicate_for_date(&conn, content_hash, &date_key, timestamp)
     }
 
     /// 获取单条剪贴板记录
@@ -691,13 +693,143 @@ fn clipboard_item_from_row(row: &Row<'_>) -> rusqlite::Result<ClipboardItem> {
     })
 }
 
-fn date_key_from_timestamp(timestamp: i64) -> String {
-    Local
-        .timestamp_millis_opt(timestamp)
+pub fn beijing_date_key_now() -> String {
+    beijing_date_key_from_timestamp(Utc::now().timestamp_millis())
+}
+
+fn beijing_date_key_from_timestamp(timestamp: i64) -> String {
+    let beijing_offset = FixedOffset::east_opt(BEIJING_OFFSET_SECONDS)
+        .expect("Beijing offset should always be valid");
+
+    Utc.timestamp_millis_opt(timestamp)
         .single()
-        .unwrap_or_else(Local::now)
+        .unwrap_or_else(Utc::now)
+        .with_timezone(&beijing_offset)
         .format("%Y-%m-%d")
         .to_string()
+}
+
+fn refresh_duplicate_for_date(
+    conn: &Connection,
+    content_hash: &str,
+    date_key: &str,
+    timestamp: i64,
+) -> Result<Option<ClipboardItem>> {
+    let existing_id = conn
+        .query_row(
+            "SELECT id
+             FROM clipboard_items
+             WHERE content_hash = ?1 AND date_key = ?2
+             ORDER BY timestamp DESC
+             LIMIT 1",
+            params![content_hash, date_key],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+
+    let Some(existing_id) = existing_id else {
+        return Ok(None);
+    };
+
+    conn.execute(
+        "UPDATE clipboard_items SET timestamp = ?1 WHERE id = ?2",
+        params![timestamp, existing_id],
+    )?;
+
+    let sql = format!(
+        "SELECT {}
+         FROM clipboard_items
+         WHERE id = ?1",
+        CLIPBOARD_ITEM_COLUMNS
+    );
+    let item = conn.query_row(&sql, params![existing_id], clipboard_item_from_row)?;
+
+    Ok(Some(item))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::params;
+    use std::{fs, path::PathBuf, time::Duration};
+
+    fn temp_database() -> (Database, PathBuf) {
+        let data_dir =
+            std::env::temp_dir().join(format!("clipmaster-database-{}", nanoid::nanoid!()));
+        let db = Database::new(data_dir.clone()).unwrap();
+        db.create_session("session_1").unwrap();
+        (db, data_dir)
+    }
+
+    fn text_item(content_hash: &str) -> CreateClipboardItem {
+        CreateClipboardItem {
+            type_: ClipboardType::Text,
+            content: Some("Alpha token".to_string()),
+            image_path: None,
+            thumbnail_path: None,
+            source_app: None,
+            content_hash: content_hash.to_string(),
+            session_id: "session_1".to_string(),
+        }
+    }
+
+    #[test]
+    fn date_keys_use_beijing_calendar_days() {
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 6, 5, 16, 30, 0)
+            .single()
+            .unwrap()
+            .timestamp_millis();
+
+        assert_eq!(beijing_date_key_from_timestamp(timestamp), "2026-06-06");
+    }
+
+    #[test]
+    fn refreshes_duplicate_content_within_same_beijing_day() {
+        let (db, data_dir) = temp_database();
+
+        let first = db.insert_item(text_item("same_hash")).unwrap();
+        std::thread::sleep(Duration::from_millis(10));
+        let refreshed = db.insert_item(text_item("same_hash")).unwrap();
+
+        assert_eq!(first.id, refreshed.id);
+        assert_eq!(refreshed.date_key, beijing_date_key_now());
+        assert!(refreshed.timestamp > first.timestamp);
+
+        let items = db.get_items(10, 0).unwrap();
+        assert_eq!(items.len(), 1);
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn stores_same_content_again_on_a_new_beijing_day() {
+        let (db, data_dir) = temp_database();
+
+        let first = db.insert_item(text_item("same_hash")).unwrap();
+        let yesterday_timestamp = Utc::now().timestamp_millis() - 24 * 60 * 60 * 1000;
+        let yesterday_key = beijing_date_key_from_timestamp(yesterday_timestamp);
+
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE clipboard_items SET timestamp = ?1, date_key = ?2 WHERE id = ?3",
+                params![yesterday_timestamp, yesterday_key, first.id],
+            )
+            .unwrap();
+        }
+
+        let second = db.insert_item(text_item("same_hash")).unwrap();
+
+        assert_ne!(first.id, second.id);
+        assert_eq!(second.date_key, beijing_date_key_now());
+
+        let items = db.get_items(10, 0).unwrap();
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|item| item.date_key == yesterday_key));
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
 }
 
 fn migrate_month_image_path(

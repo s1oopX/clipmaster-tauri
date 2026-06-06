@@ -1,6 +1,5 @@
 use anyhow::Result;
 use arboard::Clipboard;
-use chrono::Local;
 use parking_lot::Mutex;
 use std::fs;
 use std::sync::Arc;
@@ -8,7 +7,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::time::sleep;
 
-use crate::database::Database;
+use crate::database::{beijing_date_key_now, Database};
 use crate::models::{ClipboardType, CreateClipboardItem};
 use crate::session::SessionManager;
 use crate::settings::SettingsStore;
@@ -41,7 +40,10 @@ impl ClipboardService {
                     continue;
                 }
 
-                if let Some(sequence) = clipboard_sequence_number() {
+                let clipboard_sequence = clipboard_sequence_number();
+                let has_sequence = clipboard_sequence.is_some();
+
+                if let Some(sequence) = clipboard_sequence {
                     let should_skip = {
                         let mut last = last_sequence.lock();
                         if *last == Some(sequence) {
@@ -62,10 +64,10 @@ impl ClipboardService {
                 if let Ok(content) = Self::get_clipboard_content(&mut clipboard) {
                     let hash = Self::calculate_hash(&content);
 
-                    // 检查是否重复
                     let should_save = {
                         let mut last = last_hash.lock();
-                        if hash != *last {
+                        let hash_changed = hash != *last;
+                        if has_sequence || hash_changed {
                             *last = hash.clone();
                             true
                         } else {
@@ -140,10 +142,9 @@ impl ClipboardService {
         let db = app_handle.state::<Database>();
         let session_mgr = app_handle.state::<SessionManager>();
 
-        // 检查是否重复（5分钟内）
-        let time_window_ms = 5 * 60 * 1000; // 5分钟
-        if db.has_duplicate(&content_hash, time_window_ms)? {
-            return Ok(()); // 跳过重复内容
+        if let Some(saved_item) = db.refresh_today_duplicate(&content_hash)? {
+            app_handle.emit("clipboard:new-item", &saved_item)?;
+            return Ok(());
         }
 
         // 获取当前会话ID
@@ -201,7 +202,7 @@ impl ClipboardService {
             .map_err(|e| anyhow::anyhow!("Failed to get app data dir: {}", e))?;
 
         // 创建按日期分组的图片目录
-        let date_key = Local::now().format("%Y-%m-%d").to_string();
+        let date_key = beijing_date_key_now();
         let images_dir = app_data_dir.join("images").join(&date_key);
 
         // 确保目录存在
