@@ -19,6 +19,7 @@ const api = vi.hoisted(() => ({
   getSessions: vi.fn(),
   listen: vi.fn(),
   onNewItem: vi.fn(),
+  openExternalUrl: vi.fn(),
   pinImage: vi.fn(),
   previewCustomCleanup: vi.fn(),
   runCustomCleanup: vi.fn(),
@@ -67,6 +68,7 @@ vi.mock('./lib/api.js', () => ({
   toolApi: {
     startRegionScreenshot: api.startRegionScreenshot,
     pinImage: api.pinImage,
+    openExternalUrl: api.openExternalUrl,
   },
   settingsApi: {
     getSettings: api.getSettings,
@@ -177,6 +179,7 @@ describe('App UI', () => {
     api.searchItems.mockResolvedValue([]);
     api.startRegionScreenshot.mockResolvedValue();
     api.pinImage.mockResolvedValue();
+    api.openExternalUrl.mockResolvedValue();
     api.previewCustomCleanup.mockResolvedValue({
       item_count: 0,
       text_count: 0,
@@ -931,12 +934,20 @@ describe('App UI', () => {
     expect(screen.getByRole('heading', { name: '项目简介' })).toBeInTheDocument();
     expect(screen.getByText(/轻巧的本地剪贴板工具/)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '联系方式' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /GitHub 主页/ })).toHaveAttribute(
+    const profileLink = screen.getByRole('link', { name: /GitHub 主页/ });
+    const issuesLink = screen.getByRole('link', { name: /提交问题或建议/ });
+    expect(profileLink).toHaveAttribute(
       'href',
       'https://github.com/s1oopX'
     );
-    expect(screen.getByRole('link', { name: /提交问题或建议/ })).toHaveAttribute(
+    expect(issuesLink).toHaveAttribute(
       'href',
+      'https://github.com/s1oopX/clipmaster-tauri/issues'
+    );
+    await fireEvent.click(profileLink);
+    await fireEvent.click(issuesLink);
+    expect(api.openExternalUrl).toHaveBeenCalledWith('https://github.com/s1oopX');
+    expect(api.openExternalUrl).toHaveBeenCalledWith(
       'https://github.com/s1oopX/clipmaster-tauri/issues'
     );
     expect(screen.getByText('本地保存')).toBeInTheDocument();
@@ -1037,6 +1048,20 @@ describe('App UI', () => {
       );
     });
     expect(api.getItems).not.toHaveBeenCalled();
+  });
+
+  it('shows an error when an about link cannot be opened', async () => {
+    api.openExternalUrl.mockRejectedValueOnce('系统浏览器不可用');
+
+    render(App);
+
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '关于' }));
+    await fireEvent.click(screen.getByRole('link', { name: /GitHub 主页/ }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('打开链接失败: 系统浏览器不可用');
   });
 
   it('shows settings save failures as floating errors and keeps the dialog open', async () => {

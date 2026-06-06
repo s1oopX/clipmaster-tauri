@@ -225,6 +225,14 @@ export const toolApi = {
   async pinImage(imagePath) {
     return await invoke('pin_image', { imagePath });
   },
+
+  /**
+   * 使用系统默认浏览器打开允许的外部链接
+   * @param {string} url
+   */
+  async openExternalUrl(url) {
+    return await invoke('open_external_url', { url });
+  },
 };
 
 /**

@@ -695,6 +695,17 @@
     settingsOpen = true;
   }
 
+  async function openExternalLink(event, url) {
+    event.preventDefault();
+
+    try {
+      await toolApi.openExternalUrl(url);
+    } catch (e) {
+      console.error('打开链接失败:', e);
+      showActionError('打开链接失败: ' + e);
+    }
+  }
+
   function updateSettingsDraft(key, value) {
     if (key === 'dev_server_port') {
       portCheckResult = null;
@@ -1944,14 +1955,26 @@
               <div class="about-block about-contact">
                 <h4>联系方式</h4>
                 <div class="about-links">
-                  <a class="about-link" href={githubProfileUrl} target="_blank" rel="noreferrer">
+                  <a
+                    class="about-link"
+                    href={githubProfileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    on:click={(event) => openExternalLink(event, githubProfileUrl)}
+                  >
                     <GitPullRequest size={14} aria-hidden="true" />
                     <span>
                       <strong>GitHub 主页</strong>
                       <small>s1oopX</small>
                     </span>
                   </a>
-                  <a class="about-link" href={githubIssuesUrl} target="_blank" rel="noreferrer">
+                  <a
+                    class="about-link"
+                    href={githubIssuesUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    on:click={(event) => openExternalLink(event, githubIssuesUrl)}
+                  >
                     <GitPullRequest size={14} aria-hidden="true" />
                     <span>
                       <strong>提交问题或建议</strong>

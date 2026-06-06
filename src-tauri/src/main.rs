@@ -120,6 +120,7 @@ fn main() {
             commands::get_app_data_dir,
             commands::copy_to_clipboard,
             commands::copy_image_to_clipboard,
+            commands::open_external_url,
             commands::get_settings,
             commands::save_settings,
             commands::check_dev_server_port,

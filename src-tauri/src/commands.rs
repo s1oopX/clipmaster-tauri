@@ -3,6 +3,7 @@ use screenshots::Screen;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tokio::time::sleep;
@@ -14,6 +15,11 @@ use crate::models::{
 };
 use crate::session::SessionManager;
 use crate::settings::{AppSettings, SettingsStore};
+
+const ALLOWED_EXTERNAL_URLS: [&str; 2] = [
+    "https://github.com/s1oopX",
+    "https://github.com/s1oopX/clipmaster-tauri/issues",
+];
 
 /// 获取应用数据目录路径
 #[tauri::command]
@@ -57,6 +63,13 @@ pub async fn copy_image_to_clipboard(app: AppHandle, image_path: String) -> Resu
 
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.set_image(image_data).map_err(|e| e.to_string())
+}
+
+/// 在系统默认浏览器打开允许的外部链接
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    let safe_url = validate_external_url(&url)?;
+    open_url_with_system(&safe_url)
 }
 
 /// 获取应用设置
@@ -776,6 +789,43 @@ fn path_from_forward_slashes(path: &str) -> PathBuf {
     path_buf
 }
 
+fn validate_external_url(url: &str) -> Result<String, String> {
+    let trimmed = url.trim();
+
+    if ALLOWED_EXTERNAL_URLS.contains(&trimmed) {
+        Ok(trimmed.to_string())
+    } else {
+        Err("不允许打开该外部链接".to_string())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn open_url_with_system(url: &str) -> Result<(), String> {
+    Command::new("rundll32.exe")
+        .args(["url.dll,FileProtocolHandler", url])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("打开链接失败: {}", e))
+}
+
+#[cfg(target_os = "macos")]
+fn open_url_with_system(url: &str) -> Result<(), String> {
+    Command::new("open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("打开链接失败: {}", e))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_url_with_system(url: &str) -> Result<(), String> {
+    Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("打开链接失败: {}", e))
+}
+
 fn fit_pin_window_size(width: u32, height: u32) -> (f64, f64) {
     let image_width = width.max(1) as f64;
     let image_height = height.max(1) as f64;
@@ -831,6 +881,28 @@ mod tests {
             "images/2026-06-06/../settings.json",
         ] {
             assert!(validate_relative_image_path(path).is_err(), "{path}");
+        }
+    }
+
+    #[test]
+    fn validates_only_known_external_links() {
+        assert_eq!(
+            validate_external_url(" https://github.com/s1oopX ").unwrap(),
+            "https://github.com/s1oopX"
+        );
+        assert_eq!(
+            validate_external_url("https://github.com/s1oopX/clipmaster-tauri/issues").unwrap(),
+            "https://github.com/s1oopX/clipmaster-tauri/issues"
+        );
+
+        for url in [
+            "",
+            "https://github.com",
+            "https://github.com/s1oopX/clipmaster-tauri",
+            "https://example.com",
+            "javascript:alert(1)",
+        ] {
+            assert!(validate_external_url(url).is_err(), "{url}");
         }
     }
 
