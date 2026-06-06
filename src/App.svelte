@@ -1909,7 +1909,7 @@
               aria-labelledby="settings-tab-about"
             >
               <div class="about-profile">
-                <img class="about-avatar" src="/github-avatar.jpg" alt="s1oopX GitHub 头像" />
+                <img class="about-avatar" src="/github-avatar-display.jpg" alt="s1oopX GitHub 头像" />
                 <div class="about-profile-copy">
                   <span class="about-eyebrow">GitHub · s1oopX</span>
                   <h3>s1oopX</h3>
@@ -2611,7 +2611,7 @@
     z-index: 21;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
-    width: min(560px, 96vw);
+    width: min(620px, 96vw);
     height: 100vh;
     color: #172033;
     background: #ffffff;
@@ -2705,24 +2705,68 @@
 
   .switch-row,
   .field-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
     gap: 14px;
     min-height: 42px;
     color: #172033;
     font-size: 0.88rem;
   }
 
-  .switch-row input {
-    width: 18px;
-    height: 18px;
-    accent-color: #2563eb;
+  .switch-row span {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .switch-row input[type='checkbox'] {
+    position: relative;
+    grid-column: 2;
+    grid-row: 1;
+    width: 38px;
+    height: 22px;
+    margin: 0;
+    appearance: none;
+    background: #d9e2e7;
+    border: 1px solid #c4d0d8;
+    border-radius: 999px;
+    cursor: pointer;
+    transition:
+      background 160ms ease,
+      border-color 160ms ease;
+  }
+
+  .switch-row input[type='checkbox']::after {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    content: '';
+    background: #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+    transition: transform 160ms ease;
+  }
+
+  .switch-row input[type='checkbox']:checked {
+    background: #0f766e;
+    border-color: #0b5d56;
+  }
+
+  .switch-row input[type='checkbox']:checked::after {
+    transform: translateX(16px);
+  }
+
+  .switch-row input[type='checkbox']:focus-visible {
+    outline: 2px solid #99f6e4;
+    outline-offset: 2px;
   }
 
   .field-row input,
   .field-row select {
-    width: 96px;
+    width: 118px;
     min-height: 32px;
     padding: 0 8px;
     color: #172033;
@@ -2736,7 +2780,7 @@
   }
 
   .field-row input[type="text"] {
-    width: 240px;
+    width: min(286px, 58vw);
   }
 
   .settings-section {
@@ -2784,24 +2828,26 @@
   .about-profile {
     display: grid;
     justify-items: center;
-    gap: 8px;
-    padding: 14px 18px;
+    gap: 10px;
+    padding: 16px 18px 18px;
     text-align: center;
-    background: #f8fafc;
+    background: #fbfcfd;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
   }
 
   .about-avatar {
     display: block;
-    width: 84px;
-    height: 84px;
+    width: 104px;
+    height: 104px;
     object-fit: cover;
     object-position: center;
+    image-rendering: auto;
+    filter: contrast(0.94) saturate(0.92);
     background: #edf2f7;
     border: 1px solid #d9e0ea;
-    border-radius: 20px;
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    border-radius: 22px;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
   }
 
   .about-profile-copy,
@@ -3078,9 +3124,9 @@
     border-bottom: 0;
   }
 
-  @media (max-width: 560px) {
+  @media (max-width: 480px) {
     .settings-panel {
-      width: min(420px, 96vw);
+      width: 100vw;
     }
 
     .settings-workspace {
@@ -3117,7 +3163,6 @@
       grid-template-columns: 1fr;
     }
 
-    .port-input-group,
     .restart-card {
       align-items: stretch;
       flex-direction: column;
@@ -4625,7 +4670,7 @@
 
   .settings-panel {
     z-index: 21;
-    width: min(560px, 96vw);
+    width: min(620px, 96vw);
     color: var(--ink);
     background:
       linear-gradient(180deg, #fbfcfc, #f3f7f7),
@@ -4705,15 +4750,20 @@
   }
 
   .switch-row input {
-    width: 34px;
-    height: 20px;
-    margin: 0;
-    accent-color: var(--accent);
+    width: 38px;
+    height: 22px;
+    background: #d7e1e3;
+    border-color: #c6d4d7;
+  }
+
+  .switch-row input[type='checkbox']:checked {
+    background: var(--accent);
+    border-color: var(--accent-strong);
   }
 
   .field-row input,
   .field-row select {
-    width: 104px;
+    width: 118px;
     min-height: 32px;
     color: var(--ink);
     background: #ffffff;
@@ -4731,7 +4781,7 @@
   }
 
   .field-row input[type='text'] {
-    width: min(230px, 58vw);
+    width: min(286px, 58vw);
   }
 
   .settings-section {
@@ -4760,15 +4810,15 @@
 
   .about-profile {
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 250, 0.72)),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 250, 250, 0.82)),
       #f8fbfb;
     border-color: var(--line-soft);
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.88) inset;
   }
 
   .about-avatar {
     border-color: #cbdadd;
-    box-shadow: 0 14px 28px rgba(25, 44, 49, 0.14);
+    box-shadow: 0 10px 22px rgba(25, 44, 49, 0.1);
   }
 
   .about-eyebrow {
@@ -4917,6 +4967,16 @@
   }
 
   @media (max-width: 720px) {
+    .settings-backdrop {
+      display: none;
+    }
+
+    .settings-panel {
+      width: 100vw;
+      border-left: 0;
+      box-shadow: none;
+    }
+
     .app-shell {
       display: flex;
       flex-direction: column;

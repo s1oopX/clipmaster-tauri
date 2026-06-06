@@ -901,6 +901,7 @@ describe('App UI', () => {
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
     expect(screen.getByRole('tablist', { name: '设置分类' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '常规' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('tab', { name: '清理' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '常规设置' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: '监听剪贴板' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: '启动时显示主窗口' })).toBeChecked();
@@ -924,7 +925,7 @@ describe('App UI', () => {
     await fireEvent.click(screen.getByRole('tab', { name: '关于' }));
     expect(screen.getByRole('img', { name: 's1oopX GitHub 头像' })).toHaveAttribute(
       'src',
-      '/github-avatar.jpg'
+      '/github-avatar-display.jpg'
     );
     expect(screen.getByRole('heading', { name: 's1oopX' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '项目简介' })).toBeInTheDocument();
