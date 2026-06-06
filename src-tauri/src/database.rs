@@ -1049,6 +1049,16 @@ mod tests {
         assert_eq!(other_day_results.len(), 1);
         assert_eq!(other_day_results[0].id, other_day.id);
 
+        let all_session_today_results =
+            db.search_items("Alpha", None, &today.date_key, 10).unwrap();
+        assert_eq!(all_session_today_results.len(), 1);
+        assert_eq!(all_session_today_results[0].id, today.id);
+
+        let all_session_other_day_results =
+            db.search_items("Alpha", None, &other_date_key, 10).unwrap();
+        assert_eq!(all_session_other_day_results.len(), 1);
+        assert_eq!(all_session_other_day_results[0].id, other_day.id);
+
         let _ = fs::remove_dir_all(data_dir);
     }
 }

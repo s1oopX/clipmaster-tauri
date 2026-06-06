@@ -484,6 +484,7 @@
         item.id === itemId ? { ...item, is_favorite: isFavorite } : item
       );
       error = null;
+      actionError = '';
     } catch (e) {
       console.error('切换收藏失败:', e);
       showActionError('切换收藏失败: ' + e);
@@ -498,6 +499,7 @@
       );
       sortItems();
       error = null;
+      actionError = '';
     } catch (e) {
       console.error('切换置顶失败:', e);
       showActionError('切换置顶失败: ' + e);
@@ -525,11 +527,10 @@
     isSearching = true;
 
     try {
-      const sessionId = currentSession?.id || null;
       const dateKey = activeSearchDateKey();
       const nextItems = await searchApi.searchItems(
         query,
-        sessionId,
+        null,
         itemLimit(),
         dateKey
       );

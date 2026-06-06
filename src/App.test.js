@@ -388,14 +388,42 @@ describe('App UI', () => {
     expect(screen.getByText('Alpha token')).toBeInTheDocument();
   });
 
-  it('searches within the current session and can clear the query', async () => {
+  it('clears stale action errors after successful favorite or pinned actions', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+    api.toggleFavorite.mockRejectedValueOnce('收藏失败').mockResolvedValueOnce(true);
+    api.togglePinned.mockRejectedValueOnce('置顶失败').mockResolvedValueOnce(true);
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '收藏 Alpha token' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('切换收藏失败: 收藏失败');
+
+    await fireEvent.click(screen.getByRole('button', { name: '收藏 Alpha token' }));
+    await waitFor(() => {
+      expect(api.toggleFavorite).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: '置顶 Alpha token' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('切换置顶失败: 置顶失败');
+
+    await fireEvent.click(screen.getByRole('button', { name: '置顶 Alpha token' }));
+    await waitFor(() => {
+      expect(api.togglePinned).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
+
+  it('searches within the active day and can clear the query', async () => {
     render(App);
 
     const search = await screen.findByRole('searchbox', { name: '搜索剪贴板内容' });
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50, todayDateKey());
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
     });
 
     await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
@@ -424,7 +452,7 @@ describe('App UI', () => {
     await waitFor(() => {
       expect(api.searchItems).toHaveBeenLastCalledWith(
         'alpha',
-        'session_1',
+        null,
         50,
         '2026-06-06'
       );
@@ -450,7 +478,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50, todayDateKey());
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
     });
 
     await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
@@ -519,7 +547,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50, todayDateKey());
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
@@ -852,7 +880,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50, todayDateKey());
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
     });
 
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
@@ -868,7 +896,7 @@ describe('App UI', () => {
     await waitFor(() => {
       expect(api.searchItems).toHaveBeenLastCalledWith(
         'alpha',
-        'session_1',
+        null,
         80,
         todayDateKey()
       );
@@ -1031,7 +1059,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50, todayDateKey());
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
     });
 
     await newItemHandler(
@@ -1044,5 +1072,17 @@ describe('App UI', () => {
 
     expect(screen.getByText('Alpha token')).toBeInTheDocument();
     expect(screen.queryByText('Beta token')).not.toBeInTheDocument();
+
+    await newItemHandler(
+      textItem({
+        id: 'old_alpha_item',
+        content: 'Alpha from another day',
+        preview: 'Alpha from another day',
+        date_key: '2026-06-05',
+      })
+    );
+
+    expect(screen.getByText('Alpha token')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha from another day')).not.toBeInTheDocument();
   });
 });
