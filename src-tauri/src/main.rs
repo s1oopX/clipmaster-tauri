@@ -70,7 +70,11 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                // 窗口关闭时结束会话
+                if window.label() != "main" {
+                    return;
+                }
+
+                // 主窗口关闭时结束会话
                 let app_handle = window.app_handle();
                 let session_mgr = app_handle.state::<SessionManager>();
                 let db = app_handle.state::<Database>();

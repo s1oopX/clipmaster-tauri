@@ -315,13 +315,12 @@ pub async fn start_region_screenshot(
     let temp_path = temp_dir.join("clipmaster_screenshot_temp.png");
     image.save(&temp_path).map_err(|e| e.to_string())?;
 
-    // 3. 隐藏主窗口
-    if let Some(main_window) = app.get_webview_window("main") {
-        main_window.hide().map_err(|e| e.to_string())?;
+    // 3. 创建截图选择窗口
+    if let Some(selection_window) = app.get_webview_window("screenshot-selector") {
+        selection_window.close().map_err(|e| e.to_string())?;
     }
 
-    // 4. 创建截图选择窗口
-    let _selection_window = WebviewWindowBuilder::new(
+    let selection_window = WebviewWindowBuilder::new(
         &app,
         "screenshot-selector",
         WebviewUrl::App("screenshot.html".into()),
@@ -332,8 +331,17 @@ pub async fn start_region_screenshot(
     .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
+    .visible(false)
     .build()
     .map_err(|e| e.to_string())?;
+
+    // 4. 截图窗口创建后再隐藏主窗口，避免无可见窗口导致应用退出
+    if let Some(main_window) = app.get_webview_window("main") {
+        main_window.hide().map_err(|e| e.to_string())?;
+    }
+
+    selection_window.show().map_err(|e| e.to_string())?;
+    selection_window.set_focus().map_err(|e| e.to_string())?;
 
     Ok(())
 }
