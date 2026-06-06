@@ -127,7 +127,7 @@
   <body>
     <div id="container">
       <img id="image" alt="钉住的图片" />
-      <button id="close-btn" title="关闭">×</button>
+      <button id="close-btn" aria-label="关闭贴图">×</button>
       <button class="resize-handle" data-direction="NorthWest" aria-label="调整贴图左上角大小"></button>
       <button class="resize-handle" data-direction="NorthEast" aria-label="调整贴图右上角大小"></button>
       <button class="resize-handle" data-direction="SouthWest" aria-label="调整贴图左下角大小"></button>
@@ -143,6 +143,9 @@
       const closeBtn = document.getElementById('close-btn');
       const resizeHandles = document.querySelectorAll('.resize-handle');
       const currentWin = getCurrentWindow();
+      const MIN_PIN_SIZE = 100;
+      const MAX_PIN_WIDTH = 720;
+      const MAX_PIN_HEIGHT = 520;
 
       async function runWindowAction(action, label) {
         try {
@@ -163,20 +166,20 @@
         console.error('未提供图片路径');
       }
 
-      // 图片加载完成后调整窗口大小
+      function fitImageWindowSize(naturalWidth, naturalHeight) {
+        const imageWidth = Math.max(1, naturalWidth);
+        const imageHeight = Math.max(1, naturalHeight);
+        const ratio = Math.min(MAX_PIN_WIDTH / imageWidth, MAX_PIN_HEIGHT / imageHeight, 1);
+
+        return {
+          width: Math.max(MIN_PIN_SIZE, Math.round(imageWidth * ratio)),
+          height: Math.max(MIN_PIN_SIZE, Math.round(imageHeight * ratio)),
+        };
+      }
+
+      // 图片加载完成后对齐后端创建窗口时使用的尺寸规则。
       image.onload = () => {
-        const naturalWidth = image.naturalWidth;
-        const naturalHeight = image.naturalHeight;
-
-        // 限制初始大小，最大 800x600
-        let width = naturalWidth;
-        let height = naturalHeight;
-
-        if (width > 800 || height > 600) {
-          const ratio = Math.min(800 / width, 600 / height);
-          width = Math.floor(width * ratio);
-          height = Math.floor(height * ratio);
-        }
+        const { width, height } = fitImageWindowSize(image.naturalWidth, image.naturalHeight);
 
         runWindowAction(
           () => currentWin.setSize(new LogicalSize(width, height)),

@@ -726,8 +726,8 @@ fn fit_pin_window_size(width: u32, height: u32) -> (f64, f64) {
     let scale = (720.0 / image_width).min(520.0 / image_height).min(1.0);
 
     (
-        (image_width * scale).max(260.0),
-        (image_height * scale + 34.0).max(180.0),
+        (image_width * scale).max(100.0),
+        (image_height * scale).max(100.0),
     )
 }
 
@@ -789,5 +789,18 @@ mod tests {
         assert_eq!(bounded_offset(None), 0);
         assert_eq!(bounded_offset(Some(-20)), 0);
         assert_eq!(bounded_offset(Some(30)), 30);
+    }
+
+    #[test]
+    fn fits_pin_window_to_image_without_chrome_padding() {
+        assert_eq!(fit_pin_window_size(400, 300), (400.0, 300.0));
+        assert_eq!(fit_pin_window_size(1440, 1040), (720.0, 520.0));
+        assert_eq!(fit_pin_window_size(1000, 800), (650.0, 520.0));
+    }
+
+    #[test]
+    fn keeps_tiny_pin_window_usable_without_extra_content_area() {
+        assert_eq!(fit_pin_window_size(48, 48), (100.0, 100.0));
+        assert_eq!(fit_pin_window_size(320, 60), (320.0, 100.0));
     }
 }

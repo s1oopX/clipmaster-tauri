@@ -19,12 +19,17 @@ describe('Pinned image window', () => {
     expect(pinHtml).toContain('border-radius: 12px');
     expect(pinHtml).toContain('overflow: hidden');
     expect(pinHtml).toContain('runWindowAction');
+    expect(pinHtml).toContain('aria-label="关闭贴图"');
+    expect(pinHtml).not.toContain('title="关闭"');
   });
 
   it('keeps the pinned window fitted to the image while zooming', () => {
     expect(pinHtml).toContain('width: 100%');
     expect(pinHtml).toContain('height: 100%');
     expect(pinHtml).toContain('object-fit: fill');
+    expect(pinHtml).toContain('const MAX_PIN_WIDTH = 720');
+    expect(pinHtml).toContain('const MAX_PIN_HEIGHT = 520');
+    expect(pinHtml).toContain('function fitImageWindowSize');
     expect(pinHtml).toContain('function resizePinnedWindow(delta)');
     expect(pinHtml).toContain('window.innerWidth * delta');
     expect(pinHtml).toContain('window.innerHeight * delta');
