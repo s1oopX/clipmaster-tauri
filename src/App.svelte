@@ -378,6 +378,7 @@
       await clipboardApi.deleteItem(itemId);
       items = items.filter((item) => item.id !== itemId);
       pruneImageUrls(items);
+      await loadAvailableDays();
       showActionNotice('已删除记录');
     } catch (e) {
       console.error('删除失败:', e);

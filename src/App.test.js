@@ -243,6 +243,9 @@ describe('App UI', () => {
     await waitFor(() => {
       expect(api.deleteItem).toHaveBeenCalledWith('text_1');
     });
+    await waitFor(() => {
+      expect(api.getAvailableDays).toHaveBeenCalledTimes(2);
+    });
     expect(screen.queryByRole('dialog', { name: '确认删除' })).not.toBeInTheDocument();
     expect(screen.queryByText('Alpha token')).not.toBeInTheDocument();
   });
