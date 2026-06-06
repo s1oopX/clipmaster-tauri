@@ -337,6 +337,7 @@
             ...items.filter((existing) => existing.id !== item.id),
           ]);
           sortItems();
+          reconcileTransientItemState(items);
 
           if (item.type === 'image' && item.image_path) {
             imageUrls[item.id] = await convertImagePath(item.image_path);
@@ -388,6 +389,7 @@
       error = null;
       actionError = '';
       pruneImageUrls(items);
+      reconcileTransientItemState(items);
       void loadImageUrls();
     } catch (e) {
       if (requestId !== recordsRequestId) return;
@@ -459,6 +461,7 @@
       await clipboardApi.deleteItem(itemId);
       items = items.filter((item) => item.id !== itemId);
       pruneImageUrls(items);
+      reconcileTransientItemState(items);
       await loadAvailableDays();
       error = null;
       showActionNotice('已删除记录');
@@ -564,6 +567,7 @@
       error = null;
       actionError = '';
       pruneImageUrls(items);
+      reconcileTransientItemState(items);
       void loadImageUrls();
     } catch (e) {
       if (requestId !== recordsRequestId) return;
@@ -945,6 +949,31 @@
     );
   }
 
+  function reconcileTransientItemState(nextItems = items) {
+    const liveIds = new Set(nextItems.map((item) => item.id));
+
+    if (contextMenu.open && !liveIds.has(contextMenu.itemId)) {
+      closeContextMenu();
+    }
+
+    if (deleteCandidate && !liveIds.has(deleteCandidate.id)) {
+      deleteCandidate = null;
+      deleteConfirmLoading = false;
+    }
+
+    if (editingId && !liveIds.has(editingId)) {
+      cancelContentEdit();
+    }
+
+    if (annotationEditingId && !liveIds.has(annotationEditingId)) {
+      cancelAnnotationEdit();
+    }
+
+    if (viewingImageId && !liveIds.has(viewingImageId)) {
+      closeImageViewer();
+    }
+  }
+
   function updateVisibleItem(itemId, updater) {
     const nextItems = items.map((item) =>
       item.id === itemId ? updater(item) : item
@@ -954,6 +983,7 @@
       ? nextItems.filter(itemMatchesLiveScope)
       : nextItems;
     pruneImageUrls(items);
+    reconcileTransientItemState(items);
   }
 
   function startContentEdit(item) {

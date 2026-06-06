@@ -1195,6 +1195,48 @@ describe('App UI', () => {
     expect(screen.queryByText('Old token')).not.toBeInTheDocument();
   });
 
+  it('closes item-bound confirmation when live records replace the item', async () => {
+    let newItemHandler;
+    api.getSettings.mockResolvedValue({
+      clipboard_monitor_enabled: true,
+      show_main_window_on_start: true,
+      max_items: 1,
+      capture_delay_ms: 150,
+      screenshot_hotkey: 'CommandOrControl+Shift+A',
+      time_zone: 'Asia/Shanghai',
+      language: 'zh-CN',
+      auto_cleanup_enabled: false,
+      cleanup_max_items: 200,
+      cleanup_keep_days: 30,
+    });
+    api.getItems.mockResolvedValue([
+      textItem({ id: 'old_item', content: 'Old token', preview: 'Old token', is_favorite: true }),
+    ]);
+    api.onNewItem.mockImplementation(async (handler) => {
+      newItemHandler = handler;
+      return vi.fn();
+    });
+
+    render(App);
+
+    expect(await screen.findByText('Old token')).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: '删除 Old token' }));
+    expect(screen.getByRole('dialog', { name: '确认删除' })).toBeInTheDocument();
+
+    await newItemHandler(
+      textItem({
+        id: 'new_item',
+        content: 'New token',
+        preview: 'New token',
+        timestamp: Date.now() + 1000,
+      })
+    );
+
+    expect(await screen.findByText('New token')).toBeInTheDocument();
+    expect(screen.queryByText('Old token')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '确认删除' })).not.toBeInTheDocument();
+  });
+
   it('replaces refreshed live clipboard records instead of duplicating them', async () => {
     let newItemHandler;
     api.getItems.mockResolvedValue([
