@@ -499,16 +499,26 @@ impl Database {
 
     /// 清空会话
     pub fn clear_session(&self, session_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
 
-        // 删除该会话的所有记录
-        conn.execute(
+        let session_exists: i32 = tx.query_row(
+            "SELECT COUNT(*) FROM sessions WHERE id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        )?;
+        if session_exists == 0 {
+            return Err(anyhow::anyhow!("会话不存在"));
+        }
+
+        tx.execute(
             "DELETE FROM clipboard_items WHERE session_id = ?1",
             params![session_id],
         )?;
 
-        // 删除会话
-        conn.execute("DELETE FROM sessions WHERE id = ?1", params![session_id])?;
+        tx.execute("DELETE FROM sessions WHERE id = ?1", params![session_id])?;
+
+        tx.commit()?;
 
         Ok(())
     }
@@ -1099,6 +1109,35 @@ mod tests {
 
         let pinned_error = db.toggle_pinned(&item.id).unwrap_err().to_string();
         assert!(pinned_error.contains("记录不存在"));
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn clearing_session_requires_existing_session_and_removes_records() {
+        let (db, data_dir) = temp_database();
+        let item = db
+            .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+
+        db.clear_session("session_1").unwrap();
+        assert!(db.get_item(&item.id).unwrap().is_none());
+        assert!(!db
+            .get_sessions(10)
+            .unwrap()
+            .iter()
+            .any(|session| session.id == "session_1"));
+
+        let missing_error = db.clear_session("session_1").unwrap_err().to_string();
+        assert!(missing_error.contains("会话不存在"));
+
+        db.create_session("empty_session").unwrap();
+        db.clear_session("empty_session").unwrap();
+        assert!(!db
+            .get_sessions(10)
+            .unwrap()
+            .iter()
+            .any(|session| session.id == "empty_session"));
 
         let _ = fs::remove_dir_all(data_dir);
     }
