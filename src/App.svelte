@@ -708,16 +708,39 @@
 
     try {
       const timeZoneChanged = normalized.time_zone !== appSettings.time_zone;
-      appSettings = await settingsApi.saveSettings(normalized);
+      const savedSettings = await settingsApi.saveSettings(normalized);
+      let autoCleanupPlan = null;
+      let autoCleanupError = null;
+
+      if (savedSettings.auto_cleanup_enabled) {
+        try {
+          autoCleanupPlan = await settingsApi.runCustomCleanup(
+            savedSettings.cleanup_max_items,
+            savedSettings.cleanup_keep_days
+          );
+        } catch (cleanupError) {
+          console.error('自动清理失败:', cleanupError);
+          autoCleanupError = cleanupError;
+        }
+      }
+
+      appSettings = savedSettings;
       settingsDraft = { ...appSettings };
-      cleanupPlan = null;
+      cleanupPlan = autoCleanupPlan;
       settingsOpen = false;
       if (timeZoneChanged) {
         selectedDay = '';
       }
       await loadAvailableDays();
       await refreshVisibleRecords();
-      showActionNotice('设置已保存');
+
+      if (autoCleanupError) {
+        showActionError('设置已保存，自动清理失败: ' + autoCleanupError);
+      } else if (autoCleanupPlan) {
+        showActionNotice(`设置已保存，已清理 ${autoCleanupPlan.item_count} 条记录`);
+      } else {
+        showActionNotice('设置已保存');
+      }
     } catch (e) {
       console.error('保存设置失败:', e);
       showActionError('保存设置失败: ' + e);

@@ -1011,6 +1011,30 @@ describe('App UI', () => {
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
   });
 
+  it('reports auto cleanup failures separately after settings are saved', async () => {
+    api.runCustomCleanup.mockRejectedValueOnce('清理执行失败');
+
+    render(App);
+
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '清理' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: '保存设置后自动清理' }));
+    await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
+
+    await waitFor(() => {
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ auto_cleanup_enabled: true })
+      );
+      expect(api.runCustomCleanup).toHaveBeenCalledWith(200, 30);
+    });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('设置已保存，自动清理失败: 清理执行失败');
+    expect(screen.queryByRole('dialog', { name: '设置' })).not.toBeInTheDocument();
+    expect(screen.queryByText('保存设置失败')).not.toBeInTheDocument();
+  });
+
   it('previews and runs custom cleanup from the settings panel', async () => {
     api.previewCustomCleanup.mockResolvedValue({
       item_count: 3,

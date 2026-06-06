@@ -19,4 +19,16 @@ describe('Backend settings commands', () => {
     expect(commandsSource).not.toContain('let result = store.save(settings)');
     expect(commandsSource).toContain('rollback_settings_side_effects');
   });
+
+  it('does not run automatic cleanup inside the settings save command', () => {
+    const saveStart = commandsSource.indexOf('pub async fn save_settings');
+    const previewStart = commandsSource.indexOf('pub async fn preview_custom_cleanup');
+    const saveSettingsSource = commandsSource.slice(saveStart, previewStart);
+
+    expect(saveStart).toBeGreaterThan(-1);
+    expect(previewStart).toBeGreaterThan(saveStart);
+    expect(saveSettingsSource).not.toContain('cleanup_by_settings');
+    expect(saveSettingsSource).not.toContain('run_cleanup(');
+    expect(saveSettingsSource).not.toContain('auto_cleanup_enabled');
+  });
 });

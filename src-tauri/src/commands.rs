@@ -100,10 +100,6 @@ pub async fn save_settings(
         return Err(append_rollback_error(error.to_string(), rollback_error));
     }
 
-    if result.auto_cleanup_enabled {
-        cleanup_by_settings(&app, &db, &result)?;
-    }
-
     Ok(result)
 }
 
@@ -601,19 +597,6 @@ fn cleanup_item_files(app: &AppHandle, item: &ClipboardItem) -> Result<(), Strin
     }
 
     Ok(())
-}
-
-fn cleanup_by_settings(
-    app: &AppHandle,
-    db: &Database,
-    settings: &AppSettings,
-) -> Result<CleanupPlan, String> {
-    run_cleanup(
-        app,
-        db,
-        settings.cleanup_max_items,
-        settings.cleanup_keep_days,
-    )
 }
 
 fn run_cleanup(
