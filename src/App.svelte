@@ -58,6 +58,8 @@
     { value: 'en-US', label: 'English' },
   ];
 
+  const appVersion = '0.1.0';
+
   let items = [];
   let currentSession = null;
   let loading = false;
@@ -545,6 +547,10 @@
       ...settingsDraft,
       [key]: value,
     };
+  }
+
+  function optionLabel(options, value) {
+    return options.find((option) => option.value === value)?.label || value;
   }
 
   async function saveSettings() {
@@ -1315,52 +1321,63 @@
       </header>
 
       <div class="settings-content">
-        <label class="switch-row">
-          <input
-            type="checkbox"
-            checked={settingsDraft.clipboard_monitor_enabled}
-            on:change={(event) =>
-              updateSettingsDraft('clipboard_monitor_enabled', event.currentTarget.checked)}
-          />
-          <span>监听剪贴板</span>
-        </label>
+        <section class="settings-section" aria-labelledby="settings-basic-title">
+          <div class="settings-section-title">
+            <h3 id="settings-basic-title">基础设置</h3>
+            <p>控制启动、监听和历史容量。</p>
+          </div>
 
-        <label class="switch-row">
-          <input
-            type="checkbox"
-            checked={settingsDraft.show_main_window_on_start}
-            on:change={(event) =>
-              updateSettingsDraft('show_main_window_on_start', event.currentTarget.checked)}
-          />
-          <span>启动时显示主窗口</span>
-        </label>
+          <label class="switch-row">
+            <input
+              type="checkbox"
+              checked={settingsDraft.clipboard_monitor_enabled}
+              on:change={(event) =>
+                updateSettingsDraft('clipboard_monitor_enabled', event.currentTarget.checked)}
+            />
+            <span>监听剪贴板</span>
+          </label>
 
-        <label class="field-row">
-          <span>保留记录数</span>
-          <input
-            type="number"
-            min="10"
-            max="500"
-            value={settingsDraft.max_items}
-            on:input={(event) => updateSettingsDraft('max_items', Number(event.currentTarget.value))}
-          />
-        </label>
+          <label class="switch-row">
+            <input
+              type="checkbox"
+              checked={settingsDraft.show_main_window_on_start}
+              on:change={(event) =>
+                updateSettingsDraft('show_main_window_on_start', event.currentTarget.checked)}
+            />
+            <span>启动时显示主窗口</span>
+          </label>
 
-        <label class="field-row">
-          <span>截图延迟</span>
-          <input
-            type="number"
-            min="0"
-            max="3000"
-            step="50"
-            value={settingsDraft.capture_delay_ms}
-            on:input={(event) =>
-              updateSettingsDraft('capture_delay_ms', Number(event.currentTarget.value))}
-          />
-        </label>
+          <label class="field-row">
+            <span>保留记录数</span>
+            <input
+              type="number"
+              min="10"
+              max="500"
+              value={settingsDraft.max_items}
+              on:input={(event) => updateSettingsDraft('max_items', Number(event.currentTarget.value))}
+            />
+          </label>
 
-        <div class="settings-section">
-          <h3>界面与日期</h3>
+          <label class="field-row">
+            <span>截图延迟</span>
+            <input
+              type="number"
+              min="0"
+              max="3000"
+              step="50"
+              value={settingsDraft.capture_delay_ms}
+              on:input={(event) =>
+                updateSettingsDraft('capture_delay_ms', Number(event.currentTarget.value))}
+            />
+          </label>
+        </section>
+
+        <section class="settings-section" aria-labelledby="settings-locale-title">
+          <div class="settings-section-title">
+            <h3 id="settings-locale-title">界面与日期</h3>
+            <p>选择语言，以及记录按哪座城市的自然日归档。</p>
+          </div>
+
           <label class="field-row">
             <span>日期划分时区</span>
             <select
@@ -1384,10 +1401,14 @@
               {/each}
             </select>
           </label>
-        </div>
+        </section>
 
-        <div class="settings-section">
-          <h3>自定义清理</h3>
+        <section class="settings-section" aria-labelledby="settings-cleanup-title">
+          <div class="settings-section-title">
+            <h3 id="settings-cleanup-title">自定义清理</h3>
+            <p>只清理普通记录，保留置顶、收藏和重要标注。</p>
+          </div>
+
           <label class="switch-row">
             <input
               type="checkbox"
@@ -1438,10 +1459,14 @@
               {cleanupLoading ? '清理中' : '立即清理'}
             </button>
           </div>
-        </div>
+        </section>
 
-        <div class="settings-section">
-          <h3>快捷键设置</h3>
+        <section class="settings-section" aria-labelledby="settings-hotkey-title">
+          <div class="settings-section-title">
+            <h3 id="settings-hotkey-title">快捷键设置</h3>
+            <p>记录当前截图入口，便于统一修改。</p>
+          </div>
+
           <label class="field-row">
             <span>截图</span>
             <input
@@ -1462,7 +1487,29 @@
               点击输入框后按下组合键自动录制，例如 Ctrl+Shift+A
             {/if}
           </p>
-        </div>
+        </section>
+
+        <section class="settings-section about-section" aria-labelledby="settings-about-title">
+          <div class="settings-section-title">
+            <h3 id="settings-about-title">关于我</h3>
+            <p>我是 ClipMaster，帮你把复制、截图、标注和贴图留在本机，按日期整理，随用随取。</p>
+          </div>
+
+          <dl class="about-list">
+            <div>
+              <dt>版本</dt>
+              <dd>{appVersion}</dd>
+            </div>
+            <div>
+              <dt>数据</dt>
+              <dd>本地保存</dd>
+            </div>
+            <div>
+              <dt>日期规则</dt>
+              <dd>{optionLabel(timeZoneOptions, settingsDraft.time_zone)}</dd>
+            </div>
+          </dl>
+        </section>
       </div>
 
       <footer class="settings-footer">
@@ -2137,7 +2184,7 @@
   .settings-content {
     display: grid;
     align-content: start;
-    gap: 12px;
+    gap: 16px;
     min-height: 0;
     padding: 14px;
     overflow: auto;
@@ -2182,16 +2229,61 @@
   .settings-section {
     display: grid;
     gap: 12px;
-    padding-top: 8px;
+    padding-top: 14px;
     border-top: 1px solid #edf1f6;
   }
 
-  .settings-section h3 {
+  .settings-section:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .settings-section-title {
+    display: grid;
+    gap: 3px;
+  }
+
+  .settings-section-title h3 {
+    margin: 0;
     color: #475569;
     font-size: 0.82rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+
+  .settings-section-title p {
+    max-width: 34em;
+    margin: 0;
+    color: #64748b;
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+
+  .about-list {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+  }
+
+  .about-list div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-height: 30px;
+    color: #172033;
+    font-size: 0.82rem;
+  }
+
+  .about-list dt {
+    color: #64748b;
+  }
+
+  .about-list dd {
+    margin: 0;
+    color: #172033;
+    font-weight: 600;
   }
 
   .hotkey-hint,
@@ -3755,7 +3847,7 @@
   }
 
   .settings-content {
-    gap: 10px;
+    gap: 16px;
     padding: 14px;
     scrollbar-width: thin;
   }
@@ -3799,15 +3891,42 @@
 
   .settings-section {
     gap: 10px;
-    padding-top: 12px;
+    padding-top: 14px;
     border-top-color: var(--line-soft);
   }
 
-  .settings-section h3 {
+  .settings-section:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .settings-section-title {
+    gap: 4px;
+  }
+
+  .settings-section-title h3 {
     color: #496064;
     font-size: 0.75rem;
     font-weight: 760;
     letter-spacing: 0.08em;
+  }
+
+  .settings-section-title p {
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
+  .about-list div {
+    color: var(--ink);
+  }
+
+  .about-list dt {
+    color: var(--muted);
+  }
+
+  .about-list dd {
+    color: var(--ink);
+    font-weight: 680;
   }
 
   .hotkey-hint,

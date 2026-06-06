@@ -467,6 +467,13 @@ describe('App UI', () => {
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
 
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '基础设置' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '界面与日期' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '自定义清理' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '快捷键设置' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '关于我' })).toBeInTheDocument();
+    expect(screen.getByText(/我是 ClipMaster/)).toBeInTheDocument();
+    expect(screen.getByText('本地保存')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: '监听剪贴板' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: '启动时显示主窗口' })).toBeChecked();
     expect(screen.getByLabelText('日期划分时区')).toHaveValue('Asia/Shanghai');
