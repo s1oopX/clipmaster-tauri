@@ -335,19 +335,24 @@ describe('App UI', () => {
     expect(api.getItems).toHaveBeenCalledTimes(2);
   });
 
-  it('loads records by selected day', async () => {
+  it('loads records by precisely selected calendar day', async () => {
     api.getItemsByDay.mockResolvedValue([imageItem()]);
 
     render(App);
 
-    const daySelect = await screen.findByRole('combobox', { name: '按日期提取剪贴板记录' });
-    await screen.findByRole('option', { name: '2026-06-06（2）' });
-    await fireEvent.change(daySelect, { target: { value: '2026-06-06' } });
+    const dayInput = await screen.findByLabelText('按日期精确选择剪贴板记录');
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+    await fireEvent.change(dayInput, { target: { value: '2026-06-06' } });
 
     await waitFor(() => {
       expect(api.getItemsByDay).toHaveBeenCalledWith('2026-06-06', 50, 0);
     });
     expect(await screen.findByText('图片记录')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '清除日期筛选' }));
+    await waitFor(() => {
+      expect(api.getItems).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('keeps live clipboard events within the configured item limit', async () => {

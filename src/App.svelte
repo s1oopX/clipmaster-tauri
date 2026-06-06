@@ -140,11 +140,11 @@
     if (recordingHotkeyTimeout) clearTimeout(recordingHotkeyTimeout);
   });
 
-  async function loadItems() {
+  async function loadItems(day = selectedDay) {
     loading = true;
     try {
-      items = selectedDay
-        ? await clipboardApi.getItemsByDay(selectedDay, itemLimit(), 0)
+      items = day
+        ? await clipboardApi.getItemsByDay(day, itemLimit(), 0)
         : await clipboardApi.getItems(itemLimit(), 0);
       pruneImageUrls(items);
       await loadImageUrls();
@@ -165,10 +165,18 @@
     }
   }
 
-  async function handleDayChange(event) {
-    selectedDay = event.currentTarget.value;
+  async function selectDay(day) {
+    selectedDay = day;
     searchQuery = '';
-    await loadItems();
+    await loadItems(day);
+  }
+
+  async function handleDayChange(event) {
+    await selectDay(event.currentTarget.value);
+  }
+
+  async function clearDayFilter() {
+    await selectDay('');
   }
 
   async function loadImageUrls() {
@@ -720,15 +728,35 @@
           </button>
         </div>
 
-        <label class="day-field">
-          <span>日期</span>
-          <select bind:value={selectedDay} on:change={handleDayChange} aria-label="按日期提取剪贴板记录">
-            <option value="">全部</option>
-            {#each availableDays as day}
-              <option value={day.date_key}>{day.date_key}（{day.item_count}）</option>
+        <div class="day-field calendar-field">
+          <label for="day-picker">日期</label>
+          <input
+            id="day-picker"
+            type="date"
+            bind:value={selectedDay}
+            on:change={handleDayChange}
+            aria-label="按日期精确选择剪贴板记录"
+          />
+          {#if selectedDay}
+            <button type="button" class="clear-date" on:click={clearDayFilter} aria-label="清除日期筛选">
+              <X size={14} aria-hidden="true" />
+            </button>
+          {/if}
+        </div>
+
+        {#if availableDays.length > 0}
+          <div class="date-shortcuts" aria-label="有记录的日期快捷选择">
+            {#each availableDays.slice(0, 4) as day}
+              <button
+                type="button"
+                class:active={selectedDay === day.date_key}
+                on:click={() => selectDay(day.date_key)}
+              >
+                {day.date_key.slice(5)} · {day.item_count}
+              </button>
             {/each}
-          </select>
-        </label>
+          </div>
+        {/if}
 
         <label class="search-field">
           <Search size={17} aria-hidden="true" />
@@ -1416,18 +1444,58 @@
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   }
 
-  .day-field span {
+  .day-field label {
     flex: 0 0 auto;
     font-weight: 700;
   }
 
-  .day-field select {
+  .day-field input {
     min-width: 0;
     width: 100%;
     color: #172033;
     background: transparent;
     border: 0;
     outline: 0;
+  }
+
+  .clear-date {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    place-items: center;
+    color: #64748b;
+    background: #f1f5f9;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .date-shortcuts {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 1px;
+  }
+
+  .date-shortcuts button {
+    min-height: 28px;
+    flex: 0 0 auto;
+    padding: 0 8px;
+    color: #475569;
+    background: #ffffff;
+    border: 1px solid #d9e0ea;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 0.76rem;
+  }
+
+  .date-shortcuts button:hover,
+  .date-shortcuts button.active {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #bfdbfe;
   }
 
   .search-field {
