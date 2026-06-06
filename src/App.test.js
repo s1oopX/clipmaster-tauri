@@ -784,4 +784,40 @@ describe('App UI', () => {
     expect(await screen.findByText('New token')).toBeInTheDocument();
     expect(screen.queryByText('Old token')).not.toBeInTheDocument();
   });
+
+  it('keeps live clipboard events from polluting active search results', async () => {
+    let newItemHandler;
+    api.getItems.mockResolvedValue([
+      textItem({ id: 'alpha_item', content: 'Alpha token', preview: 'Alpha token' }),
+    ]);
+    api.searchItems.mockResolvedValue([
+      textItem({ id: 'alpha_item', content: 'Alpha token', preview: 'Alpha token' }),
+    ]);
+    api.onNewItem.mockImplementation(async (handler) => {
+      newItemHandler = handler;
+      return vi.fn();
+    });
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    const search = screen.getByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+
+    await waitFor(() => {
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50, todayDateKey());
+    });
+
+    await newItemHandler(
+      textItem({
+        id: 'beta_item',
+        content: 'Beta token',
+        preview: 'Beta token',
+      })
+    );
+
+    expect(screen.getByText('Alpha token')).toBeInTheDocument();
+    expect(screen.queryByText('Beta token')).not.toBeInTheDocument();
+  });
 });

@@ -157,6 +157,29 @@
     return selectedDay || todayDateKey(appSettings.time_zone);
   }
 
+  function itemMatchesSearchQuery(item, query) {
+    if (!query) return true;
+
+    const normalizedQuery = query.toLowerCase();
+    return [item.content, item.preview, item.annotation].some((value) =>
+      String(value || '').toLowerCase().includes(normalizedQuery)
+    );
+  }
+
+  function itemMatchesLiveScope(item) {
+    const query = searchQuery.trim();
+
+    if (selectedDay && item.date_key !== selectedDay) {
+      return false;
+    }
+
+    if (query && item.date_key !== activeSearchDateKey()) {
+      return false;
+    }
+
+    return itemMatchesSearchQuery(item, query);
+  }
+
   function datePicker(node, params) {
     let availableDateKeys = new Set(params.availableDays.map((day) => day.date_key));
     let suppressChange = false;
@@ -283,7 +306,7 @@
       unlistenNewItem = await clipboardApi.onNewItem(async (item) => {
         await loadAvailableDays();
 
-        if (!selectedDay || item.date_key === selectedDay) {
+        if (itemMatchesLiveScope(item)) {
           items = limitItems([
             item,
             ...items.filter((existing) => existing.id !== item.id),
