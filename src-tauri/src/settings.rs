@@ -77,6 +77,16 @@ impl SettingsStore {
     }
 
     pub fn save(&self, settings: AppSettings) -> Result<AppSettings> {
+        let normalized = Self::normalize_candidate(settings)?;
+        self.save_normalized(normalized)
+    }
+
+    pub fn normalize_candidate(settings: AppSettings) -> Result<AppSettings> {
+        validate_screenshot_hotkey(&settings.screenshot_hotkey).map_err(anyhow::Error::msg)?;
+        Ok(Self::normalize(settings))
+    }
+
+    pub fn save_normalized(&self, settings: AppSettings) -> Result<AppSettings> {
         validate_screenshot_hotkey(&settings.screenshot_hotkey).map_err(anyhow::Error::msg)?;
         let normalized = Self::normalize(settings);
         let raw = serde_json::to_string_pretty(&normalized)?;
@@ -207,6 +217,30 @@ mod tests {
 
         assert_eq!(saved.time_zone, DEFAULT_TIME_ZONE);
         assert_eq!(saved.language, DEFAULT_LANGUAGE);
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn normalizes_candidate_without_mutating_current_settings() {
+        let data_dir =
+            std::env::temp_dir().join(format!("clipmaster-settings-{}", nanoid::nanoid!()));
+        let store = SettingsStore::new(&data_dir).unwrap();
+
+        let normalized = SettingsStore::normalize_candidate(AppSettings {
+            max_items: 900,
+            capture_delay_ms: -30,
+            screenshot_hotkey: " CommandOrControl+Alt+S ".to_string(),
+            time_zone: "America/New_York".to_string(),
+            ..AppSettings::default()
+        })
+        .unwrap();
+
+        assert_eq!(normalized.max_items, 500);
+        assert_eq!(normalized.capture_delay_ms, 0);
+        assert_eq!(normalized.screenshot_hotkey, "CommandOrControl+Alt+S");
+        assert_eq!(normalized.time_zone, "America/New_York");
+        assert_eq!(store.get(), AppSettings::default());
 
         let _ = fs::remove_dir_all(data_dir);
     }

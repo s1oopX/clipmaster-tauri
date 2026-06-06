@@ -73,20 +73,85 @@ pub async fn save_settings(
     settings: AppSettings,
 ) -> Result<AppSettings, String> {
     let previous = store.get();
-    let result = store.save(settings).map_err(|e| e.to_string())?;
+    let result = SettingsStore::normalize_candidate(settings).map_err(|e| e.to_string())?;
+    let hotkey_changed = previous.screenshot_hotkey != result.screenshot_hotkey;
+    let time_zone_changed = previous.time_zone != result.time_zone;
 
-    if previous.time_zone != result.time_zone {
-        db.rebuild_date_keys(&result.time_zone)
-            .map_err(|e| e.to_string())?;
+    if hotkey_changed {
+        if let Err(error) =
+            crate::hotkey::HotkeyManager::re_register_with_hotkey(&app, &result.screenshot_hotkey)
+        {
+            rollback_settings_hotkey(&app, &previous, hotkey_changed);
+            return Err(error);
+        }
     }
 
-    crate::hotkey::HotkeyManager::re_register(&app)?;
+    if time_zone_changed {
+        if let Err(error) = db.rebuild_date_keys(&result.time_zone) {
+            let rollback_error =
+                rollback_settings_side_effects(&app, &db, &previous, hotkey_changed, false);
+            return Err(append_rollback_error(error.to_string(), rollback_error));
+        }
+    }
+
+    if let Err(error) = store.save_normalized(result.clone()) {
+        let rollback_error =
+            rollback_settings_side_effects(&app, &db, &previous, hotkey_changed, time_zone_changed);
+        return Err(append_rollback_error(error.to_string(), rollback_error));
+    }
 
     if result.auto_cleanup_enabled {
         cleanup_by_settings(&app, &db, &result)?;
     }
 
     Ok(result)
+}
+
+fn rollback_settings_hotkey(
+    app: &AppHandle,
+    previous: &AppSettings,
+    hotkey_changed: bool,
+) -> Option<String> {
+    if !hotkey_changed {
+        return None;
+    }
+
+    crate::hotkey::HotkeyManager::re_register_with_hotkey(app, &previous.screenshot_hotkey)
+        .err()
+        .map(|error| format!("快捷键回滚失败: {}", error))
+}
+
+fn rollback_settings_side_effects(
+    app: &AppHandle,
+    db: &Database,
+    previous: &AppSettings,
+    hotkey_changed: bool,
+    time_zone_changed: bool,
+) -> Option<String> {
+    let mut errors = Vec::new();
+
+    if time_zone_changed {
+        if let Err(error) = db.rebuild_date_keys(&previous.time_zone) {
+            errors.push(format!("日期规则回滚失败: {}", error));
+        }
+    }
+
+    if let Some(error) = rollback_settings_hotkey(app, previous, hotkey_changed) {
+        errors.push(error);
+    }
+
+    if errors.is_empty() {
+        None
+    } else {
+        Some(errors.join("；"))
+    }
+}
+
+fn append_rollback_error(error: String, rollback_error: Option<String>) -> String {
+    match rollback_error {
+        Some(rollback_error) => format!("{}（{}）", error, rollback_error),
+        None => error,
+    }
 }
 
 /// 预览自定义清理结果
