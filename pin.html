@@ -143,7 +143,7 @@
     </div>
 
     <script type="module">
-      import { getCurrentWindow, LogicalSize, PhysicalSize } from '@tauri-apps/api/window';
+      import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
       import { convertFileSrc } from '@tauri-apps/api/core';
 
       const container = document.getElementById('container');
@@ -213,6 +213,16 @@
         image.style.setProperty('--image-offset-y', `${Math.round(imageOffsetY)}px`);
       }
 
+      async function resizePinnedWindow(delta) {
+        const nextWidth = Math.max(100, Math.min(Math.round(window.innerWidth * delta), 2400));
+        const nextHeight = Math.max(100, Math.min(Math.round(window.innerHeight * delta), 2400));
+
+        await runWindowAction(
+          () => currentWin.setSize(new LogicalSize(nextWidth, nextHeight)),
+          '同步缩放贴图窗口'
+        );
+      }
+
       // Ctrl + 滚轮同步缩放图片和贴图窗口。
       container.addEventListener('wheel', async (e) => {
         if (e.ctrlKey) {
@@ -221,15 +231,7 @@
           const delta = e.deltaY < 0 ? 1.1 : 0.9;
           imageScale = Math.max(0.25, Math.min(imageScale * delta, 5));
           syncImageTransform();
-
-          const size = await currentWin.innerSize();
-          await runWindowAction(
-            () => currentWin.setSize(new PhysicalSize(
-              Math.max(80, Math.min(Math.round(size.width * delta), 2400)),
-              Math.max(80, Math.min(Math.round(size.height * delta), 2400))
-            )),
-            '同步缩放贴图窗口'
-          );
+          await resizePinnedWindow(delta);
         }
       }, { passive: false });
 

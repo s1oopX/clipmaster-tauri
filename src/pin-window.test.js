@@ -28,8 +28,12 @@ describe('Pinned image window', () => {
     expect(pinHtml).toContain('function syncImageTransform()');
     expect(pinHtml).toContain("image.style.setProperty('--image-scale'");
     expect(pinHtml).toContain('imageScale = Math.max(0.25, Math.min(imageScale * delta, 5))');
-    expect(pinHtml).toContain('new PhysicalSize(');
-    expect(pinHtml).toContain('currentWin.innerSize()');
+    expect(pinHtml).toContain('function resizePinnedWindow(delta)');
+    expect(pinHtml).toContain('window.innerWidth * delta');
+    expect(pinHtml).toContain('window.innerHeight * delta');
+    expect(pinHtml).toContain('new LogicalSize(nextWidth, nextHeight)');
+    expect(pinHtml).not.toContain('PhysicalSize');
+    expect(pinHtml).not.toContain('currentWin.innerSize()');
     expect(pinHtml).toContain("'同步缩放贴图窗口'");
   });
 
