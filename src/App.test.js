@@ -552,6 +552,22 @@ describe('App UI', () => {
     });
   });
 
+  it('shows search failures as floating errors without shifting the history layout', async () => {
+    api.searchItems.mockRejectedValueOnce('索引暂不可用');
+
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+
+    const search = screen.getByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('搜索失败: 索引暂不可用');
+    expect(screen.getByTestId('toast-stack')).toContainElement(alert);
+    expect(document.querySelector('.notice.error')).toBeNull();
+  });
+
   it('explains duplicate screenshot selector windows without exposing internal labels', async () => {
     api.startRegionScreenshot.mockRejectedValueOnce(
       'a webview with label `screenshot-selector` already exists'
@@ -904,6 +920,22 @@ describe('App UI', () => {
     expect(api.getItems).not.toHaveBeenCalled();
   });
 
+  it('shows settings save failures as floating errors and keeps the dialog open', async () => {
+    api.saveSettings.mockRejectedValueOnce('写入失败');
+
+    render(App);
+
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('保存设置失败: 写入失败');
+    expect(screen.getByTestId('toast-stack')).toContainElement(alert);
+    expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
+    expect(document.querySelector('.notice.error')).toBeNull();
+  });
+
   it('previews and runs custom cleanup from the settings panel', async () => {
     api.previewCustomCleanup.mockResolvedValue({
       item_count: 3,
@@ -944,6 +976,31 @@ describe('App UI', () => {
       expect(api.runCustomCleanup).toHaveBeenCalledWith(80, 7);
     });
     expect(api.getItems).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows cleanup failures as floating errors without adding a global notice', async () => {
+    api.previewCustomCleanup.mockRejectedValueOnce('清理预览失败');
+    api.runCustomCleanup.mockRejectedValueOnce('清理执行失败');
+
+    render(App);
+
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '清理' }));
+
+    await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
+    let alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('预览清理失败: 清理预览失败');
+    expect(screen.getByTestId('toast-stack')).toContainElement(alert);
+    expect(document.querySelector('.notice.error')).toBeNull();
+
+    await fireEvent.click(screen.getByRole('button', { name: '立即清理' }));
+    await waitFor(() => {
+      alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('执行清理失败: 清理执行失败');
+      expect(screen.getByTestId('toast-stack')).toContainElement(alert);
+    });
+    expect(document.querySelector('.notice.error')).toBeNull();
   });
 
   it('loads records by precisely selected calendar day', async () => {

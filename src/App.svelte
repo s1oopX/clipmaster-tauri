@@ -546,7 +546,8 @@
       if (requestId !== recordsRequestId) return;
 
       console.error('搜索失败:', e);
-      error = e.toString();
+      error = null;
+      showActionError('搜索失败: ' + e);
     } finally {
       if (requestId === recordsRequestId) {
         isSearching = false;
@@ -697,7 +698,7 @@
       showActionNotice('设置已保存');
     } catch (e) {
       console.error('保存设置失败:', e);
-      error = '保存设置失败: ' + e;
+      showActionError('保存设置失败: ' + e);
     } finally {
       settingsSaving = false;
     }
@@ -714,7 +715,7 @@
       );
     } catch (e) {
       console.error('预览清理失败:', e);
-      error = '预览清理失败: ' + e;
+      showActionError('预览清理失败: ' + e);
     } finally {
       cleanupLoading = false;
     }
@@ -734,7 +735,7 @@
       showActionNotice(`已清理 ${cleanupPlan.item_count} 条记录`);
     } catch (e) {
       console.error('执行清理失败:', e);
-      error = '执行清理失败: ' + e;
+      showActionError('执行清理失败: ' + e);
     } finally {
       cleanupLoading = false;
     }
