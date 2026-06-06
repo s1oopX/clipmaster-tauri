@@ -746,6 +746,7 @@
 
   function showCopyToast() {
     copySuccess = true;
+    actionNotice = '';
     actionError = '';
     if (copyTimer) clearTimeout(copyTimer);
     copyTimer = setTimeout(() => {
@@ -755,6 +756,7 @@
 
   function showActionNotice(message) {
     actionNotice = message;
+    copySuccess = false;
     actionError = '';
     if (noticeTimer) clearTimeout(noticeTimer);
     noticeTimer = setTimeout(() => {
@@ -764,6 +766,7 @@
 
   function showActionError(message) {
     actionError = message;
+    copySuccess = false;
     actionNotice = '';
     if (errorNoticeTimer) clearTimeout(errorNoticeTimer);
     errorNoticeTimer = setTimeout(() => {

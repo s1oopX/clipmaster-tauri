@@ -574,6 +574,24 @@ describe('App UI', () => {
     expect(screen.getByTestId('toast-stack')).toContainElement(alert);
   });
 
+  it('replaces a copy success toast with the next error toast', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+
+    render(App);
+
+    const content = await screen.findByText('Alpha token');
+    await fireEvent.dblClick(content);
+
+    expect(await screen.findByRole('status')).toHaveTextContent('已复制到剪贴板');
+
+    api.copyToClipboard.mockRejectedValueOnce('剪贴板被占用');
+    await fireEvent.dblClick(content);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('复制失败: 剪贴板被占用');
+    expect(screen.queryByText('已复制到剪贴板')).not.toBeInTheDocument();
+  });
+
   it('copies text quickly from the content area on double click', async () => {
     api.getItems.mockResolvedValue([textItem()]);
 
