@@ -3484,8 +3484,10 @@
     display: flex;
     align-items: center;
     justify-content: flex-start;
+    width: fit-content;
+    max-width: 100%;
     margin-top: 9px;
-    max-height: 180px;
+    max-height: 164px;
     overflow: hidden;
     background: #f8fafc;
     border: 1px solid #e2e8f0;
@@ -3501,8 +3503,9 @@
 
   .image-preview img {
     display: block;
+    width: auto;
     max-width: 100%;
-    max-height: 180px;
+    max-height: 164px;
     object-fit: contain;
   }
 
