@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "ClipMaster",
-        "width": 450,
-        "height": 600,
+        "width": 520,
+        "height": 680,
+        "minWidth": 420,
+        "minHeight": 560,
         "resizable": true,
         "fullscreen": false,
         "center": true
