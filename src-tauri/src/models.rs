@@ -62,6 +62,7 @@ pub struct ClipboardItem {
     pub source_app: Option<String>,
     pub is_favorite: bool,
     pub is_pinned: bool,
+    pub annotation: Option<String>,
     pub content_hash: String,
     pub session_id: String,
 }

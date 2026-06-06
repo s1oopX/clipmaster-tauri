@@ -24,6 +24,8 @@ const api = vi.hoisted(() => ({
   searchItems: vi.fn(),
   toggleFavorite: vi.fn(),
   togglePinned: vi.fn(),
+  updateItemContent: vi.fn(),
+  updateItemAnnotation: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -46,6 +48,8 @@ vi.mock('./lib/api.js', () => ({
     togglePinned: api.togglePinned,
     copyToClipboard: api.copyToClipboard,
     copyImageToClipboard: api.copyImageToClipboard,
+    updateItemContent: api.updateItemContent,
+    updateItemAnnotation: api.updateItemAnnotation,
     onNewItem: api.onNewItem,
   },
   sessionApi: {
@@ -90,6 +94,7 @@ function textItem(overrides = {}) {
     source_app: null,
     is_favorite: false,
     is_pinned: false,
+    annotation: null,
     content_hash: 'hash_text',
     session_id: 'session_1',
     ...overrides,
@@ -109,6 +114,7 @@ function imageItem(overrides = {}) {
     source_app: null,
     is_favorite: true,
     is_pinned: false,
+    annotation: null,
     content_hash: 'hash_image',
     session_id: 'session_1',
     ...overrides,
@@ -160,6 +166,11 @@ describe('App UI', () => {
     api.togglePinned.mockResolvedValue(true);
     api.copyToClipboard.mockResolvedValue();
     api.copyImageToClipboard.mockResolvedValue();
+    api.updateItemContent.mockResolvedValue();
+    api.updateItemAnnotation.mockImplementation(async (_itemId, annotation) => {
+      const trimmed = annotation.trim();
+      return trimmed ? trimmed : null;
+    });
     api.convertImagePath.mockResolvedValue('asset://localhost/images/2026-06-06/image.png');
   });
 
@@ -276,6 +287,70 @@ describe('App UI', () => {
     expect(screen.getByRole('status')).toHaveTextContent('已复制到剪贴板');
   });
 
+  it('saves annotations without changing the original clipboard content', async () => {
+    api.getItems.mockResolvedValue([
+      textItem({ annotation: '旧标注' }),
+    ]);
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '标注 Alpha token' }));
+    const annotationInput = screen.getByLabelText('编辑 Alpha token 的标注');
+
+    expect(annotationInput).toHaveValue('旧标注');
+
+    await fireEvent.input(annotationInput, { target: { value: '用于发票核对' } });
+    await fireEvent.click(screen.getByRole('button', { name: '保存标注' }));
+
+    await waitFor(() => {
+      expect(api.updateItemAnnotation).toHaveBeenCalledWith('text_1', '用于发票核对');
+    });
+    expect(screen.getByText('用于发票核对')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '复制 Alpha token' }));
+
+    expect(api.copyToClipboard).toHaveBeenCalledWith('Alpha token');
+    expect(api.copyToClipboard).not.toHaveBeenCalledWith('用于发票核对');
+  });
+
+  it('offers edit and annotation actions from the item context menu', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+
+    render(App);
+
+    const content = await screen.findByText('Alpha token');
+    await fireEvent.contextMenu(content, { clientX: 120, clientY: 160 });
+
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: '编辑原文' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: '添加标注' })).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('menuitem', { name: '编辑原文' }));
+    const contentInput = screen.getByLabelText('编辑 Alpha token 的原文');
+    await fireEvent.input(contentInput, { target: { value: 'Beta token' } });
+    await fireEvent.click(screen.getByRole('button', { name: '保存原文' }));
+
+    await waitFor(() => {
+      expect(api.updateItemContent).toHaveBeenCalledWith('text_1', 'Beta token');
+    });
+    expect(screen.getByText('Beta token')).toBeInTheDocument();
+
+    await fireEvent.contextMenu(screen.getByText('Beta token'), { clientX: 140, clientY: 180 });
+    await fireEvent.click(screen.getByRole('menuitem', { name: '添加标注' }));
+
+    const annotationInput = screen.getByLabelText('编辑 Beta token 的标注');
+    await fireEvent.input(annotationInput, { target: { value: '来自右键菜单' } });
+    await fireEvent.click(screen.getByRole('button', { name: '保存标注' }));
+
+    await waitFor(() => {
+      expect(api.updateItemAnnotation).toHaveBeenCalledWith('text_1', '来自右键菜单');
+    });
+    expect(screen.getByText('已标注')).toBeInTheDocument();
+    expect(screen.getByText('来自右键菜单')).toBeInTheDocument();
+  });
+
   it('loads and saves app settings from the settings panel', async () => {
     render(App);
 
@@ -351,9 +426,8 @@ describe('App UI', () => {
 
     render(App);
 
-    const dayInput = await screen.findByLabelText('按日期精确选择剪贴板记录');
     await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
-    await fireEvent.change(dayInput, { target: { value: '2026-06-06' } });
+    await fireEvent.click(screen.getByRole('button', { name: '06-06 · 2' }));
 
     await waitFor(() => {
       expect(api.getItemsByDay).toHaveBeenCalledWith('2026-06-06', 50, 0);

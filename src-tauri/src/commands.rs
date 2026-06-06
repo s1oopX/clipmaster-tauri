@@ -290,6 +290,30 @@ pub async fn update_item_content(
         .map_err(|e| e.to_string())
 }
 
+/// 更新记录标注，不改变原始剪贴板内容
+#[tauri::command]
+pub async fn update_item_annotation(
+    db: State<'_, Database>,
+    item_id: String,
+    annotation: String,
+) -> Result<Option<String>, String> {
+    let trimmed = annotation.trim();
+    if trimmed.chars().count() > 2000 {
+        return Err("标注不能超过 2000 字".to_string());
+    }
+
+    let normalized = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    };
+
+    db.update_item_annotation(&item_id, normalized.as_deref())
+        .map_err(|e| e.to_string())?;
+
+    Ok(normalized)
+}
+
 /// 开始区域截图
 #[tauri::command]
 pub async fn start_region_screenshot(

@@ -51,6 +51,7 @@
   let searchQuery = '';
   let isSearching = false;
   let activeFilter = 'all';
+  let filteredItems = [];
 
   let imageUrls = {};
   let copySuccess = false;
@@ -72,16 +73,30 @@
   let unlistenNewItem = null;
   let editingId = null;
   let editContent = '';
+  let annotationEditingId = null;
+  let annotationDraft = '';
+  let contextMenu = { open: false, x: 0, y: 0, itemId: null };
+  let activeContextItem = null;
   let thumbnailUrls = {};
   let viewingImageId = null;
   let availableDays = [];
   let selectedDay = '';
+
+  $: activeContextItem = contextMenu.open
+    ? items.find((item) => item.id === contextMenu.itemId) || null
+    : null;
 
   const filters = [
     { id: 'all', label: '全部记录' },
     { id: 'favorite', label: '收藏' },
     { id: 'image', label: '图片' },
   ];
+
+  $: filteredItems = activeFilter === 'favorite'
+    ? items.filter((item) => item.is_favorite)
+    : activeFilter === 'image'
+      ? items.filter((item) => item.type === 'image')
+      : items;
 
   function formatDateKey(date) {
     const year = date.getFullYear();
@@ -92,6 +107,7 @@
 
   function datePicker(node, params) {
     let availableDateKeys = new Set(params.availableDays.map((day) => day.date_key));
+    let suppressChange = false;
 
     const picker = flatpickr(node, {
       allowInput: false,
@@ -106,6 +122,7 @@
       prevArrow: '‹',
       shorthandCurrentMonth: false,
       onChange: (_selectedDates, dateStr) => {
+        if (suppressChange) return;
         void selectDay(dateStr);
       },
       onDayCreate: (_dObj, _dStr, _fp, dayElem) => {
@@ -120,13 +137,20 @@
     function sync(nextParams) {
       availableDateKeys = new Set(nextParams.availableDays.map((day) => day.date_key));
 
-      if (nextParams.selectedDay) {
-        picker.setDate(nextParams.selectedDay, false);
-      } else {
-        picker.clear(false);
-      }
+      suppressChange = true;
+      try {
+        if (nextParams.selectedDay) {
+          picker.setDate(nextParams.selectedDay, false);
+        } else {
+          picker.clear(false);
+        }
 
-      picker.redraw();
+        picker.redraw();
+      } finally {
+        queueMicrotask(() => {
+          suppressChange = false;
+        });
+      }
     }
 
     return {
@@ -135,6 +159,44 @@
         picker.destroy();
       },
     };
+  }
+
+  function closeContextMenu() {
+    contextMenu = { open: false, x: 0, y: 0, itemId: null };
+  }
+
+  function handleDocumentClick(event) {
+    if (!contextMenu.open) return;
+    if (event.target?.closest?.('.context-menu')) return;
+    closeContextMenu();
+  }
+
+  function handleDocumentKeyDown(event) {
+    if (event.key === 'Escape') {
+      closeContextMenu();
+    }
+  }
+
+  function openContextMenu(event, item) {
+    event.preventDefault();
+
+    const estimatedWidth = 178;
+    const estimatedHeight = item.type === 'text' ? 188 : 144;
+    const x = Math.min(
+      Math.max(8, event.clientX),
+      Math.max(8, window.innerWidth - estimatedWidth - 8)
+    );
+    const y = Math.min(
+      Math.max(8, event.clientY),
+      Math.max(8, window.innerHeight - estimatedHeight - 8)
+    );
+
+    contextMenu = { open: true, x, y, itemId: item.id };
+  }
+
+  function runContextAction(action) {
+    closeContextMenu();
+    action();
   }
 
   onMount(async () => {
@@ -158,6 +220,8 @@
       currentSession = await sessionApi.getCurrentSession();
       await loadAvailableDays();
       await loadItems();
+      document.addEventListener('click', handleDocumentClick);
+      document.addEventListener('keydown', handleDocumentKeyDown);
 
       // 监听快捷键事件
       await listen('hotkey:screenshot', async () => {
@@ -196,6 +260,8 @@
     if (copyTimer) clearTimeout(copyTimer);
     if (noticeTimer) clearTimeout(noticeTimer);
     if (recordingHotkeyTimeout) clearTimeout(recordingHotkeyTimeout);
+    document.removeEventListener('click', handleDocumentClick);
+    document.removeEventListener('keydown', handleDocumentKeyDown);
   });
 
   async function loadItems(day = selectedDay) {
@@ -205,7 +271,8 @@
         ? await clipboardApi.getItemsByDay(day, itemLimit(), 0)
         : await clipboardApi.getItems(itemLimit(), 0);
       pruneImageUrls(items);
-      await loadImageUrls();
+      loading = false;
+      void loadImageUrls();
     } catch (e) {
       console.error('加载记录失败:', e);
       error = e.toString();
@@ -227,10 +294,6 @@
     selectedDay = day;
     searchQuery = '';
     await loadItems(day);
-  }
-
-  async function handleDayChange(event) {
-    await selectDay(event.currentTarget.value);
   }
 
   async function clearDayFilter() {
@@ -319,7 +382,8 @@
         itemLimit()
       );
       pruneImageUrls(items);
-      await loadImageUrls();
+      isSearching = false;
+      void loadImageUrls();
     } catch (e) {
       console.error('搜索失败:', e);
       error = e.toString();
@@ -583,15 +647,7 @@
   }
 
   function visibleItems() {
-    if (activeFilter === 'favorite') {
-      return items.filter((item) => item.is_favorite);
-    }
-
-    if (activeFilter === 'image') {
-      return items.filter((item) => item.type === 'image');
-    }
-
-    return items;
+    return filteredItems;
   }
 
   function itemLimit() {
@@ -614,15 +670,29 @@
     );
   }
 
-  function startEdit(item) {
+  function startContentEdit(item) {
     if (item.type !== 'text') return;
     editingId = item.id;
     editContent = item.content || '';
+    annotationEditingId = null;
+    annotationDraft = '';
   }
 
-  function cancelEdit() {
+  function cancelContentEdit() {
     editingId = null;
     editContent = '';
+  }
+
+  function startAnnotationEdit(item) {
+    annotationEditingId = item.id;
+    annotationDraft = item.annotation || '';
+    editingId = null;
+    editContent = '';
+  }
+
+  function cancelAnnotationEdit() {
+    annotationEditingId = null;
+    annotationDraft = '';
   }
 
   function viewFullImage(itemId) {
@@ -633,16 +703,15 @@
     viewingImageId = null;
   }
 
-  async function saveEdit(itemId) {
+  async function saveContentEdit(itemId) {
     if (!editContent.trim()) {
-      showActionNotice('内容不能为空');
+      showActionNotice('原文不能为空');
       return;
     }
 
     try {
       await clipboardApi.updateItemContent(itemId, editContent);
 
-      // 更新本地列表
       items = items.map((item) =>
         item.id === itemId
           ? {
@@ -657,10 +726,32 @@
 
       editingId = null;
       editContent = '';
-      showActionNotice('保存成功');
+      showActionNotice('原文已更新');
     } catch (e) {
-      console.error('保存失败:', e);
-      showActionNotice('保存失败: ' + e);
+      console.error('保存原文失败:', e);
+      showActionNotice('保存原文失败: ' + e);
+    }
+  }
+
+  async function saveAnnotation(itemId) {
+    try {
+      const savedAnnotation = await clipboardApi.updateItemAnnotation(itemId, annotationDraft);
+
+      items = items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              annotation: savedAnnotation,
+            }
+          : item
+      );
+
+      annotationEditingId = null;
+      annotationDraft = '';
+      showActionNotice(savedAnnotation ? '标注已保存' : '标注已清除');
+    } catch (e) {
+      console.error('保存标注失败:', e);
+      showActionNotice('保存标注失败: ' + e);
     }
   }
 
@@ -753,7 +844,7 @@
       <div class="toolbar-title">
         <p class="eyebrow">Clipboard history</p>
         <h2>剪贴板历史</h2>
-        <p class="toolbar-context">{selectedDay || '全部日期'} · 当前视图 {visibleItems().length} 条</p>
+        <p class="toolbar-context">{selectedDay || '全部日期'} · 当前视图 {filteredItems.length} 条</p>
       </div>
 
       <div class="toolbar-tools">
@@ -797,7 +888,6 @@
             placeholder="选择日期"
             readonly
             use:datePicker={{ selectedDay, availableDays }}
-            on:change={handleDayChange}
             aria-label="按日期精确选择剪贴板记录"
           />
           {#if selectedDay}
@@ -873,7 +963,7 @@
             </div>
           {/each}
         </div>
-      {:else if visibleItems().length === 0}
+      {:else if filteredItems.length === 0}
         <div class="empty-state">
           <div class="empty-mark">
             <Inbox size={34} aria-hidden="true" />
@@ -888,8 +978,12 @@
         </div>
       {:else}
         <div class="items-list" aria-label="剪贴板记录列表">
-          {#each visibleItems() as item (item.id)}
-            <article class="item" class:pinned={item.is_pinned}>
+          {#each filteredItems as item (item.id)}
+            <article
+              class="item"
+              class:pinned={item.is_pinned}
+              on:contextmenu={(event) => openContextMenu(event, item)}
+            >
               <div class="item-main">
                 <div class="item-row">
                   <div class="item-meta">
@@ -911,6 +1005,9 @@
                     {/if}
                     {#if item.is_favorite}
                       <span class="badge">收藏</span>
+                    {/if}
+                    {#if item.annotation}
+                      <span class="badge">已标注</span>
                     {/if}
                   </div>
 
@@ -944,6 +1041,15 @@
                     {/if}
                     <button
                       type="button"
+                      class:active={annotationEditingId === item.id}
+                      on:click={() => startAnnotationEdit(item)}
+                      aria-label={`标注 ${itemLabel(item)}`}
+                      title="标注"
+                    >
+                      <FileText size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
                       class:active={item.is_favorite}
                       on:click={() => toggleFavorite(item.id)}
                       aria-label={`收藏 ${itemLabel(item)}`}
@@ -967,22 +1073,23 @@
                     <div class="edit-area">
                       <textarea
                         bind:value={editContent}
-                        placeholder="编辑内容"
+                        placeholder="编辑原始文本内容"
                         rows="4"
+                        aria-label={`编辑 ${itemLabel(item)} 的原文`}
                       ></textarea>
                       <div class="edit-actions">
                         <button
                           type="button"
                           class="btn-save"
-                          on:click={() => saveEdit(item.id)}
+                          on:click={() => saveContentEdit(item.id)}
                         >
                           <Check size={16} aria-hidden="true" />
-                          保存
+                          保存原文
                         </button>
                         <button
                           type="button"
                           class="btn-cancel"
-                          on:click={cancelEdit}
+                          on:click={cancelContentEdit}
                         >
                           <X size={16} aria-hidden="true" />
                           取消
@@ -990,15 +1097,9 @@
                       </div>
                     </div>
                   {:else}
-                    <button
-                      type="button"
-                      class="text-content"
-                      on:click={() => startEdit(item)}
-                      on:keydown={(e) => e.key === 'Enter' && startEdit(item)}
-                      title="点击编辑"
-                    >
+                    <div class="text-content" aria-label="原始文本内容">
                       {item.preview || item.content}
-                    </button>
+                    </div>
                   {/if}
                 {:else if item.type === 'image'}
                   <div class="image-summary">
@@ -1022,6 +1123,40 @@
                     <div class="image-loading">图片加载中</div>
                   {/if}
                 {/if}
+
+                {#if annotationEditingId === item.id}
+                  <div class="annotation-editor">
+                    <textarea
+                      bind:value={annotationDraft}
+                      placeholder="添加标注，不会改变原始内容"
+                      rows="3"
+                      aria-label={`编辑 ${itemLabel(item)} 的标注`}
+                    ></textarea>
+                    <div class="edit-actions">
+                      <button
+                        type="button"
+                        class="btn-save"
+                        on:click={() => saveAnnotation(item.id)}
+                      >
+                        <Check size={16} aria-hidden="true" />
+                        保存标注
+                      </button>
+                      <button
+                        type="button"
+                        class="btn-cancel"
+                        on:click={cancelAnnotationEdit}
+                      >
+                        <X size={16} aria-hidden="true" />
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                {:else if item.annotation}
+                  <div class="annotation-note">
+                    <span>标注</span>
+                    <p>{item.annotation}</p>
+                  </div>
+                {/if}
               </div>
             </article>
           {/each}
@@ -1029,6 +1164,41 @@
       {/if}
     </div>
   </section>
+  {#if contextMenu.open && activeContextItem}
+    <div
+      class="context-menu"
+      role="menu"
+      tabindex="-1"
+      style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        on:click={() => runContextAction(() => copyItem(activeContextItem))}
+      >
+        <Copy size={15} aria-hidden="true" />
+        复制
+      </button>
+      {#if activeContextItem.type === 'text'}
+        <button
+          type="button"
+          role="menuitem"
+          on:click={() => runContextAction(() => startContentEdit(activeContextItem))}
+        >
+          <FileText size={15} aria-hidden="true" />
+          编辑原文
+        </button>
+      {/if}
+      <button
+        type="button"
+        role="menuitem"
+        on:click={() => runContextAction(() => startAnnotationEdit(activeContextItem))}
+      >
+        <FileText size={15} aria-hidden="true" />
+        {activeContextItem.annotation ? '编辑标注' : '添加标注'}
+      </button>
+    </div>
+  {/if}
   {#if settingsOpen}
     <div class="settings-backdrop" on:click={() => (settingsOpen = false)} aria-hidden="true"></div>
     <div
@@ -1928,25 +2098,49 @@
     line-height: 1.45;
     text-align: left;
     word-break: break-word;
-    cursor: pointer;
-    background: transparent;
-    border: 0;
-    transition: background 0.15s;
+    background: #f8fafc;
+    border: 1px solid transparent;
     padding: 4px;
     border-radius: 4px;
   }
 
-  .text-content:hover {
-    background: #f1f5f9;
+  .annotation-note {
+    display: grid;
+    gap: 4px;
+    margin-top: 9px;
+    padding: 8px 10px;
+    color: #334155;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+  }
+
+  .annotation-note span {
+    color: #64748b;
+    font-size: 0.74rem;
+    font-weight: 700;
+  }
+
+  .annotation-note p {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .annotation-editor {
+    margin-top: 9px;
   }
 
   .edit-area {
     margin-top: 9px;
   }
 
-  .edit-area textarea {
+  .edit-area textarea,
+  .annotation-editor textarea {
     width: 100%;
-    min-height: 100px;
+    min-height: 88px;
     padding: 10px;
     color: #172033;
     font-size: 0.92rem;
@@ -2131,6 +2325,41 @@
     color: #1d4ed8;
     background: #eff6ff;
     border-color: #bfdbfe;
+  }
+
+  .context-menu {
+    position: fixed;
+    z-index: 1200;
+    display: grid;
+    min-width: 168px;
+    padding: 6px;
+    background: #ffffff;
+    border: 1px solid #dbe3ee;
+    border-radius: 10px;
+    box-shadow:
+      0 18px 44px rgba(15, 23, 42, 0.18),
+      0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  }
+
+  .context-menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    color: #253347;
+    font: inherit;
+    font-size: 0.86rem;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+
+  .context-menu button:hover {
+    color: #0f172a;
+    background: #f1f5f9;
   }
 
   .sr-only {
@@ -2980,16 +3209,39 @@
     margin-top: 8px;
     padding: 7px 8px;
     color: var(--ink);
-    border: 1px solid transparent;
+    background: #f7fbfa;
+    border: 1px solid #dce8e6;
     border-radius: 8px;
     font-size: 0.91rem;
     line-height: 1.48;
     text-wrap: pretty;
   }
 
-  .text-content:hover {
+  .annotation-note {
+    background: #f0f6e8;
+    border-color: #d8e8be;
+  }
+
+  .annotation-note span {
+    color: #486327;
+  }
+
+  .annotation-note p {
+    color: var(--ink);
+  }
+
+  .annotation-editor textarea {
+    min-height: 86px;
+    color: var(--ink);
+    background: #fbfdfd;
+    border: 1px solid var(--accent-line);
+    border-radius: 10px;
+    box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.1);
+  }
+
+  .annotation-editor textarea:focus {
     background: #eef6f4;
-    border-color: #d2e8e4;
+    outline: none;
   }
 
   .edit-area textarea {
@@ -3081,6 +3333,25 @@
     color: var(--accent-strong);
     background: var(--accent-soft);
     border-color: var(--accent-line);
+  }
+
+  .context-menu {
+    background: #fbfdfd;
+    border-color: #cbdcda;
+    border-radius: 10px;
+    box-shadow:
+      0 18px 44px rgba(9, 24, 27, 0.18),
+      0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  }
+
+  .context-menu button {
+    color: var(--ink);
+    border-radius: 8px;
+  }
+
+  .context-menu button:hover {
+    color: var(--accent-strong);
+    background: var(--accent-soft);
   }
 
   .settings-backdrop {

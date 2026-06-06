@@ -110,6 +110,7 @@ fn main() {
             commands::clear_session,
             commands::search_items,
             commands::update_item_content,
+            commands::update_item_annotation,
             commands::get_app_data_dir,
             commands::copy_to_clipboard,
             commands::copy_image_to_clipboard,

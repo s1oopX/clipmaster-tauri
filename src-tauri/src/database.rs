@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::{Local, TimeZone, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, Row};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -12,6 +12,10 @@ use crate::models::{
 pub struct Database {
     conn: Mutex<Connection>,
 }
+
+const CLIPBOARD_ITEM_COLUMNS: &str = "\
+    id, type, content, image_path, thumbnail_path, preview, timestamp,
+    date_key, source_app, is_favorite, is_pinned, content_hash, session_id, annotation";
 
 impl Database {
     /// 初始化数据库
@@ -71,6 +75,7 @@ impl Database {
                 source_app TEXT,
                 is_favorite INTEGER DEFAULT 0,
                 is_pinned INTEGER DEFAULT 0,
+                annotation TEXT,
                 content_hash TEXT NOT NULL,
                 session_id TEXT NOT NULL,
                 FOREIGN KEY (session_id) REFERENCES sessions(id)
@@ -87,6 +92,10 @@ impl Database {
 
         // 迁移：添加 date_key 字段（如果不存在）
         conn.execute("ALTER TABLE clipboard_items ADD COLUMN date_key TEXT", [])
+            .ok(); // 忽略错误，因为字段可能已存在
+
+        // 迁移：添加 annotation 字段（如果不存在），用于保存不改变原内容的用户标注
+        conn.execute("ALTER TABLE clipboard_items ADD COLUMN annotation TEXT", [])
             .ok(); // 忽略错误，因为字段可能已存在
 
         // 创建索引（使用 execute_batch 避免返回结果）
@@ -217,6 +226,7 @@ impl Database {
             source_app: item.source_app,
             is_favorite: false,
             is_pinned: false,
+            annotation: None,
             content_hash: item.content_hash,
             session_id: item.session_id,
         })
@@ -226,33 +236,17 @@ impl Database {
     pub fn get_items(&self, limit: i32, offset: i32) -> Result<Vec<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
 
-        let mut stmt = conn.prepare(
-            "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                    date_key, source_app, is_favorite, is_pinned, content_hash, session_id
+        let sql = format!(
+            "SELECT {}
              FROM clipboard_items
              ORDER BY is_pinned DESC, timestamp DESC
              LIMIT ?1 OFFSET ?2",
-        )?;
+            CLIPBOARD_ITEM_COLUMNS
+        );
+        let mut stmt = conn.prepare(&sql)?;
 
         let items = stmt
-            .query_map(params![limit, offset], |row| {
-                Ok(ClipboardItem {
-                    id: row.get(0)?,
-                    type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
-                        .unwrap_or(ClipboardType::Text),
-                    content: row.get(2)?,
-                    image_path: row.get(3)?,
-                    thumbnail_path: row.get(4)?,
-                    preview: row.get(5)?,
-                    timestamp: row.get(6)?,
-                    date_key: row.get(7)?,
-                    source_app: row.get(8)?,
-                    is_favorite: row.get::<_, i32>(9)? == 1,
-                    is_pinned: row.get::<_, i32>(10)? == 1,
-                    content_hash: row.get(11)?,
-                    session_id: row.get(12)?,
-                })
-            })?
+            .query_map(params![limit, offset], clipboard_item_from_row)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(items)
@@ -267,34 +261,18 @@ impl Database {
     ) -> Result<Vec<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
 
-        let mut stmt = conn.prepare(
-            "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                    date_key, source_app, is_favorite, is_pinned, content_hash, session_id
+        let sql = format!(
+            "SELECT {}
              FROM clipboard_items
              WHERE session_id = ?1
              ORDER BY is_pinned DESC, timestamp DESC
              LIMIT ?2 OFFSET ?3",
-        )?;
+            CLIPBOARD_ITEM_COLUMNS
+        );
+        let mut stmt = conn.prepare(&sql)?;
 
         let items = stmt
-            .query_map(params![session_id, limit, offset], |row| {
-                Ok(ClipboardItem {
-                    id: row.get(0)?,
-                    type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
-                        .unwrap_or(ClipboardType::Text),
-                    content: row.get(2)?,
-                    image_path: row.get(3)?,
-                    thumbnail_path: row.get(4)?,
-                    preview: row.get(5)?,
-                    timestamp: row.get(6)?,
-                    date_key: row.get(7)?,
-                    source_app: row.get(8)?,
-                    is_favorite: row.get::<_, i32>(9)? == 1,
-                    is_pinned: row.get::<_, i32>(10)? == 1,
-                    content_hash: row.get(11)?,
-                    session_id: row.get(12)?,
-                })
-            })?
+            .query_map(params![session_id, limit, offset], clipboard_item_from_row)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(items)
@@ -320,31 +298,13 @@ impl Database {
     pub fn get_item(&self, item_id: &str) -> Result<Option<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
 
-        let result = conn.query_row(
-            "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                    date_key, source_app, is_favorite, is_pinned, content_hash, session_id
+        let sql = format!(
+            "SELECT {}
              FROM clipboard_items
              WHERE id = ?1",
-            params![item_id],
-            |row| {
-                Ok(ClipboardItem {
-                    id: row.get(0)?,
-                    type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
-                        .unwrap_or(ClipboardType::Text),
-                    content: row.get(2)?,
-                    image_path: row.get(3)?,
-                    thumbnail_path: row.get(4)?,
-                    preview: row.get(5)?,
-                    timestamp: row.get(6)?,
-                    date_key: row.get(7)?,
-                    source_app: row.get(8)?,
-                    is_favorite: row.get::<_, i32>(9)? == 1,
-                    is_pinned: row.get::<_, i32>(10)? == 1,
-                    content_hash: row.get(11)?,
-                    session_id: row.get(12)?,
-                })
-            },
+            CLIPBOARD_ITEM_COLUMNS
         );
+        let result = conn.query_row(&sql, params![item_id], clipboard_item_from_row);
 
         match result {
             Ok(item) => Ok(Some(item)),
@@ -533,6 +493,18 @@ impl Database {
         Ok(())
     }
 
+    /// 更新记录标注，不修改原始内容和预览
+    pub fn update_item_annotation(&self, item_id: &str, annotation: Option<&str>) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+
+        conn.execute(
+            "UPDATE clipboard_items SET annotation = ?1 WHERE id = ?2",
+            params![annotation, item_id],
+        )?;
+
+        Ok(())
+    }
+
     /// 获取可用日期列表
     pub fn get_available_days(&self, limit: i32) -> Result<Vec<ClipboardDay>> {
         let conn = self.conn.lock().unwrap();
@@ -567,34 +539,18 @@ impl Database {
         offset: i32,
     ) -> Result<Vec<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                    date_key, source_app, is_favorite, is_pinned, content_hash, session_id
+        let sql = format!(
+            "SELECT {}
              FROM clipboard_items
              WHERE date_key = ?1
              ORDER BY is_pinned DESC, timestamp DESC
              LIMIT ?2 OFFSET ?3",
-        )?;
+            CLIPBOARD_ITEM_COLUMNS
+        );
+        let mut stmt = conn.prepare(&sql)?;
 
         let items = stmt
-            .query_map(params![date_key, limit, offset], |row| {
-                Ok(ClipboardItem {
-                    id: row.get(0)?,
-                    type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
-                        .unwrap_or(ClipboardType::Text),
-                    content: row.get(2)?,
-                    image_path: row.get(3)?,
-                    thumbnail_path: row.get(4)?,
-                    preview: row.get(5)?,
-                    timestamp: row.get(6)?,
-                    date_key: row.get(7)?,
-                    source_app: row.get(8)?,
-                    is_favorite: row.get::<_, i32>(9)? == 1,
-                    is_pinned: row.get::<_, i32>(10)? == 1,
-                    content_hash: row.get(11)?,
-                    session_id: row.get(12)?,
-                })
-            })?
+            .query_map(params![date_key, limit, offset], clipboard_item_from_row)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(items)
@@ -610,9 +566,8 @@ impl Database {
         let keep_threshold =
             Utc::now().timestamp_millis() - (keep_days as i64 * 24 * 60 * 60 * 1000);
 
-        let mut stmt = conn.prepare(
-            "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                    date_key, source_app, is_favorite, is_pinned, content_hash, session_id
+        let sql = format!(
+            "SELECT {}
              FROM clipboard_items
              WHERE is_pinned = 0
                AND is_favorite = 0
@@ -629,26 +584,14 @@ impl Database {
                     )
                )
              ORDER BY timestamp ASC",
-        )?;
+            CLIPBOARD_ITEM_COLUMNS
+        );
+        let mut stmt = conn.prepare(&sql)?;
 
-        let rows = stmt.query_map(params![max_items.max(0), keep_threshold], |row| {
-            Ok(ClipboardItem {
-                id: row.get(0)?,
-                type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
-                    .unwrap_or(ClipboardType::Text),
-                content: row.get(2)?,
-                image_path: row.get(3)?,
-                thumbnail_path: row.get(4)?,
-                preview: row.get(5)?,
-                timestamp: row.get(6)?,
-                date_key: row.get(7)?,
-                source_app: row.get(8)?,
-                is_favorite: row.get::<_, i32>(9)? == 1,
-                is_pinned: row.get::<_, i32>(10)? == 1,
-                content_hash: row.get(11)?,
-                session_id: row.get(12)?,
-            })
-        })?;
+        let rows = stmt.query_map(
+            params![max_items.max(0), keep_threshold],
+            clipboard_item_from_row,
+        )?;
 
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
@@ -692,69 +635,60 @@ impl Database {
 
         // 根据是否有 session_id 分别执行不同的查询
         let items = if let Some(sid) = session_id {
-            let mut stmt = conn.prepare(
-                "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                        date_key, source_app, is_favorite, is_pinned, content_hash, session_id
+            let sql = format!(
+                "SELECT {}
                  FROM clipboard_items
-                 WHERE session_id = ?1 AND (content LIKE ?2 OR preview LIKE ?2)
+                 WHERE session_id = ?1
+                   AND (content LIKE ?2 OR preview LIKE ?2 OR annotation LIKE ?2)
                  ORDER BY timestamp DESC
                  LIMIT ?3",
-            )?;
+                CLIPBOARD_ITEM_COLUMNS
+            );
+            let mut stmt = conn.prepare(&sql)?;
 
-            let rows = stmt.query_map(params![sid, &search_pattern, limit], |row| {
-                Ok(ClipboardItem {
-                    id: row.get(0)?,
-                    type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
-                        .unwrap_or(ClipboardType::Text),
-                    content: row.get(2)?,
-                    image_path: row.get(3)?,
-                    thumbnail_path: row.get(4)?,
-                    preview: row.get(5)?,
-                    timestamp: row.get(6)?,
-                    date_key: row.get(7)?,
-                    source_app: row.get(8)?,
-                    is_favorite: row.get::<_, i32>(9)? == 1,
-                    is_pinned: row.get::<_, i32>(10)? == 1,
-                    content_hash: row.get(11)?,
-                    session_id: row.get(12)?,
-                })
-            })?;
+            let rows = stmt.query_map(
+                params![sid, &search_pattern, limit],
+                clipboard_item_from_row,
+            )?;
 
             rows.collect::<Result<Vec<_>, _>>()?
         } else {
-            let mut stmt = conn.prepare(
-                "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                        date_key, source_app, is_favorite, is_pinned, content_hash, session_id
+            let sql = format!(
+                "SELECT {}
                  FROM clipboard_items
-                 WHERE content LIKE ?1 OR preview LIKE ?1
+                 WHERE content LIKE ?1 OR preview LIKE ?1 OR annotation LIKE ?1
                  ORDER BY timestamp DESC
                  LIMIT ?2",
-            )?;
+                CLIPBOARD_ITEM_COLUMNS
+            );
+            let mut stmt = conn.prepare(&sql)?;
 
-            let rows = stmt.query_map(params![&search_pattern, limit], |row| {
-                Ok(ClipboardItem {
-                    id: row.get(0)?,
-                    type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
-                        .unwrap_or(ClipboardType::Text),
-                    content: row.get(2)?,
-                    image_path: row.get(3)?,
-                    thumbnail_path: row.get(4)?,
-                    preview: row.get(5)?,
-                    timestamp: row.get(6)?,
-                    date_key: row.get(7)?,
-                    source_app: row.get(8)?,
-                    is_favorite: row.get::<_, i32>(9)? == 1,
-                    is_pinned: row.get::<_, i32>(10)? == 1,
-                    content_hash: row.get(11)?,
-                    session_id: row.get(12)?,
-                })
-            })?;
+            let rows = stmt.query_map(params![&search_pattern, limit], clipboard_item_from_row)?;
 
             rows.collect::<Result<Vec<_>, _>>()?
         };
 
         Ok(items)
     }
+}
+
+fn clipboard_item_from_row(row: &Row<'_>) -> rusqlite::Result<ClipboardItem> {
+    Ok(ClipboardItem {
+        id: row.get(0)?,
+        type_: ClipboardType::from_str(&row.get::<_, String>(1)?).unwrap_or(ClipboardType::Text),
+        content: row.get(2)?,
+        image_path: row.get(3)?,
+        thumbnail_path: row.get(4)?,
+        preview: row.get(5)?,
+        timestamp: row.get(6)?,
+        date_key: row.get(7)?,
+        source_app: row.get(8)?,
+        is_favorite: row.get::<_, i32>(9)? == 1,
+        is_pinned: row.get::<_, i32>(10)? == 1,
+        content_hash: row.get(11)?,
+        session_id: row.get(12)?,
+        annotation: row.get(13)?,
+    })
 }
 
 fn date_key_from_timestamp(timestamp: i64) -> String {

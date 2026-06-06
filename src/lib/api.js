@@ -123,6 +123,16 @@ export const clipboardApi = {
   },
 
   /**
+   * 更新记录标注，不修改原始内容
+   * @param {string} itemId
+   * @param {string} annotation
+   * @returns {Promise<string|null>} 保存后的标注，空字符串会被清除为 null
+   */
+  async updateItemAnnotation(itemId, annotation) {
+    return await invoke('update_item_annotation', { itemId, annotation });
+  },
+
+  /**
    * 监听新记录事件
    * @param {Function} callback
    * @returns {Promise<Function>} unlisten 函数
