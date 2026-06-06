@@ -301,21 +301,7 @@ pub async fn start_region_screenshot(
         sleep(Duration::from_millis(delay_ms)).await;
     }
 
-    // 1. 先截取整个屏幕
-    let screen = Screen::all()
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .next()
-        .ok_or_else(|| "未找到可截图的屏幕".to_string())?;
-
-    let image = screen.capture().map_err(|e| e.to_string())?;
-
-    // 2. 保存临时截图
-    let temp_dir = std::env::temp_dir();
-    let temp_path = temp_dir.join("clipmaster_screenshot_temp.png");
-    image.save(&temp_path).map_err(|e| e.to_string())?;
-
-    // 3. 创建截图选择窗口
+    // 1. 创建截图选择窗口。窗口自身只显示灰色底版，最终截图在用户确认后再抓取。
     if let Some(selection_window) = app.get_webview_window("screenshot-selector") {
         selection_window.close().map_err(|e| e.to_string())?;
     }
@@ -335,23 +321,28 @@ pub async fn start_region_screenshot(
     .build()
     .map_err(|e| e.to_string())?;
 
-    // 4. 截图窗口创建后再隐藏主窗口，避免无可见窗口导致应用退出
+    // 2. 先隐藏主窗口，再显示灰色底版，避免主窗口出现在用户要截取的内容里。
     if let Some(main_window) = app.get_webview_window("main") {
-        main_window.hide().map_err(|e| e.to_string())?;
+        if let Err(error) = main_window.hide() {
+            let _ = selection_window.close();
+            let _ = restore_main_window(&app);
+            return Err(format!("隐藏主窗口失败: {}", error));
+        }
     }
 
-    selection_window.show().map_err(|e| e.to_string())?;
-    selection_window.set_focus().map_err(|e| e.to_string())?;
+    if let Err(error) = selection_window.show() {
+        let _ = selection_window.close();
+        let _ = restore_main_window(&app);
+        return Err(format!("打开截图选择窗口失败: {}", error));
+    }
+
+    if let Err(error) = selection_window.set_focus() {
+        let _ = selection_window.close();
+        let _ = restore_main_window(&app);
+        return Err(format!("聚焦截图选择窗口失败: {}", error));
+    }
 
     Ok(())
-}
-
-/// 获取临时截图路径
-#[tauri::command]
-pub async fn get_screenshot_temp_path() -> Result<String, String> {
-    let temp_dir = std::env::temp_dir();
-    let temp_path = temp_dir.join("clipmaster_screenshot_temp.png");
-    Ok(temp_path.to_string_lossy().to_string())
 }
 
 /// 捕获选定区域的截图
@@ -365,30 +356,34 @@ pub async fn capture_region_screenshot(
     width: u32,
     height: u32,
 ) -> Result<ClipboardItem, String> {
-    // 1. 读取临时截图
-    let temp_dir = std::env::temp_dir();
-    let temp_path = temp_dir.join("clipmaster_screenshot_temp.png");
+    if width == 0 || height == 0 {
+        return Err("截图区域无效".to_string());
+    }
 
-    let full_image = image::open(&temp_path).map_err(|e| e.to_string())?;
+    // 1. 用户在灰色底版上完成框选后，前端会先隐藏选择窗口，再调用这里抓取真实屏幕区域。
+    let screen = Screen::from_point(x, y).map_err(|e| format!("未找到选区所在屏幕: {}", e))?;
+    let relative_x = x - screen.display_info.x;
+    let relative_y = y - screen.display_info.y;
+    let captured_image = screen
+        .capture_area(relative_x, relative_y, width, height)
+        .map_err(|e| format!("捕获截图区域失败: {}", e))?;
+    let (captured_width, captured_height) = captured_image.dimensions();
+    let rgba_image =
+        image::RgbaImage::from_raw(captured_width, captured_height, captured_image.into_raw())
+            .ok_or_else(|| "转换截图像素失败".to_string())?;
 
-    // 2. 裁剪指定区域
-    let cropped = full_image.crop_imm(x as u32, y as u32, width, height);
-
-    // 3. 转换为 RgbaImage
-    let rgba_image = cropped.to_rgba8();
-
-    // 4. 计算 hash
+    // 2. 计算 hash
     let content_hash = format!("{:x}", md5::compute(rgba_image.as_raw()));
 
-    // 5. 保存图片和缩略图
+    // 3. 保存图片和缩略图
     let (image_path, thumbnail_path) = save_cropped_image(&app, &rgba_image, &content_hash)?;
 
-    // 6. 获取会话
+    // 4. 获取会话
     let session_id = session_mgr
         .get_current_session_id()
         .ok_or_else(|| "当前没有活动会话".to_string())?;
 
-    // 7. 创建记录
+    // 5. 创建记录
     let saved_item = db
         .insert_item(CreateClipboardItem {
             type_: ClipboardType::Image,
@@ -401,12 +396,9 @@ pub async fn capture_region_screenshot(
         })
         .map_err(|e| e.to_string())?;
 
-    // 8. 通知前端
+    // 6. 通知前端
     app.emit("clipboard:new-item", &saved_item)
         .map_err(|e| e.to_string())?;
-
-    // 9. 清理临时文件
-    let _ = fs::remove_file(&temp_path);
 
     Ok(saved_item)
 }
@@ -415,6 +407,15 @@ fn validate_date_key(date_key: &str) -> Result<(), String> {
     NaiveDate::parse_from_str(date_key, "%Y-%m-%d")
         .map(|_| ())
         .map_err(|_| "日期格式必须为 YYYY-MM-DD".to_string())
+}
+
+pub fn restore_main_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(main_window) = app.get_webview_window("main") {
+        main_window.show().map_err(|e| e.to_string())?;
+        main_window.set_focus().map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
 }
 
 fn cleanup_item_files(app: &AppHandle, item: &ClipboardItem) -> Result<(), String> {

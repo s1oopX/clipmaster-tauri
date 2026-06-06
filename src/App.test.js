@@ -237,6 +237,17 @@ describe('App UI', () => {
     await waitFor(() => expect(api.startRegionScreenshot).toHaveBeenCalledTimes(1));
   });
 
+  it('shows an inline error when screenshot selection cannot start', async () => {
+    api.startRegionScreenshot.mockRejectedValueOnce('权限不足');
+
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+    await fireEvent.click(screen.getByRole('button', { name: '截图' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('截图失败: 权限不足');
+  });
+
   it('pins the newest image globally and supports pinning an image item to desktop', async () => {
     api.getItems.mockResolvedValue([textItem(), imageItem()]);
 

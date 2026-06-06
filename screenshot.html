@@ -17,6 +17,7 @@
         overflow: hidden;
         cursor: crosshair;
         user-select: none;
+        background: transparent;
       }
 
       #canvas {
@@ -25,6 +26,7 @@
         left: 0;
         width: 100%;
         height: 100%;
+        background: transparent;
       }
 
       #info {
@@ -136,7 +138,7 @@
     </style>
   </head>
   <body>
-    <div id="info">拖动鼠标选择截图区域 | Enter 确定 | P 钉住 | ESC 取消</div>
+    <div id="info">在灰色底版上拖动选择截图区域 | Enter 确定 | P 钉住 | ESC 取消</div>
     <div id="error" role="alert" aria-live="assertive"></div>
     <canvas id="canvas"></canvas>
     <div id="toolbar">
@@ -177,111 +179,135 @@
       const cancelBtn = document.getElementById('cancel');
       const pinBtn = document.getElementById('pinBtn');
 
-      let backgroundImage = null;
       let isSelecting = false;
+      let isCapturing = false;
       let startX = 0;
       let startY = 0;
       let currentX = 0;
       let currentY = 0;
+      let startScreenX = 0;
+      let startScreenY = 0;
+      let currentScreenX = 0;
+      let currentScreenY = 0;
       let selectionComplete = false;
 
-      // 设置 canvas 尺寸
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      function sleep(ms) {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
+      }
+
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        drawCanvas();
+      }
 
       function showError(message) {
         errorBox.textContent = message;
         errorBox.style.display = 'block';
       }
 
-      // 加载背景截图
-      async function loadScreenshot() {
+      function hideError() {
+        errorBox.style.display = 'none';
+        errorBox.textContent = '';
+      }
+
+      async function restoreMainWindow() {
         try {
-          const tempPath = await invoke('get_screenshot_temp_path');
+          const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+          const mainWindow = await WebviewWindow.getByLabel('main');
 
-          const { convertFileSrc } = await import('@tauri-apps/api/core');
-          const imageUrl = convertFileSrc(tempPath);
+          if (!mainWindow) {
+            console.warn('未找到主窗口');
+            return false;
+          }
 
-          backgroundImage = new Image();
-          backgroundImage.onload = () => {
-            drawCanvas();
-          };
-          backgroundImage.onerror = (e) => {
-            console.error('背景图片加载失败:', e);
-            showError('加载截图失败，请重试');
-            closeWindow();
-          };
-          backgroundImage.src = imageUrl;
+          await mainWindow.show();
+          await mainWindow.setFocus();
+          return true;
         } catch (error) {
-          console.error('获取截图路径失败:', error);
-          showError('加载截图失败: ' + error);
-          await closeWindow();
+          console.error('恢复主窗口失败:', error);
+          return false;
         }
+      }
+
+      function resetSelection() {
+        selectionComplete = false;
+        toolbar.style.display = 'none';
+        sizeInfo.style.display = 'none';
+        hideError();
+      }
+
+      function getSelection() {
+        const clientX = Math.min(startX, currentX);
+        const clientY = Math.min(startY, currentY);
+        const clientWidth = Math.abs(currentX - startX);
+        const clientHeight = Math.abs(currentY - startY);
+        const screenX = Math.min(startScreenX, currentScreenX);
+        const screenY = Math.min(startScreenY, currentScreenY);
+        const screenWidth = Math.abs(currentScreenX - startScreenX);
+        const screenHeight = Math.abs(currentScreenY - startScreenY);
+
+        return {
+          client: {
+            x: clientX,
+            y: clientY,
+            width: clientWidth,
+            height: clientHeight,
+          },
+          screen: {
+            x: screenX,
+            y: screenY,
+            width: screenWidth || clientWidth,
+            height: screenHeight || clientHeight,
+          },
+        };
       }
 
       // 绘制画布
       function drawCanvas() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 绘制背景图片
-        if (backgroundImage) {
-          ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
-        }
-
-        // 绘制半透明遮罩（增强对比度）
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        // 灰色底版只负责选区交互，真正截图会在确认后隐藏该窗口再抓取。
+        ctx.fillStyle = 'rgba(34, 39, 43, 0.58)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         if (isSelecting || selectionComplete) {
-          const x = Math.min(startX, currentX);
-          const y = Math.min(startY, currentY);
-          const width = Math.abs(currentX - startX);
-          const height = Math.abs(currentY - startY);
+          const { client } = getSelection();
+          const { x, y, width, height } = client;
 
-          // 清除选区的遮罩，显示原图
+          // 清除选区内的灰色底版，露出真实桌面内容。
           ctx.clearRect(x, y, width, height);
-          if (backgroundImage) {
-            ctx.drawImage(
-              backgroundImage,
-              x, y, width, height,
-              x, y, width, height
-            );
-          }
 
-          // 绘制选区边框（更明显的蓝色）
-          ctx.strokeStyle = '#1E90FF';
+          ctx.strokeStyle = '#38bdf8';
           ctx.lineWidth = 3;
           ctx.strokeRect(x, y, width, height);
 
-          // 绘制四个角的标记
-          const cornerSize = 6;
-          ctx.fillStyle = '#1E90FF';
-          // 左上
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 2, y + 2, Math.max(width - 4, 0), Math.max(height - 4, 0));
+
+          const cornerSize = 7;
+          ctx.fillStyle = '#38bdf8';
           ctx.fillRect(x - cornerSize / 2, y - cornerSize / 2, cornerSize, cornerSize);
-          // 右上
           ctx.fillRect(x + width - cornerSize / 2, y - cornerSize / 2, cornerSize, cornerSize);
-          // 左下
           ctx.fillRect(x - cornerSize / 2, y + height - cornerSize / 2, cornerSize, cornerSize);
-          // 右下
           ctx.fillRect(x + width - cornerSize / 2, y + height - cornerSize / 2, cornerSize, cornerSize);
 
-          // 更新尺寸信息
           if (width > 0 && height > 0) {
             sizeInfo.textContent = `${Math.round(width)} × ${Math.round(height)}`;
             sizeInfo.style.display = 'block';
-            sizeInfo.style.left = `${x + width + 10}px`;
-            sizeInfo.style.top = `${y}px`;
+            sizeInfo.style.left = `${Math.min(x + width + 10, window.innerWidth - 86)}px`;
+            sizeInfo.style.top = `${Math.max(8, y)}px`;
           }
         }
       }
 
       // 鼠标按下
       canvas.addEventListener('mousedown', (e) => {
+        if (isCapturing) return;
+
         if (selectionComplete) {
-          // 重新选择
-          selectionComplete = false;
-          toolbar.style.display = 'none';
-          sizeInfo.style.display = 'none';
+          resetSelection();
         }
 
         isSelecting = true;
@@ -289,6 +315,10 @@
         startY = e.clientY;
         currentX = e.clientX;
         currentY = e.clientY;
+        startScreenX = e.screenX;
+        startScreenY = e.screenY;
+        currentScreenX = e.screenX;
+        currentScreenY = e.screenY;
         drawCanvas();
       });
 
@@ -298,6 +328,8 @@
 
         currentX = e.clientX;
         currentY = e.clientY;
+        currentScreenX = e.screenX;
+        currentScreenY = e.screenY;
         drawCanvas();
       });
 
@@ -308,11 +340,12 @@
         isSelecting = false;
         currentX = e.clientX;
         currentY = e.clientY;
+        currentScreenX = e.screenX;
+        currentScreenY = e.screenY;
 
-        const width = Math.abs(currentX - startX);
-        const height = Math.abs(currentY - startY);
+        const { client } = getSelection();
 
-        if (width > 10 && height > 10) {
+        if (client.width > 10 && client.height > 10) {
           selectionComplete = true;
           showToolbar();
         }
@@ -322,69 +355,85 @@
 
       // 显示工具栏
       function showToolbar() {
-        const x = Math.min(startX, currentX);
-        const y = Math.min(startY, currentY);
-        const width = Math.abs(currentX - startX);
-        const height = Math.abs(currentY - startY);
+        const { client } = getSelection();
+        const { x, y, width, height } = client;
 
         toolbar.style.display = 'flex';
-        toolbar.style.left = `${x + width - toolbar.offsetWidth}px`;
-        toolbar.style.top = `${y + height + 10}px`;
+        const maxLeft = Math.max(8, window.innerWidth - toolbar.offsetWidth - 8);
+        const left = Math.min(Math.max(8, x + width - toolbar.offsetWidth), maxLeft);
+        let top = y + height + 10;
 
-        // 确保工具栏在屏幕内
-        const rect = toolbar.getBoundingClientRect();
-        if (rect.bottom > window.innerHeight) {
-          toolbar.style.top = `${y - toolbar.offsetHeight - 10}px`;
+        if (top + toolbar.offsetHeight > window.innerHeight) {
+          top = y - toolbar.offsetHeight - 10;
         }
-        if (rect.right > window.innerWidth) {
-          toolbar.style.left = `${x}px`;
+        if (top < 8) {
+          top = 8;
         }
+
+        toolbar.style.left = `${left}px`;
+        toolbar.style.top = `${top}px`;
+      }
+
+      async function hideSelectorForCapture() {
+        const currentWin = getCurrentWindow();
+        toolbar.style.display = 'none';
+        sizeInfo.style.display = 'none';
+        document.getElementById('info').style.display = 'none';
+        hideError();
+        await currentWin.hide();
+        await sleep(160);
+      }
+
+      async function showSelectorAfterCaptureError() {
+        const currentWin = getCurrentWindow();
+        await currentWin.show();
+        await currentWin.setFocus();
+        document.getElementById('info').style.display = 'block';
+        drawCanvas();
+        showToolbar();
       }
 
       // 确认截图
       async function confirmSelection() {
-        if (!selectionComplete) return;
+        if (!selectionComplete || isCapturing) return;
 
-        const x = Math.min(startX, currentX);
-        const y = Math.min(startY, currentY);
-        const width = Math.abs(currentX - startX);
-        const height = Math.abs(currentY - startY);
+        isCapturing = true;
+        const { screen } = getSelection();
 
         try {
-          // 调用后端捕获区域
+          await hideSelectorForCapture();
           await invoke('capture_region_screenshot', {
-            x: Math.round(x),
-            y: Math.round(y),
-            width: Math.round(width),
-            height: Math.round(height),
+            x: Math.round(screen.x),
+            y: Math.round(screen.y),
+            width: Math.round(screen.width),
+            height: Math.round(screen.height),
           });
 
           await closeWindow();
         } catch (error) {
           console.error('截图失败:', error);
+          await showSelectorAfterCaptureError();
           showError('截图失败: ' + error);
+          isCapturing = false;
         }
       }
 
       // 钉住截图
       async function pinSelection() {
-        if (!selectionComplete) return;
+        if (!selectionComplete || isCapturing) return;
 
-        const x = Math.min(startX, currentX);
-        const y = Math.min(startY, currentY);
-        const width = Math.abs(currentX - startX);
-        const height = Math.abs(currentY - startY);
+        isCapturing = true;
+        const { screen } = getSelection();
 
         try {
-          // 先捕获区域截图
+          await hideSelectorForCapture();
           const result = await invoke('capture_region_screenshot', {
-            x: Math.round(x),
-            y: Math.round(y),
-            width: Math.round(width),
-            height: Math.round(height),
+            x: Math.round(screen.x),
+            y: Math.round(screen.y),
+            width: Math.round(screen.width),
+            height: Math.round(screen.height),
           });
 
-          // 钉到桌面
           if (result && result.image_path) {
             await invoke('pin_image', {
               imagePath: result.image_path,
@@ -394,7 +443,9 @@
           await closeWindow();
         } catch (error) {
           console.error('钉住截图失败:', error);
+          await showSelectorAfterCaptureError();
           showError('钉住截图失败: ' + error);
+          isCapturing = false;
         }
       }
 
@@ -407,28 +458,18 @@
       async function closeWindow() {
         try {
           const currentWin = getCurrentWindow();
+          const restored = await restoreMainWindow();
 
-          // 恢复主窗口
-          try {
-            const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-            const mainWindow = WebviewWindow.getByLabel('main');
-
-            if (mainWindow) {
-              await mainWindow.show();
-              await mainWindow.setFocus();
-            } else {
-              console.warn('未找到主窗口');
-            }
-          } catch (e) {
-            console.error('恢复主窗口失败:', e);
+          if (!restored) {
+            showError('无法恢复主窗口，请从任务栏重新打开 ClipMaster');
+            return;
           }
 
           // 关闭当前窗口
           await currentWin.close();
         } catch (error) {
           console.error('关闭窗口失败:', error);
-          // 即使失败也尝试关闭
-          window.close();
+          showError('关闭截图窗口失败: ' + error);
         }
       }
 
@@ -460,7 +501,8 @@
       });
 
       // 初始化
-      loadScreenshot();
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
     </script>
   </body>
 </html>

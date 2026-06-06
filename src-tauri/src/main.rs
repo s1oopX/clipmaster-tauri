@@ -70,6 +70,14 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if window.label() == "screenshot-selector" {
+                    let app_handle = window.app_handle();
+                    if let Err(error) = commands::restore_main_window(app_handle) {
+                        eprintln!("Failed to restore main window after screenshot: {}", error);
+                    }
+                    return;
+                }
+
                 if window.label() != "main" {
                     return;
                 }
@@ -110,7 +118,6 @@ fn main() {
             commands::preview_custom_cleanup,
             commands::run_custom_cleanup,
             commands::start_region_screenshot,
-            commands::get_screenshot_temp_path,
             commands::capture_region_screenshot,
             commands::pin_image,
         ])
