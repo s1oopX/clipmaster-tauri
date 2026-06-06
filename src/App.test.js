@@ -348,6 +348,23 @@ describe('App UI', () => {
     expect(screen.queryByText('Alpha token')).not.toBeInTheDocument();
   });
 
+  it('keeps the confirmation dialog open when protected record deletion fails', async () => {
+    api.getItems.mockResolvedValue([textItem({ annotation: '用于发票核对' })]);
+    api.deleteItem.mockRejectedValueOnce('数据库忙');
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '删除 Alpha token' }));
+    await fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('删除失败: 数据库忙');
+    expect(screen.getByRole('dialog', { name: '确认删除' })).toBeInTheDocument();
+    expect(screen.getAllByText('Alpha token').length).toBeGreaterThanOrEqual(2);
+  });
+
   it('shows toast errors when favorite or pinned actions fail', async () => {
     api.getItems.mockResolvedValue([textItem()]);
     api.toggleFavorite.mockRejectedValueOnce('收藏失败');

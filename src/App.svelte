@@ -439,9 +439,11 @@
       await loadAvailableDays();
       error = null;
       showActionNotice('已删除记录');
+      return true;
     } catch (e) {
       console.error('删除失败:', e);
       showActionError('删除失败: ' + e);
+      return false;
     }
   }
 
@@ -466,8 +468,10 @@
     const itemId = deleteCandidate.id;
 
     try {
-      await performDeleteItem(itemId);
-      deleteCandidate = null;
+      const deleted = await performDeleteItem(itemId);
+      if (deleted) {
+        deleteCandidate = null;
+      }
     } finally {
       deleteConfirmLoading = false;
     }
