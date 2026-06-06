@@ -346,10 +346,15 @@ impl Database {
     /// 删除记录
     pub fn delete_item(&self, item_id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute(
+        let deleted = conn.execute(
             "DELETE FROM clipboard_items WHERE id = ?1",
             params![item_id],
         )?;
+
+        if deleted == 0 {
+            return Err(anyhow::anyhow!("记录不存在"));
+        }
+
         Ok(())
     }
 
@@ -357,11 +362,14 @@ impl Database {
     pub fn toggle_favorite(&self, item_id: &str) -> Result<bool> {
         let conn = self.conn.lock().unwrap();
 
-        let is_favorite: i32 = conn.query_row(
-            "SELECT is_favorite FROM clipboard_items WHERE id = ?1",
-            params![item_id],
-            |row| row.get(0),
-        )?;
+        let is_favorite: i32 = conn
+            .query_row(
+                "SELECT is_favorite FROM clipboard_items WHERE id = ?1",
+                params![item_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("记录不存在"))?;
 
         let new_state = if is_favorite == 1 { 0 } else { 1 };
 
@@ -377,11 +385,14 @@ impl Database {
     pub fn toggle_pinned(&self, item_id: &str) -> Result<bool> {
         let conn = self.conn.lock().unwrap();
 
-        let is_pinned: i32 = conn.query_row(
-            "SELECT is_pinned FROM clipboard_items WHERE id = ?1",
-            params![item_id],
-            |row| row.get(0),
-        )?;
+        let is_pinned: i32 = conn
+            .query_row(
+                "SELECT is_pinned FROM clipboard_items WHERE id = ?1",
+                params![item_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("记录不存在"))?;
 
         let new_state = if is_pinned == 1 { 0 } else { 1 };
 
@@ -1010,6 +1021,30 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("记录不存在"));
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn item_state_changes_require_existing_record() {
+        let (db, data_dir) = temp_database();
+        let item = db
+            .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+
+        assert!(db.toggle_favorite(&item.id).unwrap());
+        assert!(db.toggle_pinned(&item.id).unwrap());
+        db.delete_item(&item.id).unwrap();
+        assert!(db.get_item(&item.id).unwrap().is_none());
+
+        let delete_error = db.delete_item(&item.id).unwrap_err().to_string();
+        assert!(delete_error.contains("记录不存在"));
+
+        let favorite_error = db.toggle_favorite(&item.id).unwrap_err().to_string();
+        assert!(favorite_error.contains("记录不存在"));
+
+        let pinned_error = db.toggle_pinned(&item.id).unwrap_err().to_string();
+        assert!(pinned_error.contains("记录不存在"));
 
         let _ = fs::remove_dir_all(data_dir);
     }
