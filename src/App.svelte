@@ -3672,10 +3672,9 @@
 
     .sidebar {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: auto minmax(0, 1fr);
       grid-template-areas:
-        'brand'
-        'filters';
+        'brand filters';
       align-items: center;
       gap: 8px;
       flex: 0 0 auto;
@@ -3684,7 +3683,7 @@
 
     .brand {
       grid-area: brand;
-      min-width: 160px;
+      min-width: 0;
       border-bottom: 0;
       padding-bottom: 0;
     }
@@ -5061,15 +5060,14 @@
     .app-shell {
       display: flex;
       flex-direction: column;
-      background: linear-gradient(180deg, #101819 0 118px, #f7fafa 118px, #eef2f3 100%);
+      background: linear-gradient(180deg, #101819 0 78px, #f7fafa 78px, #eef2f3 100%);
     }
 
     .sidebar {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: auto minmax(0, 1fr);
       grid-template-areas:
-        'brand'
-        'filters';
+        'brand filters';
       align-items: center;
       gap: 8px;
       flex: 0 0 auto;
@@ -5083,6 +5081,7 @@
       min-width: 0;
       gap: 8px;
       padding: 0;
+      border-bottom: 0;
     }
 
     .brand-mark {
@@ -5092,6 +5091,8 @@
     }
 
     .filter-nav {
+      grid-area: filters;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 6px;
       padding-top: 1px;
     }
@@ -5115,12 +5116,25 @@
     }
 
     .toolbar {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'title primary'
+        'secondary secondary';
       gap: 8px;
+      align-items: end;
     }
 
     .toolbar-title {
+      grid-area: title;
       display: block;
+    }
+
+    .toolbar-primary {
+      grid-area: primary;
+    }
+
+    .toolbar-secondary {
+      grid-area: secondary;
     }
 
     .toolbar-heading {
@@ -5191,6 +5205,33 @@
     .item-actions button {
       width: 28px;
       height: 28px;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .app-shell {
+      background: linear-gradient(180deg, #101819 0 118px, #f7fafa 118px, #eef2f3 100%);
+    }
+
+    .sidebar {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        'brand'
+        'filters';
+    }
+
+    .toolbar {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        'title'
+        'primary'
+        'secondary';
+      align-items: stretch;
+    }
+
+    .toolbar-primary,
+    .quick-actions {
+      justify-content: stretch;
     }
   }
 </style>
