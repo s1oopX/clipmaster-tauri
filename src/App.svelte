@@ -2,8 +2,12 @@
   import { onDestroy, onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { listen } from '@tauri-apps/api/event';
+  import flatpickr from 'flatpickr';
+  import { Mandarin } from 'flatpickr/dist/l10n/zh.js';
+  import 'flatpickr/dist/flatpickr.css';
   import {
     Camera,
+    CalendarDays,
     Check,
     Clipboard,
     Copy,
@@ -78,6 +82,60 @@
     { id: 'favorite', label: '收藏' },
     { id: 'image', label: '图片' },
   ];
+
+  function formatDateKey(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  function datePicker(node, params) {
+    let availableDateKeys = new Set(params.availableDays.map((day) => day.date_key));
+
+    const picker = flatpickr(node, {
+      allowInput: false,
+      ariaDateFormat: 'Y年m月d日',
+      clickOpens: true,
+      dateFormat: 'Y-m-d',
+      defaultDate: params.selectedDay || undefined,
+      disableMobile: true,
+      locale: Mandarin,
+      monthSelectorType: 'static',
+      nextArrow: '›',
+      prevArrow: '‹',
+      shorthandCurrentMonth: false,
+      onChange: (_selectedDates, dateStr) => {
+        void selectDay(dateStr);
+      },
+      onDayCreate: (_dObj, _dStr, _fp, dayElem) => {
+        if (availableDateKeys.has(formatDateKey(dayElem.dateObj))) {
+          dayElem.classList.add('has-clipboard-items');
+        }
+      },
+    });
+
+    picker.calendarContainer.classList.add('clipmaster-date-picker');
+
+    function sync(nextParams) {
+      availableDateKeys = new Set(nextParams.availableDays.map((day) => day.date_key));
+
+      if (nextParams.selectedDay) {
+        picker.setDate(nextParams.selectedDay, false);
+      } else {
+        picker.clear(false);
+      }
+
+      picker.redraw();
+    }
+
+    return {
+      update: sync,
+      destroy() {
+        picker.destroy();
+      },
+    };
+  }
 
   onMount(async () => {
     try {
@@ -731,10 +789,14 @@
 
         <div class="day-field calendar-field">
           <label for="day-picker">日期</label>
+          <CalendarDays size={15} aria-hidden="true" />
           <input
             id="day-picker"
-            type="date"
-            bind:value={selectedDay}
+            type="text"
+            value={selectedDay}
+            placeholder="选择日期"
+            readonly
+            use:datePicker={{ selectedDay, availableDays }}
             on:change={handleDayChange}
             aria-label="按日期精确选择剪贴板记录"
           />
@@ -2185,6 +2247,11 @@
   }
 
   :global(body) {
+    --accent: #0f766e;
+    --accent-strong: #0b5d56;
+    --accent-soft: #e1f4f1;
+    --accent-line: #9bd1ca;
+    --ink: #172124;
     background:
       repeating-linear-gradient(
         0deg,
@@ -2483,15 +2550,29 @@
     color: var(--muted);
   }
 
+  .calendar-field {
+    position: relative;
+    overflow: visible;
+  }
+
   .day-field label {
     color: #2d4547;
     font-size: 0.76rem;
     font-weight: 720;
   }
 
+  .calendar-field :global(svg) {
+    flex: 0 0 auto;
+    color: #718184;
+  }
+
   .day-field input,
   .search-field input {
     color: var(--ink);
+  }
+
+  .day-field input {
+    cursor: pointer;
   }
 
   .day-field:focus-within,
@@ -2535,6 +2616,160 @@
     color: var(--accent-strong);
     background: var(--accent-soft);
     border-color: var(--accent-line);
+  }
+
+  :global(.clipmaster-date-picker.flatpickr-calendar) {
+    width: 292px;
+    padding: 10px;
+    color: var(--ink);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 250, 250, 0.98)),
+      #ffffff;
+    border: 1px solid #c9d7da;
+    border-radius: 14px;
+    box-shadow:
+      0 22px 60px rgba(23, 42, 47, 0.18),
+      0 1px 0 rgba(255, 255, 255, 0.95) inset;
+    font-family: inherit;
+    overflow: hidden;
+  }
+
+  :global(.clipmaster-date-picker.flatpickr-calendar::before),
+  :global(.clipmaster-date-picker.flatpickr-calendar::after) {
+    display: none;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-months) {
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-month) {
+    height: 34px;
+    color: var(--ink);
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-current-month) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    left: 38px;
+    width: calc(100% - 76px);
+    padding: 0;
+    font-size: 0.92rem;
+    font-weight: 760;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-current-month .numInputWrapper) {
+    width: 64px;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-current-month input.cur-year) {
+    color: var(--ink);
+    font-size: 0.92rem;
+    font-weight: 760;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-current-month .flatpickr-monthDropdown-months) {
+    height: 30px;
+    color: var(--ink);
+    background: transparent;
+    border-radius: 8px;
+    font-size: 0.92rem;
+    font-weight: 760;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-prev-month),
+  :global(.clipmaster-date-picker .flatpickr-next-month) {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    color: #51686c;
+    border-radius: 9px;
+    top: 10px;
+    padding: 0;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-prev-month:hover),
+  :global(.clipmaster-date-picker .flatpickr-next-month:hover) {
+    color: var(--accent-strong);
+    background: var(--accent-soft);
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-weekdays) {
+    height: 28px;
+    background: transparent;
+  }
+
+  :global(.clipmaster-date-picker span.flatpickr-weekday) {
+    color: #66767a;
+    font-size: 0.72rem;
+    font-weight: 760;
+  }
+
+  :global(.clipmaster-date-picker .dayContainer) {
+    gap: 3px;
+    width: 270px;
+    min-width: 270px;
+    max-width: 270px;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-days) {
+    width: 270px;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-day) {
+    position: relative;
+    max-width: 36px;
+    height: 34px;
+    line-height: 34px;
+    color: #263b3e;
+    border: 0;
+    border-radius: 9px;
+    font-size: 0.82rem;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-day:hover),
+  :global(.clipmaster-date-picker .flatpickr-day:focus) {
+    color: var(--accent-strong);
+    background: #edf8f6;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-day.today) {
+    color: var(--accent-strong);
+    background: rgba(15, 118, 110, 0.08);
+    box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.24);
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-day.selected),
+  :global(.clipmaster-date-picker .flatpickr-day.selected:hover) {
+    color: #ffffff;
+    background: var(--accent);
+    box-shadow: 0 8px 18px rgba(15, 118, 110, 0.24);
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-day.prevMonthDay),
+  :global(.clipmaster-date-picker .flatpickr-day.nextMonthDay) {
+    color: #b5c1c4;
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-day.has-clipboard-items::after) {
+    position: absolute;
+    left: 50%;
+    bottom: 4px;
+    width: 4px;
+    height: 4px;
+    content: '';
+    background: var(--accent);
+    border-radius: 999px;
+    transform: translateX(-50%);
+  }
+
+  :global(.clipmaster-date-picker .flatpickr-day.selected.has-clipboard-items::after) {
+    background: #ffffff;
   }
 
   .search-field {
