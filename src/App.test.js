@@ -361,7 +361,9 @@ describe('App UI', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('删除失败: 数据库忙');
-    expect(screen.getByRole('dialog', { name: '确认删除' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: '确认删除' });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByTestId('toast-stack')).toContainElement(alert);
     expect(screen.getAllByText('Alpha token').length).toBeGreaterThanOrEqual(2);
   });
 

@@ -2252,10 +2252,10 @@
   }
 
   .toast-stack {
-    position: absolute;
+    position: fixed;
     right: 14px;
     bottom: 14px;
-    z-index: 12;
+    z-index: 1300;
     display: grid;
     gap: 8px;
     width: min(340px, calc(100% - 28px));
