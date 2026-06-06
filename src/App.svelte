@@ -440,7 +440,7 @@
       showActionNotice('已删除记录');
     } catch (e) {
       console.error('删除失败:', e);
-      error = '删除失败: ' + e;
+      showActionError('删除失败: ' + e);
     }
   }
 
@@ -481,7 +481,7 @@
       error = null;
     } catch (e) {
       console.error('切换收藏失败:', e);
-      error = '切换收藏失败: ' + e;
+      showActionError('切换收藏失败: ' + e);
     }
   }
 
@@ -495,7 +495,7 @@
       error = null;
     } catch (e) {
       console.error('切换置顶失败:', e);
-      error = '切换置顶失败: ' + e;
+      showActionError('切换置顶失败: ' + e);
     }
   }
 

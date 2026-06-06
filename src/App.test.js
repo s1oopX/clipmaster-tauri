@@ -272,6 +272,22 @@ describe('App UI', () => {
     expect(screen.queryByText('Alpha token')).not.toBeInTheDocument();
   });
 
+  it('shows a toast error when ordinary record deletion fails', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+    api.deleteItem.mockRejectedValueOnce('数据库忙');
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '删除 Alpha token' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('删除失败: 数据库忙');
+    expect(screen.getByTestId('toast-stack')).toContainElement(alert);
+    expect(screen.getByText('Alpha token')).toBeInTheDocument();
+  });
+
   it('asks for confirmation before deleting favorite records', async () => {
     api.getItems.mockResolvedValue([textItem({ is_favorite: true })]);
 
@@ -330,6 +346,27 @@ describe('App UI', () => {
     });
     expect(screen.queryByRole('dialog', { name: '确认删除' })).not.toBeInTheDocument();
     expect(screen.queryByText('Alpha token')).not.toBeInTheDocument();
+  });
+
+  it('shows toast errors when favorite or pinned actions fail', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+    api.toggleFavorite.mockRejectedValueOnce('收藏失败');
+    api.togglePinned.mockRejectedValueOnce('置顶失败');
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '收藏 Alpha token' }));
+    let alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('切换收藏失败: 收藏失败');
+    expect(screen.getByTestId('toast-stack')).toContainElement(alert);
+
+    await fireEvent.click(screen.getByRole('button', { name: '置顶 Alpha token' }));
+    alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('切换置顶失败: 置顶失败');
+    expect(screen.getByTestId('toast-stack')).toContainElement(alert);
+    expect(screen.getByText('Alpha token')).toBeInTheDocument();
   });
 
   it('searches within the current session and can clear the query', async () => {
