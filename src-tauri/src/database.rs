@@ -657,6 +657,7 @@ impl Database {
         &self,
         query: &str,
         session_id: Option<&str>,
+        date_key: &str,
         limit: i32,
     ) -> Result<Vec<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
@@ -668,16 +669,17 @@ impl Database {
             let sql = format!(
                 "SELECT {}
                  FROM clipboard_items
-                 WHERE session_id = ?1
-                   AND (content LIKE ?2 OR preview LIKE ?2 OR annotation LIKE ?2)
+                 WHERE date_key = ?1
+                   AND session_id = ?2
+                   AND (content LIKE ?3 OR preview LIKE ?3 OR annotation LIKE ?3)
                  ORDER BY timestamp DESC
-                 LIMIT ?3",
+                 LIMIT ?4",
                 CLIPBOARD_ITEM_COLUMNS
             );
             let mut stmt = conn.prepare(&sql)?;
 
             let rows = stmt.query_map(
-                params![sid, &search_pattern, limit],
+                params![date_key, sid, &search_pattern, limit],
                 clipboard_item_from_row,
             )?;
 
@@ -686,14 +688,18 @@ impl Database {
             let sql = format!(
                 "SELECT {}
                  FROM clipboard_items
-                 WHERE content LIKE ?1 OR preview LIKE ?1 OR annotation LIKE ?1
+                 WHERE date_key = ?1
+                   AND (content LIKE ?2 OR preview LIKE ?2 OR annotation LIKE ?2)
                  ORDER BY timestamp DESC
-                 LIMIT ?2",
+                 LIMIT ?3",
                 CLIPBOARD_ITEM_COLUMNS
             );
             let mut stmt = conn.prepare(&sql)?;
 
-            let rows = stmt.query_map(params![&search_pattern, limit], clipboard_item_from_row)?;
+            let rows = stmt.query_map(
+                params![date_key, &search_pattern, limit],
+                clipboard_item_from_row,
+            )?;
 
             rows.collect::<Result<Vec<_>, _>>()?
         };
@@ -906,6 +912,45 @@ mod tests {
 
         let items = db.get_items(10, 0).unwrap();
         assert_eq!(items[0].date_key, "2026-06-05");
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn search_items_only_returns_requested_date_key() {
+        let (db, data_dir) = temp_database();
+        let today = db
+            .insert_item(text_item("today_hash"), DEFAULT_TIME_ZONE)
+            .unwrap();
+        let other_day = db
+            .insert_item(text_item("other_day_hash"), DEFAULT_TIME_ZONE)
+            .unwrap();
+        let other_date_key = if today.date_key == "2026-06-06" {
+            "2026-06-05".to_string()
+        } else {
+            "2026-06-06".to_string()
+        };
+
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE clipboard_items SET date_key = ?1 WHERE id = ?2",
+                params![other_date_key, other_day.id],
+            )
+            .unwrap();
+        }
+
+        let today_results = db
+            .search_items("Alpha", Some("session_1"), &today.date_key, 10)
+            .unwrap();
+        assert_eq!(today_results.len(), 1);
+        assert_eq!(today_results[0].id, today.id);
+
+        let other_day_results = db
+            .search_items("Alpha", Some("session_1"), &other_date_key, 10)
+            .unwrap();
+        assert_eq!(other_day_results.len(), 1);
+        assert_eq!(other_day_results[0].id, other_day.id);
 
         let _ = fs::remove_dir_all(data_dir);
     }

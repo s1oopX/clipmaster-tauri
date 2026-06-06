@@ -113,6 +113,7 @@
   let viewingImageId = null;
   let availableDays = [];
   let selectedDay = '';
+  let recordsRequestId = 0;
 
   $: activeContextItem = contextMenu.open
     ? items.find((item) => item.id === contextMenu.itemId) || null
@@ -135,6 +136,25 @@
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  }
+
+  function todayDateKey(timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timeZone || defaultSettings.time_zone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date());
+      const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+      return `${values.year}-${values.month}-${values.day}`;
+    } catch (_e) {
+      return formatDateKey(new Date());
+    }
+  }
+
+  function activeSearchDateKey() {
+    return selectedDay || todayDateKey(appSettings.time_zone);
   }
 
   function datePicker(node, params) {
@@ -304,20 +324,30 @@
   });
 
   async function loadItems(day = selectedDay) {
+    const requestId = ++recordsRequestId;
+    isSearching = false;
     loading = true;
+
     try {
-      items = day
+      const nextItems = day
         ? await clipboardApi.getItemsByDay(day, itemLimit(), 0)
         : await clipboardApi.getItems(itemLimit(), 0);
+
+      if (requestId !== recordsRequestId) return;
+
+      items = nextItems;
       error = null;
       pruneImageUrls(items);
-      loading = false;
       void loadImageUrls();
     } catch (e) {
+      if (requestId !== recordsRequestId) return;
+
       console.error('加载记录失败:', e);
       error = e.toString();
     } finally {
-      loading = false;
+      if (requestId === recordsRequestId) {
+        loading = false;
+      }
     }
   }
 
@@ -452,28 +482,42 @@
   }
 
   async function handleSearch() {
-    if (!searchQuery.trim()) {
+    const query = searchQuery.trim();
+
+    if (!query) {
       await loadItems();
       return;
     }
 
+    const requestId = ++recordsRequestId;
+    loading = false;
     isSearching = true;
+
     try {
       const sessionId = currentSession?.id || null;
-      items = await searchApi.searchItems(
-        searchQuery,
+      const dateKey = activeSearchDateKey();
+      const nextItems = await searchApi.searchItems(
+        query,
         sessionId,
-        itemLimit()
+        itemLimit(),
+        dateKey
       );
+
+      if (requestId !== recordsRequestId) return;
+
+      items = nextItems;
       error = null;
       pruneImageUrls(items);
-      isSearching = false;
       void loadImageUrls();
     } catch (e) {
+      if (requestId !== recordsRequestId) return;
+
       console.error('搜索失败:', e);
       error = e.toString();
     } finally {
-      isSearching = false;
+      if (requestId === recordsRequestId) {
+        isSearching = false;
+      }
     }
   }
 

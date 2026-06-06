@@ -195,12 +195,14 @@ export const searchApi = {
    * @param {string} query - 搜索关键词
    * @param {string} sessionId - 可选：会话ID
    * @param {number} limit
+   * @param {string} dateKey - 限定日期，如 "2026-06-06"
    */
-  async searchItems(query, sessionId = null, limit = 100) {
+  async searchItems(query, sessionId = null, limit = 100, dateKey = null) {
     return await invoke('search_items', {
       query,
       sessionId,
       limit,
+      dateKey,
     });
   },
 };

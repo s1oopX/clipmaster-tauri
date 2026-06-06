@@ -277,12 +277,28 @@ pub async fn clear_session(
 #[tauri::command]
 pub async fn search_items(
     db: State<'_, Database>,
+    settings: State<'_, SettingsStore>,
     query: String,
     session_id: Option<String>,
+    date_key: Option<String>,
     limit: Option<i32>,
 ) -> Result<Vec<ClipboardItem>, String> {
-    db.search_items(&query, session_id.as_deref(), limit.unwrap_or(100))
-        .map_err(|e| e.to_string())
+    let effective_date_key = date_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| date_key_now(&settings.get().time_zone));
+
+    validate_date_key(&effective_date_key)?;
+
+    db.search_items(
+        &query,
+        session_id.as_deref(),
+        &effective_date_key,
+        limit.unwrap_or(100),
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// 更新记录内容

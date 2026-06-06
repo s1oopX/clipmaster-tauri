@@ -122,6 +122,28 @@ function imageItem(overrides = {}) {
   };
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, reject, resolve };
+}
+
+function todayDateKey(timeZone = 'Asia/Shanghai') {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 describe('App UI', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -317,13 +339,75 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50);
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50, todayDateKey());
     });
 
     await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
 
     expect(search).toHaveValue('');
     expect(api.getItems).toHaveBeenCalledTimes(2);
+  });
+
+  it('searches within the selected calendar day', async () => {
+    api.getItemsByDay.mockResolvedValue([textItem()]);
+
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+    await fireEvent.click(screen.getByRole('button', { name: '06-06 · 2' }));
+
+    await waitFor(() => {
+      expect(api.getItemsByDay).toHaveBeenCalledWith('2026-06-06', 50, 0);
+    });
+
+    const search = screen.getByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+
+    await waitFor(() => {
+      expect(api.searchItems).toHaveBeenLastCalledWith(
+        'alpha',
+        'session_1',
+        50,
+        '2026-06-06'
+      );
+    });
+  });
+
+  it('ignores stale search results after the query is cleared', async () => {
+    const pendingSearch = deferred();
+    api.getItems
+      .mockResolvedValueOnce([
+        textItem({ id: 'initial', content: 'Initial token', preview: 'Initial token' }),
+      ])
+      .mockResolvedValueOnce([
+        textItem({ id: 'fresh', content: 'Fresh list', preview: 'Fresh list' }),
+      ]);
+    api.searchItems.mockReturnValueOnce(pendingSearch.promise);
+
+    render(App);
+
+    expect(await screen.findByText('Initial token')).toBeInTheDocument();
+
+    const search = screen.getByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+
+    await waitFor(() => {
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50, todayDateKey());
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
+
+    expect(await screen.findByText('Fresh list')).toBeInTheDocument();
+    expect(search).toHaveValue('');
+
+    pendingSearch.resolve([
+      textItem({ id: 'stale', content: 'Stale alpha result', preview: 'Stale alpha result' }),
+    ]);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Stale alpha result')).not.toBeInTheDocument();
+      expect(screen.getByText('Fresh list')).toBeInTheDocument();
+    });
   });
 
   it('keeps the narrow-window shell compact without page-level scrolling', async () => {
@@ -375,7 +459,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50);
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50, todayDateKey());
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
