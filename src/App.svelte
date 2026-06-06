@@ -1782,142 +1782,150 @@
             </div>
           {:else if activeSettingsView === 'advanced'}
             <div
-              class="settings-section settings-view"
+              class="settings-section settings-view advanced-settings"
               id="settings-view-advanced"
               role="tabpanel"
               aria-labelledby="settings-tab-advanced"
             >
-              <div class="settings-section-title">
-                <h3>高级设置</h3>
-                <p>清理 / 开发端口</p>
-              </div>
+              <section class="settings-card advanced-card" aria-label="记录清理设置">
+                <header class="settings-card-header">
+                  <div>
+                    <h3 id="cleanup-settings-title">记录清理</h3>
+                    <p>只清理普通记录，置顶和收藏会保留。</p>
+                  </div>
+                  <label class="switch-row compact-switch">
+                    <input
+                      type="checkbox"
+                      aria-label="保存设置后自动清理"
+                      checked={settingsDraft.auto_cleanup_enabled}
+                      on:change={(event) =>
+                        updateSettingsDraft('auto_cleanup_enabled', event.currentTarget.checked)}
+                    />
+                    <span>自动清理</span>
+                  </label>
+                </header>
 
-              <div class="settings-section-title inline-section-title first-inline-section-title">
-                <h3>记录清理</h3>
-                <p>规则 / 预览 / 执行</p>
-              </div>
+                <div class="settings-field-grid">
+                  <label class="field-row compact-field">
+                    <span>最多保留</span>
+                    <input
+                      type="number"
+                      aria-label="普通记录最多保留"
+                      min="10"
+                      max="5000"
+                      value={settingsDraft.cleanup_max_items}
+                      on:input={(event) =>
+                        updateSettingsDraft('cleanup_max_items', Number(event.currentTarget.value))}
+                    />
+                  </label>
 
-              <label class="switch-row">
-                <input
-                  type="checkbox"
-                  checked={settingsDraft.auto_cleanup_enabled}
-                  on:change={(event) =>
-                    updateSettingsDraft('auto_cleanup_enabled', event.currentTarget.checked)}
-                />
-                <span>保存设置后自动清理</span>
-              </label>
+                  <label class="field-row compact-field">
+                    <span>保留天数</span>
+                    <input
+                      type="number"
+                      aria-label="普通记录保留天数"
+                      min="1"
+                      max="3650"
+                      value={settingsDraft.cleanup_keep_days}
+                      on:input={(event) =>
+                        updateSettingsDraft('cleanup_keep_days', Number(event.currentTarget.value))}
+                    />
+                  </label>
+                </div>
 
-              <label class="field-row">
-                <span>普通记录最多保留</span>
-                <input
-                  type="number"
-                  min="10"
-                  max="5000"
-                  value={settingsDraft.cleanup_max_items}
-                  on:input={(event) =>
-                    updateSettingsDraft('cleanup_max_items', Number(event.currentTarget.value))}
-                />
-              </label>
+                <p class="cleanup-hint">图片文件会随被清理的图片记录同步删除。</p>
 
-              <label class="field-row">
-                <span>普通记录保留天数</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="3650"
-                  value={settingsDraft.cleanup_keep_days}
-                  on:input={(event) =>
-                    updateSettingsDraft('cleanup_keep_days', Number(event.currentTarget.value))}
-                />
-              </label>
+                {#if cleanupPlan}
+                  <p class="cleanup-plan" role="status">
+                    将清理 {cleanupPlan.item_count} 条记录（文本 {cleanupPlan.text_count}，图片 {cleanupPlan.image_count}）
+                  </p>
+                {/if}
 
-              <p class="cleanup-hint">清理仅影响未置顶、未收藏的普通记录；图片文件会同步删除。</p>
-
-              {#if cleanupPlan}
-                <p class="cleanup-plan" role="status">
-                  将清理 {cleanupPlan.item_count} 条记录（文本 {cleanupPlan.text_count}，图片 {cleanupPlan.image_count}）
-                </p>
-              {/if}
-
-              <div class="cleanup-actions">
-                <button type="button" class="ghost-button" on:click={previewCleanup} disabled={cleanupLoading}>
-                  {cleanupLoading ? '计算中' : '预览清理'}
-                </button>
-                <button type="button" class="ghost-button" on:click={runCleanupNow} disabled={cleanupLoading}>
-                  {cleanupLoading ? '清理中' : '立即清理'}
-                </button>
-              </div>
-
-              <div class="settings-section-title inline-section-title">
-                <h3>开发端口</h3>
-                <p>占用检测 / 重启生效</p>
-              </div>
-
-              <div class="field-row port-field">
-                <label for="dev-server-port">开发端口</label>
-                <div class="port-input-group">
-                  <input
-                    id="dev-server-port"
-                    type="number"
-                    min="1"
-                    max="65535"
-                    value={settingsDraft.dev_server_port}
-                    on:input={(event) =>
-                      updateSettingsDraft('dev_server_port', Number(event.currentTarget.value))}
-                  />
-                  <button
-                    type="button"
-                    class="ghost-button compact-button"
-                    on:click={checkDevServerPort}
-                    disabled={portCheckLoading}
-                  >
-                    {portCheckLoading ? '检查中' : '检查端口'}
+                <div class="cleanup-actions">
+                  <button type="button" class="ghost-button" on:click={previewCleanup} disabled={cleanupLoading}>
+                    {cleanupLoading ? '计算中' : '预览清理'}
+                  </button>
+                  <button type="button" class="ghost-button" on:click={runCleanupNow} disabled={cleanupLoading}>
+                    {cleanupLoading ? '清理中' : '立即清理'}
                   </button>
                 </div>
-              </div>
+              </section>
 
-              <div
-                class:available={portCheckResult?.available}
-                class:occupied={portCheckResult && !portCheckResult.available}
-                class="port-check-result"
-                aria-live="polite"
-              >
-                {#if portCheckResult}
-                  <p>{portCheckResult.message}</p>
-                  {#if !portCheckResult.available && portCheckResult.suggested_port}
+              <section class="settings-card advanced-card" aria-label="开发端口设置">
+                <header class="settings-card-header">
+                  <div>
+                    <h3 id="port-settings-title">开发端口</h3>
+                    <p>检查占用状态，保存后重启生效。</p>
+                  </div>
+                </header>
+
+                <div class="field-row port-field compact-field">
+                  <label for="dev-server-port">端口</label>
+                  <div class="port-input-group">
+                    <input
+                      id="dev-server-port"
+                      type="number"
+                      aria-label="开发端口"
+                      min="1"
+                      max="65535"
+                      value={settingsDraft.dev_server_port}
+                      on:input={(event) =>
+                        updateSettingsDraft('dev_server_port', Number(event.currentTarget.value))}
+                    />
                     <button
                       type="button"
                       class="ghost-button compact-button"
-                      on:click={() => applySuggestedPort(portCheckResult.suggested_port)}
+                      on:click={checkDevServerPort}
+                      disabled={portCheckLoading}
                     >
-                      使用 {portCheckResult.suggested_port}
+                      {portCheckLoading ? '检查中' : '检查端口'}
                     </button>
-                  {/if}
-                {:else}
-                  <p>用于本地开发服务；生产版不占用端口。</p>
-                {/if}
-              </div>
-
-              {#if settingsPortChanged}
-                <p class="port-hint">端口变化需要保存并重启应用后生效。</p>
-              {/if}
-
-              {#if pendingRestartPort}
-                <div class="restart-card" role="status">
-                  <div>
-                    <strong>端口 {pendingRestartPort} 已保存</strong>
-                    <span>重启后应用会切到新的开发端口。</span>
                   </div>
-                  <button
-                    type="button"
-                    class="primary-button"
-                    on:click={restartApplication}
-                    disabled={restartingApp}
-                  >
-                    {restartingApp ? '重启中' : '重启应用'}
-                  </button>
                 </div>
-              {/if}
+
+                <div
+                  class:available={portCheckResult?.available}
+                  class:occupied={portCheckResult && !portCheckResult.available}
+                  class="port-check-result"
+                  aria-live="polite"
+                >
+                  {#if portCheckResult}
+                    <p>{portCheckResult.message}</p>
+                    {#if !portCheckResult.available && portCheckResult.suggested_port}
+                      <button
+                        type="button"
+                        class="ghost-button compact-button"
+                        on:click={() => applySuggestedPort(portCheckResult.suggested_port)}
+                      >
+                        使用 {portCheckResult.suggested_port}
+                      </button>
+                    {/if}
+                  {:else}
+                    <p>生产版不会占用本地开发端口。</p>
+                  {/if}
+                </div>
+
+                {#if settingsPortChanged}
+                  <p class="port-hint">端口变化需要保存并重启应用后生效。</p>
+                {/if}
+
+                {#if pendingRestartPort}
+                  <div class="restart-card" role="status">
+                    <div>
+                      <strong>端口 {pendingRestartPort} 已保存</strong>
+                      <span>重启后应用会切到新的开发端口。</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="primary-button"
+                      on:click={restartApplication}
+                      disabled={restartingApp}
+                    >
+                      {restartingApp ? '重启中' : '重启应用'}
+                    </button>
+                  </div>
+                {/if}
+              </section>
             </div>
           {:else}
             <div
@@ -2837,12 +2845,6 @@
     margin-top: 8px;
     padding-top: 14px;
     border-top: 1px solid #edf1f6;
-  }
-
-  .first-inline-section-title {
-    margin-top: 0;
-    padding-top: 0;
-    border-top: 0;
   }
 
   .about-profile {
@@ -5707,6 +5709,184 @@
 
     .tool-button span {
       display: inline;
+    }
+  }
+
+  .advanced-settings {
+    gap: 10px;
+  }
+
+  .settings-card {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.76);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.86) inset;
+  }
+
+  .settings-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .settings-card-header div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .settings-card-header h3 {
+    margin: 0;
+    color: var(--ink);
+    font-size: 0.92rem;
+    font-weight: 760;
+    line-height: 1.2;
+  }
+
+  .settings-card-header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.76rem;
+    line-height: 1.35;
+  }
+
+  .compact-switch {
+    display: inline-grid;
+    grid-template-columns: auto auto;
+    gap: 8px;
+    min-height: 24px;
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 0.76rem;
+    white-space: nowrap;
+  }
+
+  .compact-switch span {
+    grid-column: 1;
+  }
+
+  .compact-switch input[type='checkbox'] {
+    grid-column: 2;
+  }
+
+  .settings-field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .compact-field {
+    min-height: 34px;
+    gap: 8px;
+    padding: 7px 8px;
+    background: #f8fbfb;
+    border: 1px solid #dbe8e8;
+    border-radius: 8px;
+    font-size: 0.82rem;
+  }
+
+  .compact-field > span,
+  .compact-field > label {
+    min-width: 0;
+    color: #42585c;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
+  .compact-field input {
+    width: 96px;
+    min-height: 30px;
+    border-radius: 7px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .advanced-settings .cleanup-hint,
+  .advanced-settings .port-hint {
+    margin: -2px 0 0;
+    color: #617376;
+    font-size: 0.76rem;
+  }
+
+  .advanced-settings .cleanup-plan {
+    margin: 0;
+  }
+
+  .advanced-settings .cleanup-actions {
+    justify-content: flex-end;
+    padding-top: 2px;
+  }
+
+  .advanced-settings .ghost-button,
+  .advanced-settings .primary-button {
+    min-height: 32px;
+    border-radius: 8px;
+    font-size: 0.84rem;
+    font-weight: 700;
+  }
+
+  .advanced-settings .port-field {
+    align-items: center;
+  }
+
+  .advanced-settings .port-field > label {
+    padding-top: 0;
+  }
+
+  .advanced-settings .port-input-group {
+    gap: 6px;
+  }
+
+  .advanced-settings .port-input-group input {
+    width: 94px;
+  }
+
+  .advanced-settings .port-check-result {
+    min-height: 38px;
+    padding: 8px 9px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+  }
+
+  .advanced-settings .restart-card {
+    padding: 9px 10px;
+    border-radius: 8px;
+  }
+
+  @media (max-width: 720px) {
+    .settings-card {
+      padding: 10px;
+    }
+
+    .settings-card-header {
+      align-items: stretch;
+    }
+
+    .settings-field-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .settings-card-header {
+      display: grid;
+    }
+
+    .compact-switch {
+      justify-self: start;
+    }
+
+    .port-input-group {
+      width: 100%;
+    }
+
+    .advanced-settings .port-input-group input {
+      flex: 1 1 auto;
+      min-width: 0;
     }
   }
 </style>
