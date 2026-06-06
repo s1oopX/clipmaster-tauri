@@ -307,7 +307,7 @@ describe('App UI', () => {
 
     render(App);
 
-    const content = await screen.findByRole('button', { name: '双击复制 Alpha token' });
+    const content = await screen.findByText('Alpha token');
     await fireEvent.dblClick(content);
 
     await waitFor(() => {

@@ -1115,8 +1115,6 @@
                       class="text-content copyable"
                       role="button"
                       tabindex="0"
-                      aria-label={`双击复制 ${itemLabel(item)}`}
-                      title="双击复制"
                       on:dblclick={(event) => {
                         event.preventDefault();
                         copyItem(item);
@@ -2132,7 +2130,6 @@
     border: 1px solid transparent;
     padding: 4px;
     border-radius: 4px;
-    cursor: copy;
     transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
   }
 
