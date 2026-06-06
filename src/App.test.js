@@ -1012,6 +1012,39 @@ describe('App UI', () => {
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
   });
 
+  it('keeps the shortcut value stable while recording feedback changes', async () => {
+    render(App);
+
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '快捷键' }));
+
+    const shortcut = screen.getByPlaceholderText('点击后按下组合键');
+    expect(shortcut).toHaveValue('CommandOrControl+Shift+A');
+
+    await fireEvent.focus(shortcut);
+    expect(shortcut).toHaveValue('CommandOrControl+Shift+A');
+    expect(screen.getByText(/正在录制/)).toBeInTheDocument();
+
+    await fireEvent.keyDown(shortcut, { key: 'A' });
+    expect(shortcut).toHaveValue('CommandOrControl+Shift+A');
+    expect(screen.getByText(/请使用修饰键组合/)).toBeInTheDocument();
+
+    await fireEvent.blur(shortcut);
+    expect(shortcut).toHaveValue('CommandOrControl+Shift+A');
+    expect(screen.getByText(/点击输入框后按下组合键自动录制/)).toBeInTheDocument();
+
+    await fireEvent.focus(shortcut);
+    await fireEvent.keyDown(shortcut, {
+      key: 'k',
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(shortcut).toHaveValue('CommandOrControl+Shift+K');
+    expect(screen.getByText(/点击输入框后按下组合键自动录制/)).toBeInTheDocument();
+  });
+
   it('reports auto cleanup failures separately after settings are saved', async () => {
     api.runCustomCleanup.mockRejectedValueOnce('清理执行失败');
 

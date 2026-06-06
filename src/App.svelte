@@ -97,6 +97,7 @@
   let appSettings = { ...defaultSettings };
   let settingsDraft = { ...defaultSettings };
   let isRecordingHotkey = false;
+  let hotkeyRecordingMessage = '';
   let recordingHotkeyTimeout = null;
   let pinMode = false;
   let pinImagePath = '';
@@ -840,9 +841,9 @@
   }
 
   // 快捷键录制相关
-  function startRecordingHotkey(event) {
+  function startRecordingHotkey() {
     isRecordingHotkey = true;
-    event.target.value = '按下组合键...';
+    hotkeyRecordingMessage = '';
 
     // 清除之前的超时
     if (recordingHotkeyTimeout) {
@@ -857,6 +858,7 @@
 
   function stopRecordingHotkey() {
     isRecordingHotkey = false;
+    hotkeyRecordingMessage = '';
     if (recordingHotkeyTimeout) {
       clearTimeout(recordingHotkeyTimeout);
       recordingHotkeyTimeout = null;
@@ -905,7 +907,7 @@
 
     // 必须有修饰键
     if (parts.length === 0) {
-      event.target.value = '请使用修饰键组合（如 Ctrl+Shift+A）';
+      hotkeyRecordingMessage = '请使用修饰键组合（如 Ctrl+Shift+A）';
       return;
     }
 
@@ -913,6 +915,7 @@
 
     const hotkey = parts.join('+');
     updateSettingsDraft('screenshot_hotkey', hotkey);
+    hotkeyRecordingMessage = '';
 
     // 停止录制
     stopRecordingHotkey();
@@ -1724,9 +1727,9 @@
                   class:recording={isRecordingHotkey}
                 />
               </label>
-              <p class="hotkey-hint">
+              <p class="hotkey-hint" aria-live="polite">
                 {#if isRecordingHotkey}
-                  正在录制，请按下组合键（如 Ctrl+Shift+A）
+                  {hotkeyRecordingMessage || '正在录制，请按下组合键（如 Ctrl+Shift+A）'}
                 {:else}
                   点击输入框后按下组合键自动录制，例如 Ctrl+Shift+A
                 {/if}
