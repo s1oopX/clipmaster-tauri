@@ -77,6 +77,8 @@
   let annotationDraft = '';
   let contextMenu = { open: false, x: 0, y: 0, itemId: null };
   let activeContextItem = null;
+  let deleteCandidate = null;
+  let deleteConfirmLoading = false;
   let thumbnailUrls = {};
   let viewingImageId = null;
   let availableDays = [];
@@ -323,14 +325,54 @@
     thumbnailUrls = thumbnailUrls;
   }
 
-  async function deleteItem(itemId) {
+  function requiresDeleteConfirmation(item) {
+    return Boolean(item?.is_favorite || item?.annotation);
+  }
+
+  function deleteReasonLabel(item) {
+    const reasons = [];
+    if (item?.is_favorite) reasons.push('已收藏');
+    if (item?.annotation) reasons.push('有标注');
+    return reasons.join('、');
+  }
+
+  async function performDeleteItem(itemId) {
     try {
       await clipboardApi.deleteItem(itemId);
       items = items.filter((item) => item.id !== itemId);
       pruneImageUrls(items);
+      showActionNotice('已删除记录');
     } catch (e) {
       console.error('删除失败:', e);
       error = '删除失败: ' + e;
+    }
+  }
+
+  function requestDeleteItem(item) {
+    if (!requiresDeleteConfirmation(item)) {
+      void performDeleteItem(item.id);
+      return;
+    }
+
+    deleteCandidate = item;
+  }
+
+  function cancelDeleteConfirmation() {
+    if (deleteConfirmLoading) return;
+    deleteCandidate = null;
+  }
+
+  async function confirmDeleteCandidate() {
+    if (!deleteCandidate || deleteConfirmLoading) return;
+
+    deleteConfirmLoading = true;
+    const itemId = deleteCandidate.id;
+
+    try {
+      await performDeleteItem(itemId);
+      deleteCandidate = null;
+    } finally {
+      deleteConfirmLoading = false;
     }
   }
 
@@ -1059,7 +1101,7 @@
                     </button>
                     <button
                       type="button"
-                      on:click={() => deleteItem(item.id)}
+                      on:click={() => requestDeleteItem(item)}
                       aria-label={`删除 ${itemLabel(item)}`}
                       title="删除"
                     >
@@ -1379,6 +1421,55 @@
         </button>
         <button type="button" class="primary-button" on:click={saveSettings} disabled={settingsSaving}>
           {settingsSaving ? '保存中' : '保存设置'}
+        </button>
+      </footer>
+    </div>
+  {/if}
+
+  {#if deleteCandidate}
+    <button
+      type="button"
+      class="confirm-backdrop"
+      aria-label="取消删除确认"
+      on:click={cancelDeleteConfirmation}
+    ></button>
+    <div
+      class="confirm-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-confirm-title"
+      aria-describedby="delete-confirm-desc"
+    >
+      <header>
+        <div class="confirm-icon">
+          <Trash2 size={18} aria-hidden="true" />
+        </div>
+        <div>
+          <h2 id="delete-confirm-title">确认删除</h2>
+          <p id="delete-confirm-desc">
+            这条记录{deleteReasonLabel(deleteCandidate)}，删除后无法恢复。
+          </p>
+        </div>
+      </header>
+      <div class="confirm-preview">
+        {itemLabel(deleteCandidate)}
+      </div>
+      <footer>
+        <button
+          type="button"
+          class="ghost-button"
+          on:click={cancelDeleteConfirmation}
+          disabled={deleteConfirmLoading}
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          class="danger-button"
+          on:click={confirmDeleteCandidate}
+          disabled={deleteConfirmLoading}
+        >
+          {deleteConfirmLoading ? '删除中' : '确认删除'}
         </button>
       </footer>
     </div>
@@ -1872,6 +1963,85 @@
     background: rgba(15, 23, 42, 0.28);
   }
 
+  .confirm-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    padding: 0;
+    background: rgba(15, 23, 42, 0.34);
+    border: 0;
+    backdrop-filter: blur(2px);
+    cursor: default;
+  }
+
+  .confirm-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 31;
+    display: grid;
+    gap: 14px;
+    width: min(360px, calc(100vw - 32px));
+    padding: 16px;
+    color: #172033;
+    background: #ffffff;
+    border: 1px solid #d9e0ea;
+    border-radius: 12px;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+    transform: translate(-50%, -50%);
+  }
+
+  .confirm-dialog header {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .confirm-icon {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    place-items: center;
+    color: #b42338;
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    border-radius: 9px;
+  }
+
+  .confirm-dialog h2 {
+    margin: 0;
+    color: #172033;
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .confirm-dialog p {
+    margin: 4px 0 0;
+    color: #64748b;
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
+
+  .confirm-preview {
+    max-height: 84px;
+    padding: 10px 12px;
+    overflow: hidden;
+    color: #334155;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+  }
+
+  .confirm-dialog footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   .settings-panel {
     position: fixed;
     top: 0;
@@ -2031,6 +2201,21 @@
     color: #ffffff;
     background: #2563eb;
     border: 1px solid #1d4ed8;
+  }
+
+  .danger-button {
+    min-height: 34px;
+    padding: 0 12px;
+    color: #ffffff;
+    background: #b42338;
+    border: 1px solid #97182c;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+
+  .danger-button:disabled {
+    cursor: wait;
+    opacity: 0.72;
   }
 
   .primary-button:disabled {
@@ -3449,6 +3634,36 @@
     backdrop-filter: blur(2px);
   }
 
+  .confirm-backdrop {
+    background: rgba(9, 24, 27, 0.36);
+  }
+
+  .confirm-dialog {
+    color: var(--ink);
+    background:
+      linear-gradient(180deg, #fbfcfc, #f5f8f8),
+      #ffffff;
+    border-color: #cbdadd;
+    border-radius: 12px;
+    box-shadow: 0 24px 70px rgba(25, 44, 49, 0.2);
+  }
+
+  .confirm-dialog h2 {
+    color: var(--ink);
+    font-size: 1.04rem;
+    font-weight: 760;
+  }
+
+  .confirm-dialog p {
+    color: var(--muted);
+  }
+
+  .confirm-preview {
+    color: #2d4547;
+    background: rgba(255, 255, 255, 0.72);
+    border-color: var(--line-soft);
+  }
+
   .settings-panel {
     z-index: 21;
     width: min(374px, 94vw);
@@ -3572,6 +3787,23 @@
 
   .primary-button:hover {
     background: var(--accent-strong);
+  }
+
+  .danger-button {
+    min-height: 34px;
+    padding: 0 12px;
+    color: #ffffff;
+    background: var(--danger);
+    border: 1px solid #97182c;
+    border-radius: 8px;
+    font-weight: 650;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.14) inset,
+      0 10px 24px rgba(180, 35, 56, 0.18);
+  }
+
+  .danger-button:hover {
+    background: #97182c;
   }
 
   .pin-toolbar {

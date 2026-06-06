@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.svelte';
 
@@ -206,6 +206,82 @@ describe('App UI', () => {
     expect(screen.getByRole('button', { name: '删除 Alpha token' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '复制 图片记录' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '钉到桌面 图片记录' })).toBeInTheDocument();
+  });
+
+  it('deletes ordinary records immediately without a confirmation dialog', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '删除 Alpha token' }));
+
+    await waitFor(() => {
+      expect(api.deleteItem).toHaveBeenCalledWith('text_1');
+    });
+    expect(screen.queryByRole('dialog', { name: '确认删除' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Alpha token')).not.toBeInTheDocument();
+  });
+
+  it('asks for confirmation before deleting favorite records', async () => {
+    api.getItems.mockResolvedValue([textItem({ is_favorite: true })]);
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '删除 Alpha token' }));
+
+    const dialog = screen.getByRole('dialog', { name: '确认删除' });
+    expect(within(dialog).getByText(/已收藏/)).toBeInTheDocument();
+    expect(api.deleteItem).not.toHaveBeenCalled();
+  });
+
+  it('asks for confirmation before deleting annotated records', async () => {
+    api.getItems.mockResolvedValue([textItem({ annotation: '用于发票核对' })]);
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '删除 Alpha token' }));
+
+    const dialog = screen.getByRole('dialog', { name: '确认删除' });
+    expect(within(dialog).getByText(/有标注/)).toBeInTheDocument();
+    expect(api.deleteItem).not.toHaveBeenCalled();
+  });
+
+  it('cancels protected record deletion without removing the item', async () => {
+    api.getItems.mockResolvedValue([textItem({ is_favorite: true })]);
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '删除 Alpha token' }));
+    await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+
+    expect(screen.queryByRole('dialog', { name: '确认删除' })).not.toBeInTheDocument();
+    expect(api.deleteItem).not.toHaveBeenCalled();
+    expect(screen.getByText('Alpha token')).toBeInTheDocument();
+  });
+
+  it('deletes a protected record after explicit confirmation', async () => {
+    api.getItems.mockResolvedValue([textItem({ annotation: '用于发票核对' })]);
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '删除 Alpha token' }));
+    await fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+
+    await waitFor(() => {
+      expect(api.deleteItem).toHaveBeenCalledWith('text_1');
+    });
+    expect(screen.queryByRole('dialog', { name: '确认删除' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Alpha token')).not.toBeInTheDocument();
   });
 
   it('searches within the current session and can clear the query', async () => {
