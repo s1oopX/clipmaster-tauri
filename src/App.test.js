@@ -300,6 +300,7 @@ describe('App UI', () => {
       expect(api.copyImageToClipboard).toHaveBeenCalledWith('images/2026-06-06/image.png');
     });
     expect(screen.getByRole('status')).toHaveTextContent('已复制到剪贴板');
+    expect(screen.getByTestId('toast-stack')).toHaveTextContent('已复制到剪贴板');
   });
 
   it('copies text quickly from the content area on double click', async () => {
@@ -314,6 +315,7 @@ describe('App UI', () => {
       expect(api.copyToClipboard).toHaveBeenCalledWith('Alpha token');
     });
     expect(screen.getByRole('status')).toHaveTextContent('已复制到剪贴板');
+    expect(screen.getByTestId('toast-stack')).toHaveTextContent('已复制到剪贴板');
   });
 
   it('saves annotations without changing the original clipboard content', async () => {

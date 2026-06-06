@@ -948,20 +948,6 @@
       <div class="notice error" role="alert">{error}</div>
     {/if}
 
-    {#if copySuccess}
-      <div class="notice success" role="status">
-        <Check size={16} aria-hidden="true" />
-        <span>已复制到剪贴板</span>
-      </div>
-    {/if}
-
-    {#if actionNotice}
-      <div class="notice success" role="status">
-        <Check size={16} aria-hidden="true" />
-        <span>{actionNotice}</span>
-      </div>
-    {/if}
-
     <div class="history-panel" data-testid="history-panel" data-scroll="internal">
       {#if loading || isSearching}
         <div class="loading-stack" role="status" aria-label="加载中">
@@ -1191,6 +1177,24 @@
         </div>
       {/if}
     </div>
+
+    {#if copySuccess || actionNotice}
+      <div class="toast-stack" data-testid="toast-stack" aria-live="polite">
+        {#if copySuccess}
+          <div class="toast success" role="status">
+            <Check size={16} aria-hidden="true" />
+            <span>已复制到剪贴板</span>
+          </div>
+        {/if}
+
+        {#if actionNotice}
+          <div class="toast success" role="status">
+            <Check size={16} aria-hidden="true" />
+            <span>{actionNotice}</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </section>
   {#if contextMenu.open && activeContextItem}
     <div
@@ -1833,7 +1837,29 @@
     border: 1px solid #fecdd3;
   }
 
-  .notice.success {
+  .toast-stack {
+    position: absolute;
+    right: 14px;
+    bottom: 14px;
+    z-index: 12;
+    display: grid;
+    gap: 8px;
+    width: min(340px, calc(100% - 28px));
+    pointer-events: none;
+  }
+
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 0.86rem;
+    box-shadow: 0 18px 34px rgba(15, 23, 42, 0.14);
+  }
+
+  .toast.success {
     color: #166534;
     background: #f0fdf4;
     border: 1px solid #bbf7d0;
@@ -3070,7 +3096,20 @@
     border-color: #f2bdc5;
   }
 
-  .notice.success {
+  .toast-stack {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .toast {
+    border-radius: 11px;
+    font-size: 0.82rem;
+    box-shadow:
+      0 16px 32px rgba(34, 58, 63, 0.16),
+      0 1px 0 rgba(255, 255, 255, 0.85) inset;
+  }
+
+  .toast.success {
     color: var(--success);
     background: #f0faf4;
     border-color: #b8e5c9;
