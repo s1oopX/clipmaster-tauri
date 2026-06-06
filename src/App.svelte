@@ -115,6 +115,7 @@
   let viewingImageId = null;
   let availableDays = [];
   let selectedDay = '';
+  let recordsScope = '全部日期';
   let recordsRequestId = 0;
 
   $: activeContextItem = contextMenu.open
@@ -132,6 +133,9 @@
     : activeFilter === 'image'
       ? items.filter((item) => item.type === 'image')
       : items;
+
+  $: recordsScope = selectedDay
+    || (searchQuery.trim() ? todayDateKey(appSettings.time_zone) : '全部日期');
 
   function formatDateKey(date) {
     const year = date.getFullYear();
@@ -1067,8 +1071,8 @@
     <div class="session-card">
       <span class="status-dot"></span>
       <div>
-        <strong>本次会话</strong>
-        <span>{selectedDay || '全部日期'} · {items.length} 条记录</span>
+        <strong>当前范围</strong>
+        <span>{recordsScope} · {items.length} 条记录</span>
       </div>
     </div>
   </aside>
@@ -1078,7 +1082,7 @@
       <div class="toolbar-title">
         <p class="eyebrow">Clipboard history</p>
         <h2>剪贴板历史</h2>
-        <p class="toolbar-context">{selectedDay || '全部日期'} · 当前视图 {filteredItems.length} 条</p>
+        <p class="toolbar-context">{recordsScope} · 当前视图 {filteredItems.length} 条</p>
       </div>
 
       <div class="toolbar-tools">

@@ -424,13 +424,16 @@ describe('App UI', () => {
 
     await waitFor(() => {
       expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
+      expect(screen.getByText(`${todayDateKey()} · 当前视图 0 条`)).toBeInTheDocument();
     });
+    expect(screen.getByText('当前范围')).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
 
     expect(search).toHaveValue('');
     await waitFor(() => {
       expect(api.getItems).toHaveBeenCalledWith(50, 0);
+      expect(screen.getByText('全部日期 · 当前视图 0 条')).toBeInTheDocument();
     });
   });
 
