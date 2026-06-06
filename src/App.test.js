@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   getItemsByDay: vi.fn(),
   getItemsBySession: vi.fn(),
   getSessions: vi.fn(),
+  listen: vi.fn(),
   onNewItem: vi.fn(),
   pinImage: vi.fn(),
   previewCustomCleanup: vi.fn(),
@@ -29,7 +30,7 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn(async () => vi.fn()),
+  listen: api.listen,
 }));
 
 vi.mock('@tauri-apps/api/window', () => ({
@@ -144,6 +145,7 @@ describe('App UI', () => {
       cleanup_keep_days: 30,
     });
     api.clearSession.mockResolvedValue();
+    api.listen.mockResolvedValue(vi.fn());
     api.onNewItem.mockResolvedValue(vi.fn());
     api.searchItems.mockResolvedValue([]);
     api.startRegionScreenshot.mockResolvedValue();
@@ -192,6 +194,25 @@ describe('App UI', () => {
     expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
     expect(screen.getByText('剪贴板历史')).toBeInTheDocument();
     expect(screen.getByText('复制内容后会自动出现在这里')).toBeInTheDocument();
+  });
+
+  it('cleans up global event listeners when the app shell unmounts', async () => {
+    const unlistenHotkey = vi.fn();
+    const unlistenNewItem = vi.fn();
+    api.listen.mockResolvedValueOnce(unlistenHotkey);
+    api.onNewItem.mockResolvedValueOnce(unlistenNewItem);
+
+    const { unmount } = render(App);
+
+    await waitFor(() => {
+      expect(api.listen).toHaveBeenCalledWith('hotkey:screenshot', expect.any(Function));
+      expect(api.onNewItem).toHaveBeenCalledTimes(1);
+    });
+
+    unmount();
+
+    expect(unlistenHotkey).toHaveBeenCalledTimes(1);
+    expect(unlistenNewItem).toHaveBeenCalledTimes(1);
   });
 
   it('shows clipboard items with accessible action buttons and image previews', async () => {

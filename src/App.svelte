@@ -100,6 +100,7 @@
   let pinImagePath = '';
   let pinImageUrl = '';
   let unlistenNewItem = null;
+  let unlistenHotkey = null;
   let editingId = null;
   let editContent = '';
   let annotationEditingId = null;
@@ -255,7 +256,7 @@
       document.addEventListener('keydown', handleDocumentKeyDown);
 
       // 监听快捷键事件
-      await listen('hotkey:screenshot', async () => {
+      unlistenHotkey = await listen('hotkey:screenshot', async () => {
         await startScreenshot();
       });
 
@@ -289,6 +290,10 @@
   onDestroy(() => {
     if (typeof unlistenNewItem === 'function') {
       unlistenNewItem();
+    }
+
+    if (typeof unlistenHotkey === 'function') {
+      unlistenHotkey();
     }
 
     if (copyTimer) clearTimeout(copyTimer);
