@@ -705,9 +705,11 @@ impl Database {
         date_key: &str,
         limit: i32,
     ) -> Result<Vec<ClipboardItem>> {
-        let conn = self.conn.lock().unwrap();
+        let Some(search_pattern) = like_literal_pattern(query) else {
+            return Ok(Vec::new());
+        };
 
-        let search_pattern = format!("%{}%", query);
+        let conn = self.conn.lock().unwrap();
 
         // 根据是否有 session_id 分别执行不同的查询
         let items = if let Some(sid) = session_id {
@@ -716,7 +718,11 @@ impl Database {
                  FROM clipboard_items
                  WHERE date_key = ?1
                    AND session_id = ?2
-                   AND (content LIKE ?3 OR preview LIKE ?3 OR annotation LIKE ?3)
+                   AND (
+                       content LIKE ?3 ESCAPE '\\'
+                       OR preview LIKE ?3 ESCAPE '\\'
+                       OR annotation LIKE ?3 ESCAPE '\\'
+                   )
                  ORDER BY timestamp DESC
                  LIMIT ?4",
                 CLIPBOARD_ITEM_COLUMNS
@@ -734,7 +740,11 @@ impl Database {
                 "SELECT {}
                  FROM clipboard_items
                  WHERE date_key = ?1
-                   AND (content LIKE ?2 OR preview LIKE ?2 OR annotation LIKE ?2)
+                   AND (
+                       content LIKE ?2 ESCAPE '\\'
+                       OR preview LIKE ?2 ESCAPE '\\'
+                       OR annotation LIKE ?2 ESCAPE '\\'
+                   )
                  ORDER BY timestamp DESC
                  LIMIT ?3",
                 CLIPBOARD_ITEM_COLUMNS
@@ -751,6 +761,25 @@ impl Database {
 
         Ok(items)
     }
+}
+
+fn like_literal_pattern(query: &str) -> Option<String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut pattern = String::with_capacity(trimmed.len() + 2);
+    pattern.push('%');
+    for character in trimmed.chars() {
+        if matches!(character, '%' | '_' | '\\') {
+            pattern.push('\\');
+        }
+        pattern.push(character);
+    }
+    pattern.push('%');
+
+    Some(pattern)
 }
 
 fn clipboard_item_from_row(row: &Row<'_>) -> rusqlite::Result<ClipboardItem> {
@@ -1148,6 +1177,50 @@ mod tests {
             db.search_items("Alpha", None, &other_date_key, 10).unwrap();
         assert_eq!(all_session_other_day_results.len(), 1);
         assert_eq!(all_session_other_day_results[0].id, other_day.id);
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn search_items_treats_empty_and_like_wildcards_as_literals() {
+        let (db, data_dir) = temp_database();
+        let percent_item = db
+            .insert_item(
+                text_item_with_content("Progress 100% ready"),
+                DEFAULT_TIME_ZONE,
+            )
+            .unwrap();
+        let percent_neighbor = db
+            .insert_item(
+                text_item_with_content("Progress 100x ready"),
+                DEFAULT_TIME_ZONE,
+            )
+            .unwrap();
+        let underscore_item = db
+            .insert_item(text_item_with_content("Alpha_token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+        let underscore_neighbor = db
+            .insert_item(text_item_with_content("AlphaXtoken"), DEFAULT_TIME_ZONE)
+            .unwrap();
+
+        let empty_results = db
+            .search_items("   ", None, &percent_item.date_key, 10)
+            .unwrap();
+        assert!(empty_results.is_empty());
+
+        let percent_results = db
+            .search_items("%", None, &percent_item.date_key, 10)
+            .unwrap();
+        assert_eq!(percent_results.len(), 1);
+        assert_eq!(percent_results[0].id, percent_item.id);
+        assert_ne!(percent_results[0].id, percent_neighbor.id);
+
+        let underscore_results = db
+            .search_items("_", None, &underscore_item.date_key, 10)
+            .unwrap();
+        assert_eq!(underscore_results.len(), 1);
+        assert_eq!(underscore_results[0].id, underscore_item.id);
+        assert_ne!(underscore_results[0].id, underscore_neighbor.id);
 
         let _ = fs::remove_dir_all(data_dir);
     }
