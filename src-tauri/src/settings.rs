@@ -76,11 +76,6 @@ impl SettingsStore {
         self.current.lock().unwrap().clone()
     }
 
-    pub fn save(&self, settings: AppSettings) -> Result<AppSettings> {
-        let normalized = Self::normalize_candidate(settings)?;
-        self.save_normalized(normalized)
-    }
-
     pub fn normalize_candidate(settings: AppSettings) -> Result<AppSettings> {
         validate_screenshot_hotkey(&settings.screenshot_hotkey).map_err(anyhow::Error::msg)?;
         Ok(Self::normalize(settings))
@@ -173,7 +168,7 @@ mod tests {
         assert_eq!(store.get(), AppSettings::default());
 
         let saved = store
-            .save(AppSettings {
+            .save_normalized(AppSettings {
                 clipboard_monitor_enabled: false,
                 show_main_window_on_start: false,
                 max_items: 900,
@@ -208,7 +203,7 @@ mod tests {
         let store = SettingsStore::new(&data_dir).unwrap();
 
         let saved = store
-            .save(AppSettings {
+            .save_normalized(AppSettings {
                 time_zone: "Mars/Base".to_string(),
                 language: "pirate".to_string(),
                 ..AppSettings::default()
@@ -253,7 +248,7 @@ mod tests {
 
         for hotkey in ["", "A", "CommandOrControl+NotAKey"] {
             let err = store
-                .save(AppSettings {
+                .save_normalized(AppSettings {
                     screenshot_hotkey: hotkey.to_string(),
                     ..AppSettings::default()
                 })
