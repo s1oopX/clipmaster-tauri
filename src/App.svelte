@@ -689,6 +689,11 @@
     return options.find((option) => option.value === value)?.label || value;
   }
 
+  function numberSettingValue(value, fallback) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
   async function saveSettings() {
     settingsSaving = true;
     error = null;
@@ -696,14 +701,23 @@
     const normalized = {
       clipboard_monitor_enabled: settingsDraft.clipboard_monitor_enabled,
       show_main_window_on_start: settingsDraft.show_main_window_on_start,
-      max_items: Number(settingsDraft.max_items) || defaultSettings.max_items,
-      capture_delay_ms: Number(settingsDraft.capture_delay_ms) || defaultSettings.capture_delay_ms,
+      max_items: numberSettingValue(settingsDraft.max_items, defaultSettings.max_items),
+      capture_delay_ms: numberSettingValue(
+        settingsDraft.capture_delay_ms,
+        defaultSettings.capture_delay_ms
+      ),
       screenshot_hotkey: settingsDraft.screenshot_hotkey || defaultSettings.screenshot_hotkey,
       time_zone: settingsDraft.time_zone || defaultSettings.time_zone,
       language: settingsDraft.language || defaultSettings.language,
       auto_cleanup_enabled: settingsDraft.auto_cleanup_enabled,
-      cleanup_max_items: Number(settingsDraft.cleanup_max_items) || defaultSettings.cleanup_max_items,
-      cleanup_keep_days: Number(settingsDraft.cleanup_keep_days) || defaultSettings.cleanup_keep_days,
+      cleanup_max_items: numberSettingValue(
+        settingsDraft.cleanup_max_items,
+        defaultSettings.cleanup_max_items
+      ),
+      cleanup_keep_days: numberSettingValue(
+        settingsDraft.cleanup_keep_days,
+        defaultSettings.cleanup_keep_days
+      ),
     };
 
     try {
@@ -755,8 +769,8 @@
 
     try {
       cleanupPlan = await settingsApi.previewCustomCleanup(
-        Number(settingsDraft.cleanup_max_items) || defaultSettings.cleanup_max_items,
-        Number(settingsDraft.cleanup_keep_days) || defaultSettings.cleanup_keep_days
+        numberSettingValue(settingsDraft.cleanup_max_items, defaultSettings.cleanup_max_items),
+        numberSettingValue(settingsDraft.cleanup_keep_days, defaultSettings.cleanup_keep_days)
       );
     } catch (e) {
       console.error('预览清理失败:', e);
@@ -772,8 +786,8 @@
 
     try {
       cleanupPlan = await settingsApi.runCustomCleanup(
-        Number(settingsDraft.cleanup_max_items) || defaultSettings.cleanup_max_items,
-        Number(settingsDraft.cleanup_keep_days) || defaultSettings.cleanup_keep_days
+        numberSettingValue(settingsDraft.cleanup_max_items, defaultSettings.cleanup_max_items),
+        numberSettingValue(settingsDraft.cleanup_keep_days, defaultSettings.cleanup_keep_days)
       );
       await loadAvailableDays();
       await refreshVisibleRecords();

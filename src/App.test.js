@@ -895,6 +895,7 @@ describe('App UI', () => {
 
     const maxItems = screen.getByLabelText('保留记录数');
     await fireEvent.input(maxItems, { target: { value: '120' } });
+    await fireEvent.input(screen.getByLabelText('截图延迟'), { target: { value: '0' } });
     await fireEvent.click(screen.getByRole('checkbox', { name: '启动时显示主窗口' }));
 
     await fireEvent.click(screen.getByRole('tab', { name: '日期语言' }));
@@ -935,7 +936,7 @@ describe('App UI', () => {
         clipboard_monitor_enabled: true,
         show_main_window_on_start: false,
         max_items: 120,
-        capture_delay_ms: 150,
+        capture_delay_ms: 0,
         screenshot_hotkey: 'CommandOrControl+Shift+A',
         time_zone: 'America/New_York',
         language: 'en-US',
