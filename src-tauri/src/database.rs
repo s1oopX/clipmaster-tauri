@@ -505,6 +505,18 @@ impl Database {
     /// 更新记录内容
     pub fn update_item_content(&self, item_id: &str, new_content: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        let (item_type, date_key): (String, String) = conn
+            .query_row(
+                "SELECT type, date_key FROM clipboard_items WHERE id = ?1",
+                params![item_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("记录不存在"))?;
+
+        if item_type != ClipboardType::Text.as_str() {
+            return Err(anyhow::anyhow!("只能编辑文本记录"));
+        }
 
         // 生成新的预览文本
         let char_count = new_content.chars().count();
@@ -515,6 +527,19 @@ impl Database {
             new_content.to_string()
         };
         let content_hash = format!("{:x}", md5::compute(new_content.as_bytes()));
+        let duplicate_id = conn
+            .query_row(
+                "SELECT id FROM clipboard_items
+                 WHERE content_hash = ?1 AND date_key = ?2 AND id != ?3
+                 LIMIT 1",
+                params![content_hash, date_key, item_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+
+        if duplicate_id.is_some() {
+            return Err(anyhow::anyhow!("当日已存在相同内容"));
+        }
 
         conn.execute(
             "UPDATE clipboard_items SET content = ?1, preview = ?2, content_hash = ?3 WHERE id = ?4",
@@ -819,6 +844,18 @@ mod tests {
         format!("{:x}", md5::compute(content.as_bytes()))
     }
 
+    fn text_item_with_content(content: &str) -> CreateClipboardItem {
+        CreateClipboardItem {
+            type_: ClipboardType::Text,
+            content: Some(content.to_string()),
+            image_path: None,
+            thumbnail_path: None,
+            source_app: None,
+            content_hash: text_hash(content),
+            session_id: "session_1".to_string(),
+        }
+    }
+
     #[test]
     fn date_keys_follow_configured_time_zone() {
         let timestamp = Utc
@@ -917,6 +954,32 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(beta_match.id, item.id);
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn updating_text_content_cannot_create_same_day_duplicate() {
+        let (db, data_dir) = temp_database();
+        let first = db
+            .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+        let second = db
+            .insert_item(text_item_with_content("Beta token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+
+        let error = db
+            .update_item_content(&second.id, "Alpha token")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("当日已存在相同内容"));
+
+        let unchanged = db.get_item(&second.id).unwrap().unwrap();
+        assert_eq!(unchanged.content.as_deref(), Some("Beta token"));
+        assert_eq!(unchanged.content_hash, text_hash("Beta token"));
+
+        let original = db.get_item(&first.id).unwrap().unwrap();
+        assert_eq!(original.content.as_deref(), Some("Alpha token"));
 
         let _ = fs::remove_dir_all(data_dir);
     }
