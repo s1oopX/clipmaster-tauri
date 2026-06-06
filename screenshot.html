@@ -168,7 +168,7 @@
 
     <script type="module">
       import { invoke } from '@tauri-apps/api/core';
-      import { getCurrentWindow } from '@tauri-apps/api/window';
+      import { getCurrentWindow, Window } from '@tauri-apps/api/window';
 
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
@@ -195,6 +195,16 @@
         return new Promise((resolve) => window.setTimeout(resolve, ms));
       }
 
+      async function runWindowAction(action, label) {
+        try {
+          await action();
+          return true;
+        } catch (error) {
+          console.error(`${label}失败:`, error);
+          return false;
+        }
+      }
+
       function resizeCanvas() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -213,17 +223,16 @@
 
       async function restoreMainWindow() {
         try {
-          const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-          const mainWindow = await WebviewWindow.getByLabel('main');
+          const mainWindow = await Window.getByLabel('main');
 
           if (!mainWindow) {
             console.warn('未找到主窗口');
             return false;
           }
 
-          await mainWindow.show();
-          await mainWindow.setFocus();
-          return true;
+          const shown = await runWindowAction(() => mainWindow.show(), '恢复主窗口显示');
+          const focused = await runWindowAction(() => mainWindow.setFocus(), '恢复主窗口焦点');
+          return shown && focused;
         } catch (error) {
           console.error('恢复主窗口失败:', error);
           return false;
@@ -380,14 +389,17 @@
         sizeInfo.style.display = 'none';
         document.getElementById('info').style.display = 'none';
         hideError();
-        await currentWin.hide();
+        const hidden = await runWindowAction(() => currentWin.hide(), '隐藏截图窗口');
+        if (!hidden) {
+          throw new Error('隐藏截图窗口失败，请重试');
+        }
         await sleep(160);
       }
 
       async function showSelectorAfterCaptureError() {
         const currentWin = getCurrentWindow();
-        await currentWin.show();
-        await currentWin.setFocus();
+        await runWindowAction(() => currentWin.show(), '重新显示截图窗口');
+        await runWindowAction(() => currentWin.setFocus(), '重新聚焦截图窗口');
         document.getElementById('info').style.display = 'block';
         drawCanvas();
         showToolbar();
@@ -456,20 +468,26 @@
 
       // 关闭窗口
       async function closeWindow() {
-        try {
-          const currentWin = getCurrentWindow();
-          const restored = await restoreMainWindow();
+        const currentWin = getCurrentWindow();
+        const restored = await restoreMainWindow();
 
-          if (!restored) {
-            showError('无法恢复主窗口，请从任务栏重新打开 ClipMaster');
-            return;
+        if (!restored) {
+          console.warn('主窗口恢复失败，继续关闭截图窗口');
+        }
+
+        const closed = await runWindowAction(() => currentWin.close(), '关闭截图窗口');
+        if (closed) return;
+
+        const destroyed = await runWindowAction(() => currentWin.destroy(), '强制关闭截图窗口');
+        if (!destroyed) {
+          await runWindowAction(() => currentWin.show(), '重新显示截图窗口');
+          document.getElementById('info').style.display = 'block';
+          drawCanvas();
+          if (selectionComplete) {
+            showToolbar();
           }
-
-          // 关闭当前窗口
-          await currentWin.close();
-        } catch (error) {
-          console.error('关闭窗口失败:', error);
-          showError('关闭截图窗口失败: ' + error);
+          isCapturing = false;
+          showError('关闭截图窗口失败，请按 Alt+F4 退出');
         }
       }
 
