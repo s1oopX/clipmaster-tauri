@@ -640,6 +640,25 @@ describe('App UI', () => {
     expect(screen.getByTestId('toast-stack')).toHaveTextContent('已复制到剪贴板');
   });
 
+  it('opens and closes image previews with keyboard activation keys', async () => {
+    api.getItems.mockResolvedValue([imageItem()]);
+
+    render(App);
+
+    const thumbnail = await screen.findByAltText('剪贴板图片缩略图');
+    const previewButton = thumbnail.closest('.image-preview');
+
+    await fireEvent.keyDown(previewButton, { key: ' ' });
+    expect(screen.getByAltText('原图')).toBeInTheDocument();
+
+    const overlay = document.querySelector('.image-viewer-overlay');
+    await fireEvent.keyDown(overlay, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(screen.queryByAltText('原图')).not.toBeInTheDocument();
+    });
+  });
+
   it('shows a toast error when copying text fails', async () => {
     api.getItems.mockResolvedValue([textItem()]);
     api.copyToClipboard.mockRejectedValueOnce('剪贴板被占用');
@@ -685,6 +704,26 @@ describe('App UI', () => {
     });
     expect(screen.getByRole('status')).toHaveTextContent('已复制到剪贴板');
     expect(screen.getByTestId('toast-stack')).toHaveTextContent('已复制到剪贴板');
+  });
+
+  it('copies text from the content area with keyboard activation keys', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+
+    render(App);
+
+    const content = await screen.findByText('Alpha token');
+
+    await fireEvent.keyDown(content, { key: ' ' });
+    await waitFor(() => {
+      expect(api.copyToClipboard).toHaveBeenCalledWith('Alpha token');
+    });
+
+    api.copyToClipboard.mockClear();
+    await fireEvent.keyDown(content, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(api.copyToClipboard).toHaveBeenCalledWith('Alpha token');
+    });
   });
 
   it('saves annotations without changing the original clipboard content', async () => {

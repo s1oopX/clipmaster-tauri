@@ -278,6 +278,22 @@
     action();
   }
 
+  function isActivationKey(event) {
+    return event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar';
+  }
+
+  function runKeyboardAction(event, action) {
+    if (!isActivationKey(event)) return;
+    event.preventDefault();
+    action();
+  }
+
+  function closeImageViewerFromKeyboard(event) {
+    if (event.key !== 'Escape' && !isActivationKey(event)) return;
+    event.preventDefault();
+    closeImageViewer();
+  }
+
   onMount(async () => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -1304,10 +1320,7 @@
                         copyItem(item);
                       }}
                       on:keydown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          copyItem(item);
-                        }
+                        runKeyboardAction(event, () => copyItem(item));
                       }}
                     >
                       {item.preview || item.content}
@@ -1319,7 +1332,13 @@
                     <span>{item.image_path || '等待图片路径'}</span>
                   </div>
                   {#if thumbnailUrls[item.id]}
-                    <div class="image-preview" on:click={() => viewFullImage(item.id)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && viewFullImage(item.id)}>
+                    <div
+                      class="image-preview"
+                      on:click={() => viewFullImage(item.id)}
+                      role="button"
+                      tabindex="0"
+                      on:keydown={(event) => runKeyboardAction(event, () => viewFullImage(item.id))}
+                    >
                       <img
                         src={thumbnailUrls[item.id]}
                         alt="剪贴板图片缩略图"
@@ -1798,7 +1817,13 @@
 
   <!-- 原图查看器 -->
   {#if viewingImageId && imageUrls[viewingImageId]}
-    <div class="image-viewer-overlay" on:click={closeImageViewer} role="button" tabindex="0" on:keydown={(e) => e.key === 'Escape' && closeImageViewer()}>
+    <div
+      class="image-viewer-overlay"
+      on:click={closeImageViewer}
+      role="button"
+      tabindex="0"
+      on:keydown={closeImageViewerFromKeyboard}
+    >
       <div class="image-viewer-content" on:click|stopPropagation role="presentation">
         <button class="image-viewer-close" on:click={closeImageViewer} aria-label="关闭">
           <X size={24} aria-hidden="true" />
