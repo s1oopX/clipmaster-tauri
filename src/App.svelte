@@ -12,6 +12,7 @@
     Clipboard,
     Copy,
     FileText,
+    GitPullRequest,
     Heart,
     Image as ImageIcon,
     Inbox,
@@ -67,6 +68,9 @@
   ];
 
   const appVersion = '0.1.0';
+  const githubProfileUrl = 'https://github.com/s1oopX';
+  const githubRepositoryUrl = 'https://github.com/s1oopX/clipmaster-tauri';
+  const githubIssuesUrl = `${githubRepositoryUrl}/issues`;
 
   let items = [];
   let currentSession = null;
@@ -1555,9 +1559,22 @@
               role="tabpanel"
               aria-labelledby="settings-tab-about"
             >
-              <div class="settings-section-title">
-                <h3>关于我</h3>
-                <p>我是 ClipMaster，帮你把复制、截图、标注和贴图留在本机，按日期整理，随用随取。</p>
+              <div class="about-profile">
+                <img class="about-avatar" src="/github-avatar.jpg" alt="s1oopX GitHub 头像" />
+                <div class="about-profile-copy">
+                  <span class="about-eyebrow">GitHub · s1oopX</span>
+                  <h3>s1oopX</h3>
+                  <p>
+                    ClipMaster 的作者与维护者，专注于把高频复制、截图和标注工作流做得更安静、可靠，并把数据留在用户本机。
+                  </p>
+                </div>
+              </div>
+
+              <div class="about-block">
+                <h4>项目简介</h4>
+                <p>
+                  ClipMaster 是一款本地优先的剪贴板管理工具，支持复制记录、截图、标注、贴图和按日期整理。应用默认以北京时间划分记录，也可以在设置中切换常见时区与界面语言。
+                </p>
               </div>
 
               <dl class="about-list">
@@ -1574,6 +1591,26 @@
                   <dd>{optionLabel(timeZoneOptions, settingsDraft.time_zone)}</dd>
                 </div>
               </dl>
+
+              <div class="about-block about-contact">
+                <h4>联系方式</h4>
+                <div class="about-links">
+                  <a class="about-link" href={githubProfileUrl} target="_blank" rel="noreferrer">
+                    <GitPullRequest size={14} aria-hidden="true" />
+                    <span>
+                      <strong>GitHub 主页</strong>
+                      <small>s1oopX</small>
+                    </span>
+                  </a>
+                  <a class="about-link" href={githubIssuesUrl} target="_blank" rel="noreferrer">
+                    <GitPullRequest size={14} aria-hidden="true" />
+                    <span>
+                      <strong>提交问题或建议</strong>
+                      <small>s1oopX/clipmaster-tauri</small>
+                    </span>
+                  </a>
+                </div>
+              </div>
             </div>
           {/if}
         </div>
@@ -2371,10 +2408,84 @@
     line-height: 1.45;
   }
 
+  .about-profile {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    padding: 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+  }
+
+  .about-avatar {
+    display: block;
+    width: 92px;
+    height: 92px;
+    object-fit: cover;
+    object-position: center;
+    background: #edf2f7;
+    border: 1px solid #d9e0ea;
+    border-radius: 20px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  }
+
+  .about-profile-copy,
+  .about-block,
+  .about-link span {
+    display: grid;
+    min-width: 0;
+  }
+
+  .about-profile-copy {
+    gap: 4px;
+  }
+
+  .about-eyebrow {
+    color: #0f766e;
+    font-size: 0.68rem;
+    font-weight: 720;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .about-profile-copy h3,
+  .about-block h4 {
+    margin: 0;
+    color: #172033;
+  }
+
+  .about-profile-copy h3 {
+    font-size: 1.08rem;
+    font-weight: 760;
+  }
+
+  .about-profile-copy p,
+  .about-block p {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+
+  .about-block {
+    gap: 6px;
+  }
+
+  .about-block h4 {
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
   .about-list {
     display: grid;
     gap: 8px;
     margin: 0;
+    padding: 8px 10px;
+    background: rgba(248, 250, 252, 0.72);
+    border: 1px solid #edf1f6;
+    border-radius: 9px;
   }
 
   .about-list div {
@@ -2382,7 +2493,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 14px;
-    min-height: 30px;
+    min-height: 28px;
     color: #172033;
     font-size: 0.82rem;
   }
@@ -2393,8 +2504,67 @@
 
   .about-list dd {
     margin: 0;
+    min-width: 0;
     color: #172033;
     font-weight: 600;
+    text-align: right;
+  }
+
+  .about-links {
+    display: grid;
+    gap: 8px;
+  }
+
+  .about-link {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 42px;
+    min-width: 0;
+    padding: 8px 10px;
+    color: #0f766e;
+    background: #ffffff;
+    border: 1px solid #d9e0ea;
+    border-radius: 8px;
+    text-decoration: none;
+    transition:
+      background 180ms ease,
+      border-color 180ms ease,
+      color 180ms ease;
+  }
+
+  .about-link:hover,
+  .about-link:focus-visible {
+    color: #0b5f59;
+    background: #f0fdfa;
+    border-color: #99f6e4;
+  }
+
+  .about-link :global(svg) {
+    flex: 0 0 auto;
+  }
+
+  .about-link span {
+    gap: 1px;
+  }
+
+  .about-link strong,
+  .about-link small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .about-link strong {
+    color: #172033;
+    font-size: 0.82rem;
+    font-weight: 680;
+  }
+
+  .about-link small {
+    color: #64748b;
+    font-size: 0.74rem;
   }
 
   .hotkey-hint,
@@ -2465,6 +2635,16 @@
       width: auto;
       flex: 0 0 auto;
       padding: 0 10px;
+    }
+
+    .about-profile {
+      grid-template-columns: 1fr;
+      justify-items: start;
+    }
+
+    .about-avatar {
+      width: 104px;
+      height: 104px;
     }
   }
 
@@ -4080,6 +4260,40 @@
     font-size: 0.78rem;
   }
 
+  .about-profile {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 250, 0.72)),
+      #f8fbfb;
+    border-color: var(--line-soft);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  }
+
+  .about-avatar {
+    border-color: #cbdadd;
+    box-shadow: 0 14px 28px rgba(25, 44, 49, 0.14);
+  }
+
+  .about-eyebrow {
+    color: var(--accent-strong);
+  }
+
+  .about-profile-copy h3,
+  .about-block h4,
+  .about-link strong {
+    color: var(--ink);
+  }
+
+  .about-profile-copy p,
+  .about-block p,
+  .about-link small {
+    color: var(--muted);
+  }
+
+  .about-list {
+    background: rgba(255, 255, 255, 0.58);
+    border-color: var(--line-soft);
+  }
+
   .about-list div {
     color: var(--ink);
   }
@@ -4091,6 +4305,19 @@
   .about-list dd {
     color: var(--ink);
     font-weight: 680;
+  }
+
+  .about-link {
+    color: var(--accent-strong);
+    background: rgba(255, 255, 255, 0.76);
+    border-color: #cfdcdf;
+  }
+
+  .about-link:hover,
+  .about-link:focus-visible {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-color: var(--accent-line);
   }
 
   .hotkey-hint,

@@ -489,8 +489,22 @@ describe('App UI', () => {
     });
 
     await fireEvent.click(screen.getByRole('tab', { name: '关于' }));
-    expect(screen.getByRole('heading', { name: '关于我' })).toBeInTheDocument();
-    expect(screen.getByText(/我是 ClipMaster/)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 's1oopX GitHub 头像' })).toHaveAttribute(
+      'src',
+      '/github-avatar.jpg'
+    );
+    expect(screen.getByRole('heading', { name: 's1oopX' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '项目简介' })).toBeInTheDocument();
+    expect(screen.getByText(/本地优先的剪贴板管理工具/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '联系方式' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /GitHub 主页/ })).toHaveAttribute(
+      'href',
+      'https://github.com/s1oopX'
+    );
+    expect(screen.getByRole('link', { name: /提交问题或建议/ })).toHaveAttribute(
+      'href',
+      'https://github.com/s1oopX/clipmaster-tauri/issues'
+    );
     expect(screen.getByText('本地保存')).toBeInTheDocument();
     expect(screen.getByText('纽约（自动夏令时）')).toBeInTheDocument();
 
