@@ -407,7 +407,10 @@ pub async fn capture_region_screenshot(
         return Err("截图区域无效".to_string());
     }
 
-    // 1. 用户在灰色底版上完成框选后，前端会先隐藏选择窗口，再调用这里抓取真实屏幕区域。
+    // 1. 前端会先隐藏选择窗口；这里再兜底等待一次，避免把灰色底版和工具条拍进结果。
+    hide_selector_window_for_capture(&app).await?;
+
+    // 2. 用户在灰色底版上完成框选后，抓取真实屏幕区域。
     let screen = Screen::from_point(x, y).map_err(|e| format!("未找到选区所在屏幕: {}", e))?;
     let relative_x = x - screen.display_info.x;
     let relative_y = y - screen.display_info.y;
@@ -419,7 +422,7 @@ pub async fn capture_region_screenshot(
         image::RgbaImage::from_raw(captured_width, captured_height, captured_image.into_raw())
             .ok_or_else(|| "转换截图像素失败".to_string())?;
 
-    // 2. 计算 hash
+    // 3. 计算 hash
     let content_hash = format!("{:x}", md5::compute(rgba_image.as_raw()));
     let time_zone = settings.get().time_zone;
 
@@ -432,16 +435,16 @@ pub async fn capture_region_screenshot(
         return Ok(saved_item);
     }
 
-    // 3. 保存图片和缩略图
+    // 4. 保存图片和缩略图
     let (image_path, thumbnail_path) =
         save_cropped_image(&app, &rgba_image, &content_hash, &time_zone)?;
 
-    // 4. 获取会话
+    // 5. 获取会话
     let session_id = session_mgr
         .get_current_session_id()
         .ok_or_else(|| "当前没有活动会话".to_string())?;
 
-    // 5. 创建记录
+    // 6. 创建记录
     let saved_item = db
         .insert_item(
             CreateClipboardItem {
@@ -457,11 +460,22 @@ pub async fn capture_region_screenshot(
         )
         .map_err(|e| e.to_string())?;
 
-    // 6. 通知前端
+    // 7. 通知前端
     app.emit("clipboard:new-item", &saved_item)
         .map_err(|e| e.to_string())?;
 
     Ok(saved_item)
+}
+
+async fn hide_selector_window_for_capture(app: &AppHandle) -> Result<(), String> {
+    if let Some(selection_window) = app.get_webview_window("screenshot-selector") {
+        selection_window
+            .hide()
+            .map_err(|error| format!("隐藏截图选择窗口失败，无法安全截图: {}", error))?;
+        sleep(Duration::from_millis(260)).await;
+    }
+
+    Ok(())
 }
 
 fn validate_date_key(date_key: &str) -> Result<(), String> {

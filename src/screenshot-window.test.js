@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const screenshotHtml = readFileSync('screenshot.html', 'utf8');
+const commandsSource = readFileSync('src-tauri/src/commands.rs', 'utf8');
 const capabilities = JSON.parse(
   readFileSync('src-tauri/capabilities/default.json', 'utf8')
 );
@@ -17,6 +18,13 @@ describe('Screenshot selector window', () => {
     expect(screenshotHtml).toContain("currentWin.close(), '关闭截图窗口'");
     expect(screenshotHtml).toContain("currentWin.destroy(), '强制关闭截图窗口'");
     expect(screenshotHtml).not.toContain("showError('无法恢复主窗口，请从任务栏重新打开 ClipMaster')");
+  });
+
+  it('hides the selector window on the backend before capturing pixels', () => {
+    expect(commandsSource).toContain('hide_selector_window_for_capture(&app).await?');
+    expect(commandsSource).toContain('get_webview_window("screenshot-selector")');
+    expect(commandsSource).toContain('.hide()');
+    expect(commandsSource).toContain('Duration::from_millis(260)');
   });
 
   it('grants the window APIs required by screenshot capture recovery', () => {
