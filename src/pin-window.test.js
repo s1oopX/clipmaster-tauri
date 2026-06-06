@@ -21,15 +21,16 @@ describe('Pinned image window', () => {
     expect(pinHtml).toContain('runWindowAction');
   });
 
-  it('zooms only the image content without resizing the pinned window', () => {
+  it('zooms the image content and pinned window together', () => {
     expect(pinHtml).toContain('var(--image-offset-x, 0px)');
     expect(pinHtml).toContain('var(--image-offset-y, 0px)');
     expect(pinHtml).toContain('scale(var(--image-scale, 1))');
     expect(pinHtml).toContain('function syncImageTransform()');
     expect(pinHtml).toContain("image.style.setProperty('--image-scale'");
     expect(pinHtml).toContain('imageScale = Math.max(0.25, Math.min(imageScale * delta, 5))');
-    expect(pinHtml).not.toContain('PhysicalSize');
-    expect(pinHtml).not.toContain('currentWin.innerSize()');
+    expect(pinHtml).toContain('new PhysicalSize(');
+    expect(pinHtml).toContain('currentWin.innerSize()');
+    expect(pinHtml).toContain("'同步缩放贴图窗口'");
   });
 
   it('pans the image with ctrl and left drag without moving the pinned window', () => {
