@@ -481,7 +481,9 @@ describe('App UI', () => {
     await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
     await fireEvent.click(screen.getByRole('button', { name: '截图' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('截图失败: 权限不足');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('截图失败: 权限不足');
+    expect(screen.getByTestId('toast-stack')).toContainElement(alert);
   });
 
   it('clears stale action errors after a successful search', async () => {
@@ -532,6 +534,17 @@ describe('App UI', () => {
     expect(api.pinImage).toHaveBeenCalledTimes(2);
   });
 
+  it('shows a toast error when there is no image to pin', async () => {
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+    await fireEvent.click(screen.getByRole('button', { name: '钉住' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('当前没有可钉住的图片记录');
+    expect(screen.getByTestId('toast-stack')).toContainElement(alert);
+  });
+
   it('copies image items to the system clipboard', async () => {
     api.getItems.mockResolvedValue([imageItem()]);
 
@@ -545,6 +558,20 @@ describe('App UI', () => {
     });
     expect(screen.getByRole('status')).toHaveTextContent('已复制到剪贴板');
     expect(screen.getByTestId('toast-stack')).toHaveTextContent('已复制到剪贴板');
+  });
+
+  it('shows a toast error when copying text fails', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+    api.copyToClipboard.mockRejectedValueOnce('剪贴板被占用');
+
+    render(App);
+
+    const content = await screen.findByText('Alpha token');
+    await fireEvent.dblClick(content);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('复制失败: 剪贴板被占用');
+    expect(screen.getByTestId('toast-stack')).toContainElement(alert);
   });
 
   it('copies text quickly from the content area on double click', async () => {

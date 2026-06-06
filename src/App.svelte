@@ -363,6 +363,7 @@
 
       items = nextItems;
       error = null;
+      actionError = '';
       pruneImageUrls(items);
       void loadImageUrls();
     } catch (e) {
@@ -533,6 +534,7 @@
 
       items = nextItems;
       error = null;
+      actionError = '';
       pruneImageUrls(items);
       void loadImageUrls();
     } catch (e) {
@@ -571,11 +573,11 @@
         error = null;
         showCopyToast();
       } else if (item.type === 'image') {
-        error = '图片路径不可用';
+        showActionError('图片路径不可用');
       }
     } catch (e) {
       console.error('复制失败:', e);
-      error = '复制失败: ' + e;
+      showActionError('复制失败: ' + e);
     }
   }
 
@@ -586,10 +588,11 @@
     try {
       // 直接进入全屏选取模式
       await toolApi.startRegionScreenshot();
+      actionError = '';
       toolLoading = null;
     } catch (e) {
       console.error('截图失败:', e);
-      error = normalizeScreenshotError(e);
+      showActionError(normalizeScreenshotError(e));
       toolLoading = null;
     }
   }
@@ -613,7 +616,7 @@
       || items.find((item) => item.type === 'image' && item.image_path);
 
     if (!image) {
-      error = '当前没有可钉住的图片记录';
+      showActionError('当前没有可钉住的图片记录');
       return;
     }
 
@@ -622,7 +625,7 @@
 
   async function pinImageToDesktop(item) {
     if (!item.image_path) {
-      error = '图片路径不可用';
+      showActionError('图片路径不可用');
       return;
     }
 
@@ -634,7 +637,7 @@
       showActionNotice('已钉到桌面');
     } catch (e) {
       console.error('贴图失败:', e);
-      error = '贴图失败: ' + e;
+      showActionError('贴图失败: ' + e);
     } finally {
       toolLoading = null;
     }
@@ -743,6 +746,7 @@
 
   function showCopyToast() {
     copySuccess = true;
+    actionError = '';
     if (copyTimer) clearTimeout(copyTimer);
     copyTimer = setTimeout(() => {
       copySuccess = false;
