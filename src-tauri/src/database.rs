@@ -514,10 +514,11 @@ impl Database {
         } else {
             new_content.to_string()
         };
+        let content_hash = format!("{:x}", md5::compute(new_content.as_bytes()));
 
         conn.execute(
-            "UPDATE clipboard_items SET content = ?1, preview = ?2 WHERE id = ?3",
-            params![new_content, preview, item_id],
+            "UPDATE clipboard_items SET content = ?1, preview = ?2, content_hash = ?3 WHERE id = ?4",
+            params![new_content, preview, content_hash, item_id],
         )?;
 
         Ok(())
@@ -814,6 +815,10 @@ mod tests {
         }
     }
 
+    fn text_hash(content: &str) -> String {
+        format!("{:x}", md5::compute(content.as_bytes()))
+    }
+
     #[test]
     fn date_keys_follow_configured_time_zone() {
         let timestamp = Utc
@@ -883,6 +888,35 @@ mod tests {
         let items = db.get_items(10, 0).unwrap();
         assert_eq!(items.len(), 2);
         assert!(items.iter().any(|item| item.date_key == yesterday_key));
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn updating_text_content_keeps_duplicate_hash_in_sync() {
+        let (db, data_dir) = temp_database();
+        let alpha_hash = text_hash("Alpha token");
+        let beta_hash = text_hash("Beta token");
+        let item = db
+            .insert_item(text_item(&alpha_hash), DEFAULT_TIME_ZONE)
+            .unwrap();
+
+        db.update_item_content(&item.id, "Beta token").unwrap();
+
+        let updated = db.get_item(&item.id).unwrap().unwrap();
+        assert_eq!(updated.content.as_deref(), Some("Beta token"));
+        assert_eq!(updated.content_hash, beta_hash);
+
+        let stale_alpha_match = db
+            .refresh_duplicate_for_time_zone(&alpha_hash, DEFAULT_TIME_ZONE)
+            .unwrap();
+        assert!(stale_alpha_match.is_none());
+
+        let beta_match = db
+            .refresh_duplicate_for_time_zone(&beta_hash, DEFAULT_TIME_ZONE)
+            .unwrap()
+            .unwrap();
+        assert_eq!(beta_match.id, item.id);
 
         let _ = fs::remove_dir_all(data_dir);
     }
