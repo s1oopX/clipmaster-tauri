@@ -7,7 +7,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tokio::time::sleep;
 
-use crate::database::{beijing_date_key_now, Database};
+use crate::database::{date_key_now, Database};
 use crate::models::{
     CleanupPlan, ClipboardDay, ClipboardItem, ClipboardType, CreateClipboardItem, Session,
 };
@@ -72,7 +72,13 @@ pub async fn save_settings(
     db: State<'_, Database>,
     settings: AppSettings,
 ) -> Result<AppSettings, String> {
+    let previous = store.get();
     let result = store.save(settings).map_err(|e| e.to_string())?;
+
+    if previous.time_zone != result.time_zone {
+        db.rebuild_date_keys(&result.time_zone)
+            .map_err(|e| e.to_string())?;
+    }
 
     // 重新注册快捷键
     if let Err(e) = crate::hotkey::HotkeyManager::re_register(&app) {
@@ -391,6 +397,7 @@ pub async fn capture_region_screenshot(
     app: AppHandle,
     db: State<'_, Database>,
     session_mgr: State<'_, SessionManager>,
+    settings: State<'_, SettingsStore>,
     x: i32,
     y: i32,
     width: u32,
@@ -414,9 +421,10 @@ pub async fn capture_region_screenshot(
 
     // 2. 计算 hash
     let content_hash = format!("{:x}", md5::compute(rgba_image.as_raw()));
+    let time_zone = settings.get().time_zone;
 
     if let Some(saved_item) = db
-        .refresh_today_duplicate(&content_hash)
+        .refresh_duplicate_for_time_zone(&content_hash, &time_zone)
         .map_err(|e| e.to_string())?
     {
         app.emit("clipboard:new-item", &saved_item)
@@ -425,7 +433,8 @@ pub async fn capture_region_screenshot(
     }
 
     // 3. 保存图片和缩略图
-    let (image_path, thumbnail_path) = save_cropped_image(&app, &rgba_image, &content_hash)?;
+    let (image_path, thumbnail_path) =
+        save_cropped_image(&app, &rgba_image, &content_hash, &time_zone)?;
 
     // 4. 获取会话
     let session_id = session_mgr
@@ -434,15 +443,18 @@ pub async fn capture_region_screenshot(
 
     // 5. 创建记录
     let saved_item = db
-        .insert_item(CreateClipboardItem {
-            type_: ClipboardType::Image,
-            content: None,
-            image_path: Some(image_path),
-            thumbnail_path: Some(thumbnail_path),
-            source_app: Some("ClipMaster 区域截图".to_string()),
-            content_hash,
-            session_id,
-        })
+        .insert_item(
+            CreateClipboardItem {
+                type_: ClipboardType::Image,
+                content: None,
+                image_path: Some(image_path),
+                thumbnail_path: Some(thumbnail_path),
+                source_app: Some("ClipMaster 区域截图".to_string()),
+                content_hash,
+                session_id,
+            },
+            &time_zone,
+        )
         .map_err(|e| e.to_string())?;
 
     // 6. 通知前端
@@ -533,9 +545,10 @@ fn save_cropped_image(
     app: &AppHandle,
     image: &image::RgbaImage,
     content_hash: &str,
+    time_zone: &str,
 ) -> Result<(String, String), String> {
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let date_key = beijing_date_key_now();
+    let date_key = date_key_now(time_zone);
     let images_dir = app_data_dir.join("images").join(&date_key);
 
     fs::create_dir_all(&images_dir).map_err(|e| e.to_string())?;

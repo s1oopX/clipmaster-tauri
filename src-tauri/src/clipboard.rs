@@ -7,7 +7,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::time::sleep;
 
-use crate::database::{beijing_date_key_now, Database};
+use crate::database::{date_key_now, Database};
 use crate::models::{ClipboardType, CreateClipboardItem};
 use crate::session::SessionManager;
 use crate::settings::SettingsStore;
@@ -141,8 +141,9 @@ impl ClipboardService {
     ) -> Result<()> {
         let db = app_handle.state::<Database>();
         let session_mgr = app_handle.state::<SessionManager>();
+        let time_zone = app_handle.state::<SettingsStore>().get().time_zone;
 
-        if let Some(saved_item) = db.refresh_today_duplicate(&content_hash)? {
+        if let Some(saved_item) = db.refresh_duplicate_for_time_zone(&content_hash, &time_zone)? {
             app_handle.emit("clipboard:new-item", &saved_item)?;
             return Ok(());
         }
@@ -166,7 +167,7 @@ impl ClipboardService {
             ClipboardContent::Image(img) => {
                 // 保存图片到文件系统
                 let (image_path, thumbnail_path) =
-                    Self::save_image(app_handle, &img, &content_hash)?;
+                    Self::save_image(app_handle, &img, &content_hash, &time_zone)?;
 
                 CreateClipboardItem {
                     type_: ClipboardType::Image,
@@ -181,7 +182,7 @@ impl ClipboardService {
         };
 
         // 插入数据库
-        let saved_item = db.insert_item(item)?;
+        let saved_item = db.insert_item(item, &time_zone)?;
 
         // 通知前端
         app_handle.emit("clipboard:new-item", &saved_item)?;
@@ -194,6 +195,7 @@ impl ClipboardService {
         app_handle: &AppHandle,
         img: &arboard::ImageData,
         content_hash: &str,
+        time_zone: &str,
     ) -> Result<(String, String)> {
         // 获取应用数据目录
         let app_data_dir = app_handle
@@ -202,7 +204,7 @@ impl ClipboardService {
             .map_err(|e| anyhow::anyhow!("Failed to get app data dir: {}", e))?;
 
         // 创建按日期分组的图片目录
-        let date_key = beijing_date_key_now();
+        let date_key = date_key_now(time_zone);
         let images_dir = app_data_dir.join("images").join(&date_key);
 
         // 确保目录存在

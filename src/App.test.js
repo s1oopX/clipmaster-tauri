@@ -137,6 +137,8 @@ describe('App UI', () => {
       max_items: 50,
       capture_delay_ms: 150,
       screenshot_hotkey: 'CommandOrControl+Shift+A',
+      time_zone: 'Asia/Shanghai',
+      language: 'zh-CN',
       auto_cleanup_enabled: false,
       cleanup_max_items: 200,
       cleanup_keep_days: 30,
@@ -467,9 +469,17 @@ describe('App UI', () => {
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: '监听剪贴板' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: '启动时显示主窗口' })).toBeChecked();
+    expect(screen.getByLabelText('日期划分时区')).toHaveValue('Asia/Shanghai');
+    expect(screen.getByLabelText('应用语言')).toHaveValue('zh-CN');
 
     const maxItems = screen.getByLabelText('保留记录数');
     await fireEvent.input(maxItems, { target: { value: '120' } });
+    await fireEvent.change(screen.getByLabelText('日期划分时区'), {
+      target: { value: 'America/New_York' },
+    });
+    await fireEvent.change(screen.getByLabelText('应用语言'), {
+      target: { value: 'en-US' },
+    });
     await fireEvent.click(screen.getByRole('checkbox', { name: '启动时显示主窗口' }));
     await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
 
@@ -480,6 +490,8 @@ describe('App UI', () => {
         max_items: 120,
         capture_delay_ms: 150,
         screenshot_hotkey: 'CommandOrControl+Shift+A',
+        time_zone: 'America/New_York',
+        language: 'en-US',
         auto_cleanup_enabled: false,
         cleanup_max_items: 200,
         cleanup_keep_days: 30,
@@ -555,6 +567,8 @@ describe('App UI', () => {
       max_items: 1,
       capture_delay_ms: 150,
       screenshot_hotkey: 'CommandOrControl+Shift+A',
+      time_zone: 'Asia/Shanghai',
+      language: 'zh-CN',
       auto_cleanup_enabled: false,
       cleanup_max_items: 200,
       cleanup_keep_days: 30,

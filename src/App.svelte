@@ -39,10 +39,24 @@
     max_items: 50,
     capture_delay_ms: 150,
     screenshot_hotkey: 'CommandOrControl+Shift+A',
+    time_zone: 'Asia/Shanghai',
+    language: 'zh-CN',
     auto_cleanup_enabled: false,
     cleanup_max_items: 200,
     cleanup_keep_days: 30,
   };
+
+  const timeZoneOptions = [
+    { value: 'Asia/Shanghai', label: '北京（UTC+8）' },
+    { value: 'America/New_York', label: '纽约（自动夏令时）' },
+    { value: 'Europe/London', label: '伦敦（自动夏令时）' },
+    { value: 'Asia/Tokyo', label: '东京（UTC+9）' },
+  ];
+
+  const languageOptions = [
+    { value: 'zh-CN', label: '简体中文' },
+    { value: 'en-US', label: 'English' },
+  ];
 
   let items = [];
   let currentSession = null;
@@ -543,16 +557,22 @@
       max_items: Number(settingsDraft.max_items) || defaultSettings.max_items,
       capture_delay_ms: Number(settingsDraft.capture_delay_ms) || defaultSettings.capture_delay_ms,
       screenshot_hotkey: settingsDraft.screenshot_hotkey || defaultSettings.screenshot_hotkey,
+      time_zone: settingsDraft.time_zone || defaultSettings.time_zone,
+      language: settingsDraft.language || defaultSettings.language,
       auto_cleanup_enabled: settingsDraft.auto_cleanup_enabled,
       cleanup_max_items: Number(settingsDraft.cleanup_max_items) || defaultSettings.cleanup_max_items,
       cleanup_keep_days: Number(settingsDraft.cleanup_keep_days) || defaultSettings.cleanup_keep_days,
     };
 
     try {
+      const timeZoneChanged = normalized.time_zone !== appSettings.time_zone;
       appSettings = await settingsApi.saveSettings(normalized);
       settingsDraft = { ...appSettings };
       cleanupPlan = null;
       settingsOpen = false;
+      if (timeZoneChanged) {
+        selectedDay = '';
+      }
       await loadAvailableDays();
       await loadItems();
       showActionNotice('设置已保存');
@@ -1340,6 +1360,33 @@
         </label>
 
         <div class="settings-section">
+          <h3>界面与日期</h3>
+          <label class="field-row">
+            <span>日期划分时区</span>
+            <select
+              value={settingsDraft.time_zone}
+              on:change={(event) => updateSettingsDraft('time_zone', event.currentTarget.value)}
+            >
+              {#each timeZoneOptions as option}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </select>
+          </label>
+
+          <label class="field-row">
+            <span>应用语言</span>
+            <select
+              value={settingsDraft.language}
+              on:change={(event) => updateSettingsDraft('language', event.currentTarget.value)}
+            >
+              {#each languageOptions as option}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </select>
+          </label>
+        </div>
+
+        <div class="settings-section">
           <h3>自定义清理</h3>
           <label class="switch-row">
             <input
@@ -2113,7 +2160,8 @@
     accent-color: #2563eb;
   }
 
-  .field-row input {
+  .field-row input,
+  .field-row select {
     width: 96px;
     min-height: 32px;
     padding: 0 8px;
@@ -2121,6 +2169,10 @@
     background: #ffffff;
     border: 1px solid #d9e0ea;
     border-radius: 7px;
+  }
+
+  .field-row select {
+    width: min(220px, 58vw);
   }
 
   .field-row input[type="text"] {
@@ -3722,7 +3774,8 @@
     accent-color: var(--accent);
   }
 
-  .field-row input {
+  .field-row input,
+  .field-row select {
     width: 104px;
     min-height: 32px;
     color: var(--ink);
@@ -3731,8 +3784,13 @@
     border-radius: 8px;
   }
 
-  .field-row input:focus-visible {
+  .field-row input:focus-visible,
+  .field-row select:focus-visible {
     border-color: var(--accent-line);
+  }
+
+  .field-row select {
+    width: min(220px, 58vw);
   }
 
   .field-row input[type='text'] {

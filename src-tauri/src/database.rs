@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use chrono::{FixedOffset, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
+use chrono_tz::Tz;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,6 +9,7 @@ use std::sync::Mutex;
 use crate::models::{
     CleanupPlan, ClipboardDay, ClipboardItem, ClipboardType, CreateClipboardItem, Session,
 };
+use crate::settings::DEFAULT_TIME_ZONE;
 
 pub struct Database {
     conn: Mutex<Connection>,
@@ -16,8 +18,6 @@ pub struct Database {
 const CLIPBOARD_ITEM_COLUMNS: &str = "\
     id, type, content, image_path, thumbnail_path, preview, timestamp,
     date_key, source_app, is_favorite, is_pinned, content_hash, session_id, annotation";
-
-const BEIJING_OFFSET_SECONDS: i32 = 8 * 60 * 60;
 
 impl Database {
     /// 初始化数据库
@@ -133,7 +133,7 @@ impl Database {
         drop(stmt);
 
         for (id, timestamp) in items {
-            let date_key = beijing_date_key_from_timestamp(timestamp);
+            let date_key = date_key_from_timestamp(timestamp, DEFAULT_TIME_ZONE);
             conn.execute(
                 "UPDATE clipboard_items SET date_key = ?1 WHERE id = ?2",
                 params![date_key, id],
@@ -178,13 +178,37 @@ impl Database {
         Ok(())
     }
 
-    /// 插入剪贴板记录；同一北京时间自然日内的相同内容只刷新记录时间。
-    pub fn insert_item(&self, item: CreateClipboardItem) -> Result<ClipboardItem> {
+    pub fn rebuild_date_keys(&self, time_zone: &str) -> Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        let items = {
+            let mut stmt = tx.prepare("SELECT id, timestamp FROM clipboard_items")?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+
+        for (id, timestamp) in items {
+            let date_key = date_key_from_timestamp(timestamp, time_zone);
+            tx.execute(
+                "UPDATE clipboard_items SET date_key = ?1 WHERE id = ?2",
+                params![date_key, id],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 插入剪贴板记录；同一设置时区自然日内的相同内容只刷新记录时间。
+    pub fn insert_item(&self, item: CreateClipboardItem, time_zone: &str) -> Result<ClipboardItem> {
         let conn = self.conn.lock().unwrap();
 
         let id = nanoid::nanoid!();
         let timestamp = Utc::now().timestamp_millis();
-        let date_key = beijing_date_key_from_timestamp(timestamp);
+        let date_key = date_key_from_timestamp(timestamp, time_zone);
 
         if let Some(existing) =
             refresh_duplicate_for_date(&conn, &item.content_hash, &date_key, timestamp)?
@@ -287,11 +311,15 @@ impl Database {
         Ok(items)
     }
 
-    /// 如果北京时间当天已有相同内容，刷新该记录时间并返回它。
-    pub fn refresh_today_duplicate(&self, content_hash: &str) -> Result<Option<ClipboardItem>> {
+    /// 如果设置时区当天已有相同内容，刷新该记录时间并返回它。
+    pub fn refresh_duplicate_for_time_zone(
+        &self,
+        content_hash: &str,
+        time_zone: &str,
+    ) -> Result<Option<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
         let timestamp = Utc::now().timestamp_millis();
-        let date_key = beijing_date_key_from_timestamp(timestamp);
+        let date_key = date_key_from_timestamp(timestamp, time_zone);
 
         refresh_duplicate_for_date(&conn, content_hash, &date_key, timestamp)
     }
@@ -693,20 +721,27 @@ fn clipboard_item_from_row(row: &Row<'_>) -> rusqlite::Result<ClipboardItem> {
     })
 }
 
-pub fn beijing_date_key_now() -> String {
-    beijing_date_key_from_timestamp(Utc::now().timestamp_millis())
+pub fn date_key_now(time_zone: &str) -> String {
+    date_key_from_timestamp(Utc::now().timestamp_millis(), time_zone)
 }
 
-fn beijing_date_key_from_timestamp(timestamp: i64) -> String {
-    let beijing_offset = FixedOffset::east_opt(BEIJING_OFFSET_SECONDS)
-        .expect("Beijing offset should always be valid");
+fn date_key_from_timestamp(timestamp: i64, time_zone: &str) -> String {
+    let tz = parse_time_zone(time_zone);
 
     Utc.timestamp_millis_opt(timestamp)
         .single()
         .unwrap_or_else(Utc::now)
-        .with_timezone(&beijing_offset)
+        .with_timezone(&tz)
         .format("%Y-%m-%d")
         .to_string()
+}
+
+fn parse_time_zone(time_zone: &str) -> Tz {
+    time_zone
+        .parse::<Tz>()
+        .ok()
+        .or_else(|| DEFAULT_TIME_ZONE.parse::<Tz>().ok())
+        .unwrap_or(chrono_tz::Asia::Shanghai)
 }
 
 fn refresh_duplicate_for_date(
@@ -774,26 +809,37 @@ mod tests {
     }
 
     #[test]
-    fn date_keys_use_beijing_calendar_days() {
+    fn date_keys_follow_configured_time_zone() {
         let timestamp = Utc
             .with_ymd_and_hms(2026, 6, 5, 16, 30, 0)
             .single()
             .unwrap()
             .timestamp_millis();
 
-        assert_eq!(beijing_date_key_from_timestamp(timestamp), "2026-06-06");
+        assert_eq!(
+            date_key_from_timestamp(timestamp, "Asia/Shanghai"),
+            "2026-06-06"
+        );
+        assert_eq!(
+            date_key_from_timestamp(timestamp, "America/New_York"),
+            "2026-06-05"
+        );
     }
 
     #[test]
     fn refreshes_duplicate_content_within_same_beijing_day() {
         let (db, data_dir) = temp_database();
 
-        let first = db.insert_item(text_item("same_hash")).unwrap();
+        let first = db
+            .insert_item(text_item("same_hash"), DEFAULT_TIME_ZONE)
+            .unwrap();
         std::thread::sleep(Duration::from_millis(10));
-        let refreshed = db.insert_item(text_item("same_hash")).unwrap();
+        let refreshed = db
+            .insert_item(text_item("same_hash"), DEFAULT_TIME_ZONE)
+            .unwrap();
 
         assert_eq!(first.id, refreshed.id);
-        assert_eq!(refreshed.date_key, beijing_date_key_now());
+        assert_eq!(refreshed.date_key, date_key_now(DEFAULT_TIME_ZONE));
         assert!(refreshed.timestamp > first.timestamp);
 
         let items = db.get_items(10, 0).unwrap();
@@ -806,9 +852,11 @@ mod tests {
     fn stores_same_content_again_on_a_new_beijing_day() {
         let (db, data_dir) = temp_database();
 
-        let first = db.insert_item(text_item("same_hash")).unwrap();
+        let first = db
+            .insert_item(text_item("same_hash"), DEFAULT_TIME_ZONE)
+            .unwrap();
         let yesterday_timestamp = Utc::now().timestamp_millis() - 24 * 60 * 60 * 1000;
-        let yesterday_key = beijing_date_key_from_timestamp(yesterday_timestamp);
+        let yesterday_key = date_key_from_timestamp(yesterday_timestamp, DEFAULT_TIME_ZONE);
 
         {
             let conn = db.conn.lock().unwrap();
@@ -819,14 +867,45 @@ mod tests {
             .unwrap();
         }
 
-        let second = db.insert_item(text_item("same_hash")).unwrap();
+        let second = db
+            .insert_item(text_item("same_hash"), DEFAULT_TIME_ZONE)
+            .unwrap();
 
         assert_ne!(first.id, second.id);
-        assert_eq!(second.date_key, beijing_date_key_now());
+        assert_eq!(second.date_key, date_key_now(DEFAULT_TIME_ZONE));
 
         let items = db.get_items(10, 0).unwrap();
         assert_eq!(items.len(), 2);
         assert!(items.iter().any(|item| item.date_key == yesterday_key));
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn rebuilds_existing_date_keys_for_selected_time_zone() {
+        let (db, data_dir) = temp_database();
+        let item = db
+            .insert_item(text_item("same_hash"), DEFAULT_TIME_ZONE)
+            .unwrap();
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 6, 5, 16, 30, 0)
+            .single()
+            .unwrap()
+            .timestamp_millis();
+
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE clipboard_items SET timestamp = ?1, date_key = '2026-06-06' WHERE id = ?2",
+                params![timestamp, item.id],
+            )
+            .unwrap();
+        }
+
+        db.rebuild_date_keys("America/New_York").unwrap();
+
+        let items = db.get_items(10, 0).unwrap();
+        assert_eq!(items[0].date_key, "2026-06-05");
 
         let _ = fs::remove_dir_all(data_dir);
     }

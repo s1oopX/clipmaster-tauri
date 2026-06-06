@@ -33,6 +33,8 @@ fn main() {
 
             // 初始化数据库
             let db = Database::new(app_data_dir).expect("Failed to initialize database");
+            db.rebuild_date_keys(&settings_store.get().time_zone)
+                .expect("Failed to rebuild date keys");
 
             // 初始化会话管理器
             let session_mgr = SessionManager::new();
