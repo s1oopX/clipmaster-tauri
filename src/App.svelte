@@ -544,6 +544,14 @@
     }
   }
 
+  async function refreshVisibleRecords() {
+    if (searchQuery.trim()) {
+      await handleSearch();
+    } else {
+      await loadItems();
+    }
+  }
+
   function clearSearch() {
     searchQuery = '';
     loadItems();
@@ -674,7 +682,7 @@
         selectedDay = '';
       }
       await loadAvailableDays();
-      await loadItems();
+      await refreshVisibleRecords();
       showActionNotice('设置已保存');
     } catch (e) {
       console.error('保存设置失败:', e);
@@ -711,7 +719,7 @@
         Number(settingsDraft.cleanup_keep_days) || defaultSettings.cleanup_keep_days
       );
       await loadAvailableDays();
-      await loadItems();
+      await refreshVisibleRecords();
       showActionNotice(`已清理 ${cleanupPlan.item_count} 条记录`);
     } catch (e) {
       console.error('执行清理失败:', e);

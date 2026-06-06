@@ -653,6 +653,39 @@ describe('App UI', () => {
     });
   });
 
+  it('keeps the active search after saving settings', async () => {
+    api.searchItems.mockResolvedValue([textItem()]);
+
+    render(App);
+
+    const search = await screen.findByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+
+    await waitFor(() => {
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', 'session_1', 50, todayDateKey());
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+
+    const maxItems = screen.getByLabelText('保留记录数');
+    await fireEvent.input(maxItems, { target: { value: '80' } });
+    await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
+
+    await waitFor(() => {
+      expect(api.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ max_items: 80 }));
+    });
+
+    await waitFor(() => {
+      expect(api.searchItems).toHaveBeenLastCalledWith(
+        'alpha',
+        'session_1',
+        80,
+        todayDateKey()
+      );
+    });
+    expect(api.getItems).toHaveBeenCalledTimes(1);
+  });
+
   it('previews and runs custom cleanup from the settings panel', async () => {
     api.previewCustomCleanup.mockResolvedValue({
       item_count: 3,
