@@ -529,6 +529,10 @@ impl Database {
             return Err(anyhow::anyhow!("只能编辑文本记录"));
         }
 
+        if new_content.trim().is_empty() {
+            return Err(anyhow::anyhow!("原文不能为空"));
+        }
+
         // 生成新的预览文本
         let char_count = new_content.chars().count();
         let preview = if char_count > 100 {
@@ -995,6 +999,27 @@ mod tests {
 
         let original = db.get_item(&first.id).unwrap().unwrap();
         assert_eq!(original.content.as_deref(), Some("Alpha token"));
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn updating_text_content_rejects_blank_content() {
+        let (db, data_dir) = temp_database();
+        let item = db
+            .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+
+        let error = db
+            .update_item_content(&item.id, "  \n\t  ")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("原文不能为空"));
+
+        let unchanged = db.get_item(&item.id).unwrap().unwrap();
+        assert_eq!(unchanged.content.as_deref(), Some("Alpha token"));
+        assert_eq!(unchanged.preview.as_deref(), Some("Alpha token"));
+        assert_eq!(unchanged.content_hash, text_hash("Alpha token"));
 
         let _ = fs::remove_dir_all(data_dir);
     }
