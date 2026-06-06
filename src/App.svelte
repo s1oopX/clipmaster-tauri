@@ -1111,7 +1111,23 @@
                       </div>
                     </div>
                   {:else}
-                    <div class="text-content" aria-label="原始文本内容">
+                    <div
+                      class="text-content copyable"
+                      role="button"
+                      tabindex="0"
+                      aria-label={`双击复制 ${itemLabel(item)}`}
+                      title="双击复制"
+                      on:dblclick={(event) => {
+                        event.preventDefault();
+                        copyItem(item);
+                      }}
+                      on:keydown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          copyItem(item);
+                        }
+                      }}
+                    >
                       {item.preview || item.content}
                     </div>
                   {/if}
@@ -2116,6 +2132,23 @@
     border: 1px solid transparent;
     padding: 4px;
     border-radius: 4px;
+    cursor: copy;
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  }
+
+  .text-content.copyable:hover,
+  .text-content.copyable:focus-visible {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+  }
+
+  .text-content.copyable:focus-visible {
+    outline: 2px solid #5eead4;
+    outline-offset: 2px;
+  }
+
+  .text-content.copyable:active {
+    transform: translateY(1px);
   }
 
   .annotation-note {
@@ -3229,6 +3262,12 @@
     font-size: 0.91rem;
     line-height: 1.48;
     text-wrap: pretty;
+  }
+
+  .text-content.copyable:hover,
+  .text-content.copyable:focus-visible {
+    background: #eef6f4;
+    border-color: #b9d8d2;
   }
 
   .annotation-note {

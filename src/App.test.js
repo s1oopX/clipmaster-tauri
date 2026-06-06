@@ -302,6 +302,20 @@ describe('App UI', () => {
     expect(screen.getByRole('status')).toHaveTextContent('已复制到剪贴板');
   });
 
+  it('copies text quickly from the content area on double click', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+
+    render(App);
+
+    const content = await screen.findByRole('button', { name: '双击复制 Alpha token' });
+    await fireEvent.dblClick(content);
+
+    await waitFor(() => {
+      expect(api.copyToClipboard).toHaveBeenCalledWith('Alpha token');
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('已复制到剪贴板');
+  });
+
   it('saves annotations without changing the original clipboard content', async () => {
     api.getItems.mockResolvedValue([
       textItem({ annotation: '旧标注' }),
