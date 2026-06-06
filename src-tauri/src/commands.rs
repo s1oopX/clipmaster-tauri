@@ -637,6 +637,12 @@ fn validate_relative_image_path(image_path: &str) -> Result<String, String> {
         parts.push(part);
     }
 
+    if parts.len() != 3 || parts[0] != "images" {
+        return Err("图片路径必须位于 images 日期目录".to_string());
+    }
+
+    validate_date_key(parts[1])?;
+
     Ok(parts.join("/"))
 }
 
@@ -674,4 +680,35 @@ fn encode_query_value(value: &str) -> String {
     }
 
     encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_image_paths_inside_daily_images_directory() {
+        assert_eq!(
+            validate_relative_image_path("images/2026-06-06/capture.png").unwrap(),
+            "images/2026-06-06/capture.png"
+        );
+        assert_eq!(
+            validate_relative_image_path("images\\2026-06-06\\capture.png").unwrap(),
+            "images/2026-06-06/capture.png"
+        );
+    }
+
+    #[test]
+    fn rejects_image_paths_outside_daily_images_directory() {
+        for path in [
+            "",
+            "settings.json",
+            "../settings.json",
+            "images/2026-06/capture.png",
+            "images/2026-06-06/nested/capture.png",
+            "images/2026-06-06/../settings.json",
+        ] {
+            assert!(validate_relative_image_path(path).is_err(), "{path}");
+        }
+    }
 }
