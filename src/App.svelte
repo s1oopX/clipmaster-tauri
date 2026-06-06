@@ -1565,7 +1565,7 @@
                   <span class="about-eyebrow">GitHub · s1oopX</span>
                   <h3>s1oopX</h3>
                   <p>
-                    ClipMaster 的作者与维护者，专注于把高频复制、截图和标注工作流做得更安静、可靠，并把数据留在用户本机。
+                    ClipMaster 的作者与维护者。这个工具保持轻巧，只处理复制、截图、标注和贴图这些基础事情。
                   </p>
                 </div>
               </div>
@@ -1573,7 +1573,7 @@
               <div class="about-block">
                 <h4>项目简介</h4>
                 <p>
-                  ClipMaster 是一款本地优先的剪贴板管理工具，支持复制记录、截图、标注、贴图和按日期整理。应用默认以北京时间划分记录，也可以在设置中切换常见时区与界面语言。
+                  ClipMaster 是一个轻巧的本地剪贴板工具，用来保存复制记录、截图、基础标注和贴图。数据默认保存在本机，记录按日期整理。
                 </p>
               </div>
 
@@ -2411,8 +2411,8 @@
   .about-profile {
     display: grid;
     justify-items: center;
-    gap: 10px;
-    padding: 16px 18px;
+    gap: 8px;
+    padding: 14px 18px;
     text-align: center;
     background: #f8fafc;
     border: 1px solid #e2e8f0;
@@ -2421,8 +2421,8 @@
 
   .about-avatar {
     display: block;
-    width: 92px;
-    height: 92px;
+    width: 84px;
+    height: 84px;
     object-fit: cover;
     object-position: center;
     background: #edf2f7;
@@ -2440,7 +2440,7 @@
 
   .about-profile-copy {
     justify-items: center;
-    gap: 4px;
+    gap: 3px;
     width: min(100%, 420px);
   }
 
@@ -2459,7 +2459,7 @@
   }
 
   .about-profile-copy h3 {
-    font-size: 1.08rem;
+    font-size: 1.04rem;
     font-weight: 760;
   }
 
@@ -2476,7 +2476,7 @@
   }
 
   .about-block {
-    gap: 6px;
+    gap: 5px;
   }
 
   .about-block h4 {
@@ -2518,6 +2518,7 @@
 
   .about-links {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 
@@ -2525,9 +2526,9 @@
     display: flex;
     align-items: center;
     gap: 9px;
-    min-height: 42px;
+    min-height: 38px;
     min-width: 0;
-    padding: 8px 10px;
+    padding: 7px 9px;
     color: #0f766e;
     background: #ffffff;
     border: 1px solid #d9e0ea;
@@ -2648,8 +2649,12 @@
     }
 
     .about-avatar {
-      width: 104px;
-      height: 104px;
+      width: 92px;
+      height: 92px;
+    }
+
+    .about-links {
+      grid-template-columns: 1fr;
     }
   }
 

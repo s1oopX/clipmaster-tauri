@@ -495,7 +495,7 @@ describe('App UI', () => {
     );
     expect(screen.getByRole('heading', { name: 's1oopX' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '项目简介' })).toBeInTheDocument();
-    expect(screen.getByText(/本地优先的剪贴板管理工具/)).toBeInTheDocument();
+    expect(screen.getByText(/轻巧的本地剪贴板工具/)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '联系方式' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /GitHub 主页/ })).toHaveAttribute(
       'href',
