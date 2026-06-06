@@ -1287,7 +1287,7 @@
 
           {#if availableDays.length > 0}
             <div class="date-shortcuts" aria-label="有记录的日期快捷选择">
-              {#each availableDays.slice(0, 4) as day}
+              {#each availableDays.slice(0, 3) as day}
                 <button
                   type="button"
                   class:active={selectedDay === day.date_key}
@@ -5118,10 +5118,10 @@
     .toolbar {
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
-        'title primary'
-        'secondary secondary';
+        'title title'
+        'secondary primary';
       gap: 8px;
-      align-items: end;
+      align-items: center;
     }
 
     .toolbar-title {
@@ -5139,23 +5139,110 @@
 
     .toolbar-heading {
       justify-content: space-between;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      gap: 10px;
+    }
+
+    .toolbar-heading h2 {
+      white-space: nowrap;
     }
 
     .toolbar-context {
+      flex: 0 0 auto;
       margin: 0;
     }
 
-    h2 {
-      font-size: 1.2rem;
+    .quick-actions {
+      justify-content: flex-end;
+      gap: 5px;
     }
 
-    .quick-actions {
-      justify-content: stretch;
+    .tool-button {
+      width: 34px;
+      padding: 0;
+    }
+
+    .tool-button span {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .toolbar-secondary {
+      flex-wrap: nowrap;
+      overflow: hidden;
+    }
+
+    .date-shortcuts {
+      flex: 0 1 auto;
+    }
+
+    .search-field {
+      min-width: 150px;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .app-shell {
+      background: linear-gradient(180deg, #101819 0 118px, #f7fafa 118px, #eef2f3 100%);
+    }
+
+    .sidebar {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        'brand'
+        'filters';
+    }
+
+    .toolbar {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        'title'
+        'secondary'
+        'primary';
+      align-items: stretch;
+    }
+
+    .toolbar-heading {
+      justify-content: space-between;
+      flex-wrap: wrap;
     }
 
     .toolbar-secondary {
       flex-wrap: wrap;
+      overflow: visible;
+    }
+
+    .toolbar-primary,
+    .quick-actions {
+      justify-content: stretch;
+    }
+
+    .tool-button {
+      width: auto;
+      flex: 1 1 0;
+      padding: 0 10px;
+    }
+
+    .tool-button span {
+      position: static;
+      width: auto;
+      height: auto;
+      padding: 0;
+      overflow: visible;
+      clip: auto;
+      white-space: nowrap;
+    }
+  }
+
+  @media (max-width: 720px) {
+    h2 {
+      font-size: 1.2rem;
     }
 
     .tool-button,
@@ -5208,30 +5295,418 @@
     }
   }
 
-  @media (max-width: 600px) {
+  /* Compact utility pass: keep the main surface light, dense, and predictable. */
+  .app-shell {
+    grid-template-columns: 164px minmax(0, 1fr);
+  }
+
+  .sidebar {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .brand {
+    gap: 8px;
+    padding: 0 0 8px;
+  }
+
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    box-shadow: none;
+  }
+
+  h1 {
+    font-size: 0.95rem;
+  }
+
+  .brand p {
+    display: none;
+  }
+
+  .filter-button {
+    min-height: 30px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    font-size: 0.82rem;
+  }
+
+  .workspace {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .workspace::before {
+    display: none;
+  }
+
+  .toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'title primary'
+      'secondary secondary';
+    gap: 6px 8px;
+    align-items: center;
+  }
+
+  .toolbar-tools {
+    display: contents;
+  }
+
+  .toolbar-title {
+    grid-area: title;
+  }
+
+  .toolbar-primary {
+    grid-area: primary;
+  }
+
+  .toolbar-secondary {
+    grid-area: secondary;
+    display: grid;
+    grid-template-columns: 120px minmax(0, auto) minmax(160px, 1fr);
+    gap: 6px;
+    align-items: center;
+    justify-content: stretch;
+  }
+
+  .eyebrow {
+    display: none;
+  }
+
+  .toolbar-heading {
+    gap: 8px;
+    margin: 0;
+    flex-wrap: nowrap;
+  }
+
+  .toolbar-heading h2 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.05;
+    white-space: nowrap;
+    text-wrap: normal;
+  }
+
+  .toolbar-context {
+    min-height: 21px;
+    padding: 0 7px;
+    border-radius: 7px;
+    font-size: 0.7rem;
+    box-shadow: none;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    box-shadow: none;
+  }
+
+  .quick-actions {
+    gap: 4px;
+  }
+
+  .tool-button,
+  .icon-tool,
+  .day-field,
+  .search-field,
+  .date-shortcuts button {
+    box-shadow: none;
+  }
+
+  .tool-button,
+  .icon-tool {
+    min-height: 28px;
+    border-radius: 7px;
+  }
+
+  .tool-button {
+    padding: 0 8px;
+    font-size: 0.78rem;
+  }
+
+  .icon-tool {
+    width: 30px;
+  }
+
+  .day-field {
+    width: auto;
+    min-height: 30px;
+    flex: 0 0 auto;
+    padding: 0 8px;
+    border-radius: 7px;
+    font-size: 0.8rem;
+  }
+
+  .date-shortcuts {
+    gap: 4px;
+    overflow: hidden;
+  }
+
+  .date-shortcuts button {
+    min-height: 25px;
+    padding: 0 7px;
+    border-radius: 7px;
+    font-size: 0.72rem;
+  }
+
+  .search-field {
+    width: auto;
+    min-width: 0;
+    min-height: 30px;
+    flex: 0 1 auto;
+    padding: 0 8px;
+    border-radius: 7px;
+    font-size: 0.82rem;
+  }
+
+  .history-panel {
+    border-radius: 8px;
+    box-shadow: none;
+  }
+
+  .item {
+    padding: 7px 10px;
+  }
+
+  .item::before {
+    inset: 8px auto 8px 0;
+    width: 2px;
+  }
+
+  .item-row {
+    gap: 6px;
+  }
+
+  .item-meta {
+    gap: 5px;
+    font-size: 0.72rem;
+  }
+
+  .type-pill,
+  .badge {
+    min-height: 18px;
+    padding: 0 5px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+  }
+
+  .item-actions {
+    gap: 2px;
+  }
+
+  .item-actions button {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+  }
+
+  .text-content {
+    margin-top: 5px;
+    max-height: 3.4em;
+    padding: 5px 7px;
+    border-radius: 7px;
+    font-size: 0.88rem;
+    line-height: 1.35;
+  }
+
+  .image-summary {
+    gap: 6px;
+    margin-top: 5px;
+    font-size: 0.78rem;
+  }
+
+  .image-summary strong {
+    font-size: 0.84rem;
+  }
+
+  .image-preview {
+    max-width: 180px;
+    max-height: 96px;
+    margin-top: 5px;
+    border-radius: 7px;
+  }
+
+  .image-preview img {
+    max-width: 180px;
+    max-height: 96px;
+  }
+
+  .annotation-note {
+    gap: 3px;
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-radius: 7px;
+  }
+
+  @media (max-width: 720px) {
     .app-shell {
-      background: linear-gradient(180deg, #101819 0 118px, #f7fafa 118px, #eef2f3 100%);
+      background: linear-gradient(180deg, #101819 0 52px, #f7fafa 52px, #eef2f3 100%);
     }
 
     .sidebar {
-      grid-template-columns: 1fr;
-      grid-template-areas:
-        'brand'
-        'filters';
+      min-height: 52px;
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas: 'brand filters';
+      gap: 8px;
+      padding: 7px 10px;
+      box-shadow: none;
     }
 
+    .brand {
+      gap: 7px;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+    }
+
+    h1 {
+      font-size: 0.9rem;
+    }
+
+    .filter-nav {
+      gap: 4px;
+    }
+
+    .filter-button {
+      min-height: 28px;
+      justify-content: center;
+      gap: 5px;
+      padding: 4px 6px;
+      font-size: 0.8rem;
+    }
+
+    .filter-button :global(svg) {
+      width: 14px;
+      height: 14px;
+    }
+
+    .workspace {
+      gap: 7px;
+      padding: 8px 10px 10px;
+    }
+
+    .toolbar {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'title primary'
+        'secondary secondary';
+      gap: 6px;
+      align-items: center;
+    }
+
+    .toolbar-heading {
+      justify-content: flex-start;
+      gap: 7px;
+      flex-wrap: nowrap;
+    }
+
+    .toolbar-heading h2 {
+      font-size: 0.98rem;
+    }
+
+    .toolbar-context {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .quick-actions {
+      justify-content: flex-end;
+    }
+
+    .tool-button {
+      width: 28px;
+      padding: 0;
+    }
+
+    .tool-button span {
+      display: none;
+    }
+
+    .icon-tool {
+      width: 28px;
+    }
+
+    .toolbar-secondary {
+      grid-template-columns: 112px minmax(0, auto) minmax(130px, 1fr);
+      gap: 5px;
+      overflow: visible;
+    }
+
+    .day-field {
+      min-height: 29px;
+      width: auto;
+      flex: 0 0 auto;
+      padding: 0 7px;
+    }
+
+    .date-shortcuts {
+      min-width: 0;
+    }
+
+    .date-shortcuts button:nth-child(n + 3) {
+      display: none;
+    }
+
+    .search-field {
+      min-height: 29px;
+      width: auto;
+      min-width: 0;
+    }
+
+    .history-panel {
+      border-radius: 8px;
+    }
+
+    .item {
+      padding: 7px 8px;
+    }
+
+    .item-actions button {
+      width: 25px;
+      height: 25px;
+    }
+
+    .image-preview,
+    .image-preview img {
+      max-width: 160px;
+      max-height: 82px;
+    }
+  }
+
+  @media (max-width: 460px) {
     .toolbar {
       grid-template-columns: 1fr;
       grid-template-areas:
         'title'
-        'primary'
-        'secondary';
-      align-items: stretch;
+        'secondary'
+        'primary';
+    }
+
+    .toolbar-secondary {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .search-field {
+      grid-column: 1 / -1;
     }
 
     .toolbar-primary,
     .quick-actions {
       justify-content: stretch;
+    }
+
+    .tool-button {
+      width: auto;
+      flex: 1 1 0;
+    }
+
+    .tool-button span {
+      display: inline;
     }
   }
 </style>
