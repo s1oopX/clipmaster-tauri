@@ -900,8 +900,8 @@ describe('App UI', () => {
 
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
     expect(screen.getByRole('tablist', { name: '设置分类' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '基础' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('heading', { name: '基础设置' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '常规' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: '常规设置' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: '监听剪贴板' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: '启动时显示主窗口' })).toBeChecked();
 
@@ -976,7 +976,7 @@ describe('App UI', () => {
 
     await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    await fireEvent.click(screen.getByRole('tab', { name: '端口' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '高级' }));
 
     const portInput = screen.getByLabelText('开发端口');
     await fireEvent.input(portInput, { target: { value: '5175' } });
@@ -1061,12 +1061,11 @@ describe('App UI', () => {
 
     await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    await fireEvent.click(screen.getByRole('tab', { name: '快捷键' }));
     await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('保存设置失败: 截图快捷键格式无效，请重新录制快捷键');
-    expect(screen.getByRole('heading', { name: '快捷键设置' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '常规设置' })).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
   });
 
@@ -1075,7 +1074,6 @@ describe('App UI', () => {
 
     await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    await fireEvent.click(screen.getByRole('tab', { name: '快捷键' }));
 
     const shortcut = screen.getByPlaceholderText('点击后按下组合键');
     expect(shortcut).toHaveValue('CommandOrControl+Shift+A');
@@ -1110,7 +1108,7 @@ describe('App UI', () => {
 
     await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    await fireEvent.click(screen.getByRole('tab', { name: '清理' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '高级' }));
     await fireEvent.click(screen.getByRole('checkbox', { name: '保存设置后自动清理' }));
     await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
 
@@ -1147,7 +1145,7 @@ describe('App UI', () => {
 
     await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    await fireEvent.click(screen.getByRole('tab', { name: '清理' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '高级' }));
 
     const maxItems = screen.getByLabelText('普通记录最多保留');
     const keepDays = screen.getByLabelText('普通记录保留天数');
@@ -1177,7 +1175,7 @@ describe('App UI', () => {
 
     await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    await fireEvent.click(screen.getByRole('tab', { name: '清理' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '高级' }));
 
     await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
     let alert = await screen.findByRole('alert');

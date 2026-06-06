@@ -61,11 +61,9 @@
   ];
 
   const settingsViews = [
-    { id: 'basic', label: '基础' },
+    { id: 'basic', label: '常规' },
     { id: 'locale', label: '日期语言' },
-    { id: 'cleanup', label: '清理' },
-    { id: 'port', label: '端口' },
-    { id: 'hotkey', label: '快捷键' },
+    { id: 'advanced', label: '高级' },
     { id: 'about', label: '关于' },
   ];
 
@@ -811,7 +809,7 @@
       cleanupPlan = autoCleanupPlan;
       if (devServerPortChanged) {
         pendingRestartPort = savedSettings.dev_server_port;
-        activeSettingsView = 'port';
+        activeSettingsView = 'advanced';
         settingsOpen = true;
       } else {
         settingsOpen = false;
@@ -1634,12 +1632,8 @@
                 <Settings class="settings-tab-icon" size={15} aria-hidden="true" />
               {:else if view.id === 'locale'}
                 <CalendarDays class="settings-tab-icon" size={15} aria-hidden="true" />
-              {:else if view.id === 'cleanup'}
-                <Trash2 class="settings-tab-icon" size={15} aria-hidden="true" />
-              {:else if view.id === 'port'}
+              {:else if view.id === 'advanced'}
                 <Settings class="settings-tab-icon" size={15} aria-hidden="true" />
-              {:else if view.id === 'hotkey'}
-                <Camera class="settings-tab-icon" size={15} aria-hidden="true" />
               {:else}
                 <Clipboard class="settings-tab-icon" size={15} aria-hidden="true" />
               {/if}
@@ -1657,8 +1651,8 @@
               aria-labelledby="settings-tab-basic"
             >
               <div class="settings-section-title">
-                <h3>基础设置</h3>
-                <p>启动 / 监听 / 容量</p>
+                <h3>常规设置</h3>
+                <p>启动 / 监听 / 截图</p>
               </div>
 
               <label class="switch-row">
@@ -1705,6 +1699,32 @@
                     updateSettingsDraft('capture_delay_ms', Number(event.currentTarget.value))}
                 />
               </label>
+
+              <div class="settings-section-title inline-section-title">
+                <h3>快捷键</h3>
+                <p>截图入口</p>
+              </div>
+
+              <label class="field-row">
+                <span>截图</span>
+                <input
+                  type="text"
+                  readonly
+                  placeholder="点击后按下组合键"
+                  value={settingsDraft.screenshot_hotkey}
+                  on:focus={startRecordingHotkey}
+                  on:blur={stopRecordingHotkey}
+                  on:keydown={handleHotkeyKeyDown}
+                  class:recording={isRecordingHotkey}
+                />
+              </label>
+              <p class="hotkey-hint" aria-live="polite">
+                {#if isRecordingHotkey}
+                  {hotkeyRecordingMessage || '正在录制，请按下组合键（如 Ctrl+Shift+A）'}
+                {:else}
+                  点击输入框后按下组合键自动录制，例如 Ctrl+Shift+A
+                {/if}
+              </p>
             </div>
           {:else if activeSettingsView === 'locale'}
             <div
@@ -1742,15 +1762,20 @@
                 </select>
               </label>
             </div>
-          {:else if activeSettingsView === 'cleanup'}
+          {:else if activeSettingsView === 'advanced'}
             <div
               class="settings-section settings-view"
-              id="settings-view-cleanup"
+              id="settings-view-advanced"
               role="tabpanel"
-              aria-labelledby="settings-tab-cleanup"
+              aria-labelledby="settings-tab-advanced"
             >
               <div class="settings-section-title">
-                <h3>自定义清理</h3>
+                <h3>高级设置</h3>
+                <p>清理 / 开发端口</p>
+              </div>
+
+              <div class="settings-section-title inline-section-title first-inline-section-title">
+                <h3>记录清理</h3>
                 <p>规则 / 预览 / 执行</p>
               </div>
 
@@ -1804,17 +1829,10 @@
                   {cleanupLoading ? '清理中' : '立即清理'}
                 </button>
               </div>
-            </div>
-          {:else if activeSettingsView === 'port'}
-            <div
-              class="settings-section settings-view"
-              id="settings-view-port"
-              role="tabpanel"
-              aria-labelledby="settings-tab-port"
-            >
-              <div class="settings-section-title">
-                <h3>端口设置</h3>
-                <p>开发服务 / 占用检测</p>
+
+              <div class="settings-section-title inline-section-title">
+                <h3>开发端口</h3>
+                <p>占用检测 / 重启生效</p>
               </div>
 
               <div class="field-row port-field">
@@ -1882,39 +1900,6 @@
                   </button>
                 </div>
               {/if}
-            </div>
-          {:else if activeSettingsView === 'hotkey'}
-            <div
-              class="settings-section settings-view"
-              id="settings-view-hotkey"
-              role="tabpanel"
-              aria-labelledby="settings-tab-hotkey"
-            >
-              <div class="settings-section-title">
-                <h3>快捷键设置</h3>
-                <p>截图入口</p>
-              </div>
-
-              <label class="field-row">
-                <span>截图</span>
-                <input
-                  type="text"
-                  readonly
-                  placeholder="点击后按下组合键"
-                  value={settingsDraft.screenshot_hotkey}
-                  on:focus={startRecordingHotkey}
-                  on:blur={stopRecordingHotkey}
-                  on:keydown={handleHotkeyKeyDown}
-                  class:recording={isRecordingHotkey}
-                />
-              </label>
-              <p class="hotkey-hint" aria-live="polite">
-                {#if isRecordingHotkey}
-                  {hotkeyRecordingMessage || '正在录制，请按下组合键（如 Ctrl+Shift+A）'}
-                {:else}
-                  点击输入框后按下组合键自动录制，例如 Ctrl+Shift+A
-                {/if}
-              </p>
             </div>
           {:else}
             <div
@@ -2782,6 +2767,18 @@
     color: #64748b;
     font-size: 0.78rem;
     line-height: 1.45;
+  }
+
+  .inline-section-title {
+    margin-top: 8px;
+    padding-top: 14px;
+    border-top: 1px solid #edf1f6;
+  }
+
+  .first-inline-section-title {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
   }
 
   .about-profile {
@@ -4755,6 +4752,10 @@
   .settings-section-title p {
     color: var(--muted);
     font-size: 0.78rem;
+  }
+
+  .inline-section-title {
+    border-top-color: var(--line-soft);
   }
 
   .about-profile {
