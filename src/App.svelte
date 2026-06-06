@@ -2410,10 +2410,10 @@
 
   .about-profile {
     display: grid;
-    grid-template-columns: 92px minmax(0, 1fr);
-    align-items: center;
-    gap: 14px;
-    padding: 12px;
+    justify-items: center;
+    gap: 10px;
+    padding: 16px 18px;
+    text-align: center;
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
@@ -2439,7 +2439,9 @@
   }
 
   .about-profile-copy {
+    justify-items: center;
     gap: 4px;
+    width: min(100%, 420px);
   }
 
   .about-eyebrow {
@@ -2467,6 +2469,10 @@
     color: #64748b;
     font-size: 0.8rem;
     line-height: 1.5;
+  }
+
+  .about-profile-copy p {
+    text-wrap: pretty;
   }
 
   .about-block {
@@ -2638,8 +2644,7 @@
     }
 
     .about-profile {
-      grid-template-columns: 1fr;
-      justify-items: start;
+      justify-items: center;
     }
 
     .about-avatar {
