@@ -87,6 +87,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_clipboard_items,
+            commands::get_items_by_day,
+            commands::get_available_days,
             commands::get_items_by_session,
             commands::delete_item,
             commands::toggle_favorite,
@@ -98,9 +100,11 @@ fn main() {
             commands::update_item_content,
             commands::get_app_data_dir,
             commands::copy_to_clipboard,
+            commands::copy_image_to_clipboard,
             commands::get_settings,
             commands::save_settings,
-            commands::capture_screenshot,
+            commands::preview_custom_cleanup,
+            commands::run_custom_cleanup,
             commands::start_region_screenshot,
             commands::get_screenshot_temp_path,
             commands::capture_region_screenshot,

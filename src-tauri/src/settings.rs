@@ -11,6 +11,9 @@ pub struct AppSettings {
     pub max_items: i32,
     pub capture_delay_ms: i32,
     pub screenshot_hotkey: String,
+    pub auto_cleanup_enabled: bool,
+    pub cleanup_max_items: i32,
+    pub cleanup_keep_days: i32,
 }
 
 impl Default for AppSettings {
@@ -21,6 +24,9 @@ impl Default for AppSettings {
             max_items: 50,
             capture_delay_ms: 150,
             screenshot_hotkey: "CommandOrControl+Shift+A".to_string(),
+            auto_cleanup_enabled: false,
+            cleanup_max_items: 200,
+            cleanup_keep_days: 30,
         }
     }
 }
@@ -66,6 +72,9 @@ impl SettingsStore {
             max_items: settings.max_items.clamp(10, 500),
             capture_delay_ms: settings.capture_delay_ms.clamp(0, 3000),
             screenshot_hotkey: settings.screenshot_hotkey,
+            auto_cleanup_enabled: settings.auto_cleanup_enabled,
+            cleanup_max_items: settings.cleanup_max_items.clamp(10, 5000),
+            cleanup_keep_days: settings.cleanup_keep_days.clamp(1, 3650),
         }
     }
 }
@@ -87,11 +96,17 @@ mod tests {
                 show_main_window_on_start: false,
                 max_items: 900,
                 capture_delay_ms: -30,
+                screenshot_hotkey: "CommandOrControl+Alt+S".to_string(),
+                auto_cleanup_enabled: true,
+                cleanup_max_items: 9000,
+                cleanup_keep_days: -5,
             })
             .unwrap();
 
         assert_eq!(saved.max_items, 500);
         assert_eq!(saved.capture_delay_ms, 0);
+        assert_eq!(saved.cleanup_max_items, 5000);
+        assert_eq!(saved.cleanup_keep_days, 1);
 
         let reloaded = SettingsStore::new(&data_dir).unwrap();
         assert_eq!(reloaded.get(), saved);

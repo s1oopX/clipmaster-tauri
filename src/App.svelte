@@ -35,6 +35,9 @@
     max_items: 50,
     capture_delay_ms: 150,
     screenshot_hotkey: 'CommandOrControl+Shift+A',
+    auto_cleanup_enabled: false,
+    cleanup_max_items: 200,
+    cleanup_keep_days: 30,
   };
 
   let items = [];
@@ -53,6 +56,8 @@
   let toolLoading = null;
   let settingsOpen = false;
   let settingsSaving = false;
+  let cleanupLoading = false;
+  let cleanupPlan = null;
   let appSettings = { ...defaultSettings };
   let settingsDraft = { ...defaultSettings };
   let isRecordingHotkey = false;
@@ -65,6 +70,8 @@
   let editContent = '';
   let thumbnailUrls = {};
   let viewingImageId = null;
+  let availableDays = [];
+  let selectedDay = '';
 
   const filters = [
     { id: 'all', label: '全部记录' },
@@ -73,8 +80,6 @@
   ];
 
   onMount(async () => {
-    console.log('ClipMaster Tauri 启动成功！');
-
     try {
       const params = new URLSearchParams(window.location.search);
       const pinPath = params.get('pin');
@@ -93,31 +98,31 @@
       settingsDraft = { ...appSettings };
 
       currentSession = await sessionApi.getCurrentSession();
-      console.log('当前会话:', currentSession);
-
+      await loadAvailableDays();
       await loadItems();
 
       // 监听快捷键事件
       await listen('hotkey:screenshot', async () => {
-        console.log('触发截图快捷键');
         await startScreenshot();
       });
 
       unlistenNewItem = await clipboardApi.onNewItem(async (item) => {
-        console.log('新剪贴板记录:', item);
+        await loadAvailableDays();
 
-        const nextItems = limitItems([item, ...items]);
-        items = nextItems;
+        if (!selectedDay || item.date_key === selectedDay) {
+          const nextItems = limitItems([item, ...items]);
+          items = nextItems;
 
-        if (item.type === 'image' && item.image_path) {
-          imageUrls[item.id] = await convertImagePath(item.image_path);
+          if (item.type === 'image' && item.image_path) {
+            imageUrls[item.id] = await convertImagePath(item.image_path);
+          }
+
+          if (item.type === 'image' && item.thumbnail_path) {
+            thumbnailUrls[item.id] = await convertImagePath(item.thumbnail_path);
+          }
+
+          pruneImageUrls(nextItems);
         }
-
-        if (item.type === 'image' && item.thumbnail_path) {
-          thumbnailUrls[item.id] = await convertImagePath(item.thumbnail_path);
-        }
-
-        pruneImageUrls(nextItems);
       });
     } catch (e) {
       console.error('初始化失败:', e);
@@ -132,13 +137,15 @@
 
     if (copyTimer) clearTimeout(copyTimer);
     if (noticeTimer) clearTimeout(noticeTimer);
+    if (recordingHotkeyTimeout) clearTimeout(recordingHotkeyTimeout);
   });
 
   async function loadItems() {
     loading = true;
     try {
-      items = await clipboardApi.getItems(itemLimit(), 0);
-      console.log('已加载记录:', items.length);
+      items = selectedDay
+        ? await clipboardApi.getItemsByDay(selectedDay, itemLimit(), 0)
+        : await clipboardApi.getItems(itemLimit(), 0);
       pruneImageUrls(items);
       await loadImageUrls();
     } catch (e) {
@@ -147,6 +154,21 @@
     } finally {
       loading = false;
     }
+  }
+
+  async function loadAvailableDays() {
+    try {
+      availableDays = await clipboardApi.getAvailableDays(365);
+    } catch (e) {
+      console.error('加载日期列表失败:', e);
+      availableDays = [];
+    }
+  }
+
+  async function handleDayChange(event) {
+    selectedDay = event.currentTarget.value;
+    searchQuery = '';
+    await loadItems();
   }
 
   async function loadImageUrls() {
@@ -230,7 +252,6 @@
         sessionId,
         itemLimit()
       );
-      console.log('搜索结果:', items.length);
       pruneImageUrls(items);
       await loadImageUrls();
     } catch (e) {
@@ -251,8 +272,11 @@
       if (item.type === 'text' && item.content) {
         await clipboardApi.copyToClipboard(item.content);
         showCopyToast();
+      } else if (item.type === 'image' && item.image_path) {
+        await clipboardApi.copyImageToClipboard(item.image_path);
+        showCopyToast();
       } else if (item.type === 'image') {
-        error = '图片复制功能待实现';
+        error = '图片路径不可用';
       }
     } catch (e) {
       console.error('复制失败:', e);
@@ -309,6 +333,7 @@
 
   function openSettings() {
     settingsDraft = { ...appSettings };
+    cleanupPlan = null;
     settingsOpen = true;
   }
 
@@ -328,12 +353,18 @@
       show_main_window_on_start: settingsDraft.show_main_window_on_start,
       max_items: Number(settingsDraft.max_items) || defaultSettings.max_items,
       capture_delay_ms: Number(settingsDraft.capture_delay_ms) || defaultSettings.capture_delay_ms,
+      screenshot_hotkey: settingsDraft.screenshot_hotkey || defaultSettings.screenshot_hotkey,
+      auto_cleanup_enabled: settingsDraft.auto_cleanup_enabled,
+      cleanup_max_items: Number(settingsDraft.cleanup_max_items) || defaultSettings.cleanup_max_items,
+      cleanup_keep_days: Number(settingsDraft.cleanup_keep_days) || defaultSettings.cleanup_keep_days,
     };
 
     try {
       appSettings = await settingsApi.saveSettings(normalized);
       settingsDraft = { ...appSettings };
+      cleanupPlan = null;
       settingsOpen = false;
+      await loadAvailableDays();
       await loadItems();
       showActionNotice('设置已保存');
     } catch (e) {
@@ -341,6 +372,43 @@
       error = '保存设置失败: ' + e;
     } finally {
       settingsSaving = false;
+    }
+  }
+
+  async function previewCleanup() {
+    cleanupLoading = true;
+    error = null;
+
+    try {
+      cleanupPlan = await settingsApi.previewCustomCleanup(
+        Number(settingsDraft.cleanup_max_items) || defaultSettings.cleanup_max_items,
+        Number(settingsDraft.cleanup_keep_days) || defaultSettings.cleanup_keep_days
+      );
+    } catch (e) {
+      console.error('预览清理失败:', e);
+      error = '预览清理失败: ' + e;
+    } finally {
+      cleanupLoading = false;
+    }
+  }
+
+  async function runCleanupNow() {
+    cleanupLoading = true;
+    error = null;
+
+    try {
+      cleanupPlan = await settingsApi.runCustomCleanup(
+        Number(settingsDraft.cleanup_max_items) || defaultSettings.cleanup_max_items,
+        Number(settingsDraft.cleanup_keep_days) || defaultSettings.cleanup_keep_days
+      );
+      await loadAvailableDays();
+      await loadItems();
+      showActionNotice(`已清理 ${cleanupPlan.item_count} 条记录`);
+    } catch (e) {
+      console.error('执行清理失败:', e);
+      error = '执行清理失败: ' + e;
+    } finally {
+      cleanupLoading = false;
     }
   }
 
@@ -609,7 +677,7 @@
       <span class="status-dot"></span>
       <div>
         <strong>本次会话</strong>
-        <span>{items.length} 条记录</span>
+        <span>{selectedDay || '全部日期'} · {items.length} 条记录</span>
       </div>
     </div>
   </aside>
@@ -651,6 +719,16 @@
             <Settings size={17} aria-hidden="true" />
           </button>
         </div>
+
+        <label class="day-field">
+          <span>日期</span>
+          <select bind:value={selectedDay} on:change={handleDayChange} aria-label="按日期提取剪贴板记录">
+            <option value="">全部</option>
+            {#each availableDays as day}
+              <option value={day.date_key}>{day.date_key}（{day.item_count}）</option>
+            {/each}
+          </select>
+        </label>
 
         <label class="search-field">
           <Search size={17} aria-hidden="true" />
@@ -810,15 +888,15 @@
                       </div>
                     </div>
                   {:else}
-                    <p
+                    <button
+                      type="button"
                       class="text-content"
                       on:click={() => startEdit(item)}
                       on:keydown={(e) => e.key === 'Enter' && startEdit(item)}
-                      tabindex="0"
                       title="点击编辑"
                     >
                       {item.preview || item.content}
-                    </p>
+                    </button>
                   {/if}
                 {:else if item.type === 'image'}
                   <div class="image-summary">
@@ -908,6 +986,60 @@
               updateSettingsDraft('capture_delay_ms', Number(event.currentTarget.value))}
           />
         </label>
+
+        <div class="settings-section">
+          <h3>自定义清理</h3>
+          <label class="switch-row">
+            <input
+              type="checkbox"
+              checked={settingsDraft.auto_cleanup_enabled}
+              on:change={(event) =>
+                updateSettingsDraft('auto_cleanup_enabled', event.currentTarget.checked)}
+            />
+            <span>保存设置后自动清理</span>
+          </label>
+
+          <label class="field-row">
+            <span>普通记录最多保留</span>
+            <input
+              type="number"
+              min="10"
+              max="5000"
+              value={settingsDraft.cleanup_max_items}
+              on:input={(event) =>
+                updateSettingsDraft('cleanup_max_items', Number(event.currentTarget.value))}
+            />
+          </label>
+
+          <label class="field-row">
+            <span>普通记录保留天数</span>
+            <input
+              type="number"
+              min="1"
+              max="3650"
+              value={settingsDraft.cleanup_keep_days}
+              on:input={(event) =>
+                updateSettingsDraft('cleanup_keep_days', Number(event.currentTarget.value))}
+            />
+          </label>
+
+          <p class="cleanup-hint">清理仅影响未置顶、未收藏的普通记录；图片文件会同步删除。</p>
+
+          {#if cleanupPlan}
+            <p class="cleanup-plan" role="status">
+              将清理 {cleanupPlan.item_count} 条记录（文本 {cleanupPlan.text_count}，图片 {cleanupPlan.image_count}）
+            </p>
+          {/if}
+
+          <div class="cleanup-actions">
+            <button type="button" class="ghost-button" on:click={previewCleanup} disabled={cleanupLoading}>
+              {cleanupLoading ? '计算中' : '预览清理'}
+            </button>
+            <button type="button" class="ghost-button" on:click={runCleanupNow} disabled={cleanupLoading}>
+              {cleanupLoading ? '清理中' : '立即清理'}
+            </button>
+          </div>
+        </div>
 
         <div class="settings-section">
           <h3>快捷键设置</h3>
@@ -1270,6 +1402,34 @@
     font-weight: 760;
   }
 
+  .day-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 0 10px;
+    color: #475569;
+    background: #ffffff;
+    border: 1px solid #d9e0ea;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  .day-field span {
+    flex: 0 0 auto;
+    font-weight: 700;
+  }
+
+  .day-field select {
+    min-width: 0;
+    width: 100%;
+    color: #172033;
+    background: transparent;
+    border: 0;
+    outline: 0;
+  }
+
   .search-field {
     position: relative;
     display: flex;
@@ -1440,11 +1600,27 @@
     letter-spacing: 0.05em;
   }
 
-  .hotkey-hint {
+  .hotkey-hint,
+  .cleanup-hint {
     color: #64748b;
     font-size: 0.78rem;
     line-height: 1.4;
     margin-top: -4px;
+  }
+
+  .cleanup-plan {
+    padding: 8px 10px;
+    color: #166534;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 7px;
+    font-size: 0.8rem;
+  }
+
+  .cleanup-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
   .field-row input.recording {
@@ -1603,12 +1779,18 @@
   }
 
   .text-content {
+    display: block;
+    width: 100%;
     margin-top: 9px;
     color: #172033;
+    font: inherit;
     font-size: 0.92rem;
     line-height: 1.45;
+    text-align: left;
     word-break: break-word;
     cursor: pointer;
+    background: transparent;
+    border: 0;
     transition: background 0.15s;
     padding: 4px;
     border-radius: 4px;

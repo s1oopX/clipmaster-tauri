@@ -164,7 +164,8 @@ impl ClipboardService {
             },
             ClipboardContent::Image(img) => {
                 // 保存图片到文件系统
-                let (image_path, thumbnail_path) = Self::save_image(app_handle, &img, &content_hash)?;
+                let (image_path, thumbnail_path) =
+                    Self::save_image(app_handle, &img, &content_hash)?;
 
                 CreateClipboardItem {
                     type_: ClipboardType::Image,
@@ -199,15 +200,15 @@ impl ClipboardService {
             .app_data_dir()
             .map_err(|e| anyhow::anyhow!("Failed to get app data dir: {}", e))?;
 
-        // 创建按月份分组的图片目录
-        let year_month = Local::now().format("%Y-%m").to_string();
-        let images_dir = app_data_dir.join("images").join(&year_month);
+        // 创建按日期分组的图片目录
+        let date_key = Local::now().format("%Y-%m-%d").to_string();
+        let images_dir = app_data_dir.join("images").join(&date_key);
 
         // 确保目录存在
         fs::create_dir_all(&images_dir)?;
 
         // 生成文件名: hash前8位_时间戳.png
-        let timestamp = chrono::Utc::now().timestamp();
+        let timestamp = chrono::Utc::now().timestamp_millis();
         let filename = format!(
             "{}_{}.png",
             &content_hash[..8.min(content_hash.len())],
@@ -239,9 +240,9 @@ impl ClipboardService {
         );
         thumb_image.save(&thumb_path)?;
 
-        // 返回相对路径: images/2026-06/hash_timestamp.png
-        let relative_path = format!("images/{}/{}", year_month, filename);
-        let relative_thumb_path = format!("images/{}/{}", year_month, thumb_filename);
+        // 返回相对路径: images/2026-06-06/hash_timestamp.png
+        let relative_path = format!("images/{}/{}", date_key, filename);
+        let relative_thumb_path = format!("images/{}/{}", date_key, thumb_filename);
 
         Ok((relative_path, relative_thumb_path))
     }

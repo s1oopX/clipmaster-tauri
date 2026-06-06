@@ -30,21 +30,10 @@ export async function convertImagePath(relativePath) {
 
   try {
     const dataDir = await getAppDataDir();
-    // 将相对路径的斜杠统一转换为反斜杠（Windows路径）
-    const normalizedRelPath = relativePath.replace(/\//g, '\\');
+    const normalizedRelPath = relativePath.replace(/[\\/]+/g, '\\');
     const fullPath = `${dataDir}\\${normalizedRelPath}`;
 
-    console.log('Converting path:', { relativePath, dataDir, fullPath });
-
-    // 使用 Tauri 提供的 convertFileSrc
-    const url = convertFileSrc(fullPath);
-    console.log('convertFileSrc returned:', url);
-
-    // 尝试替换 http:// 为 https://
-    const finalUrl = url.replace('http://', 'https://');
-    console.log('Final URL:', finalUrl);
-
-    return finalUrl;
+    return convertFileSrc(fullPath);
   } catch (error) {
     console.error('Error converting image path:', error);
     return null;
@@ -62,6 +51,24 @@ export const clipboardApi = {
    */
   async getItems(limit = 100, offset = 0) {
     return await invoke('get_clipboard_items', { limit, offset });
+  },
+
+  /**
+   * 按日期获取剪贴板列表
+   * @param {string} dateKey - 日期，如 "2026-06-06"
+   * @param {number} limit - 返回数量
+   * @param {number} offset - 偏移量
+   */
+  async getItemsByDay(dateKey, limit = 100, offset = 0) {
+    return await invoke('get_items_by_day', { dateKey, limit, offset });
+  },
+
+  /**
+   * 获取有记录的日期列表
+   * @param {number} limit - 返回数量
+   */
+  async getAvailableDays(limit = 365) {
+    return await invoke('get_available_days', { limit });
   },
 
   /**
@@ -96,6 +103,14 @@ export const clipboardApi = {
    */
   async copyToClipboard(text) {
     return await invoke('copy_to_clipboard', { text });
+  },
+
+  /**
+   * 复制图片到剪贴板
+   * @param {string} imagePath - 应用数据目录下的相对图片路径
+   */
+  async copyImageToClipboard(imagePath) {
+    return await invoke('copy_image_to_clipboard', { imagePath });
   },
 
   /**
@@ -185,13 +200,6 @@ export const searchApi = {
  */
 export const toolApi = {
   /**
-   * 捕获当前屏幕截图
-   */
-  async captureScreenshot() {
-    return await invoke('capture_screenshot');
-  },
-
-  /**
    * 开始区域截图
    */
   async startRegionScreenshot() {
@@ -224,5 +232,23 @@ export const settingsApi = {
    */
   async saveSettings(settings) {
     return await invoke('save_settings', { settings });
+  },
+
+  /**
+   * 预览自定义清理
+   * @param {number} maxItems
+   * @param {number} keepDays
+   */
+  async previewCustomCleanup(maxItems, keepDays) {
+    return await invoke('preview_custom_cleanup', { maxItems, keepDays });
+  },
+
+  /**
+   * 执行自定义清理
+   * @param {number} maxItems
+   * @param {number} keepDays
+   */
+  async runCustomCleanup(maxItems, keepDays) {
+    return await invoke('run_custom_cleanup', { maxItems, keepDays });
   },
 };

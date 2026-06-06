@@ -1,10 +1,13 @@
 use anyhow::{Context, Result};
-use chrono::Utc;
+use chrono::{Local, TimeZone, Utc};
 use rusqlite::{params, Connection};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::models::{ClipboardItem, ClipboardType, CreateClipboardItem, Session};
+use crate::models::{
+    CleanupPlan, ClipboardDay, ClipboardItem, ClipboardType, CreateClipboardItem, Session,
+};
 
 pub struct Database {
     conn: Mutex<Connection>,
@@ -33,6 +36,7 @@ impl Database {
 
         // 创建表结构
         db.create_tables()?;
+        db.run_migrations(&data_dir)?;
 
         Ok(db)
     }
@@ -63,6 +67,7 @@ impl Database {
                 thumbnail_path TEXT,
                 preview TEXT,
                 timestamp INTEGER NOT NULL,
+                date_key TEXT NOT NULL,
                 source_app TEXT,
                 is_favorite INTEGER DEFAULT 0,
                 is_pinned INTEGER DEFAULT 0,
@@ -77,7 +82,12 @@ impl Database {
         conn.execute(
             "ALTER TABLE clipboard_items ADD COLUMN thumbnail_path TEXT",
             [],
-        ).ok(); // 忽略错误，因为字段可能已存在
+        )
+        .ok(); // 忽略错误，因为字段可能已存在
+
+        // 迁移：添加 date_key 字段（如果不存在）
+        conn.execute("ALTER TABLE clipboard_items ADD COLUMN date_key TEXT", [])
+            .ok(); // 忽略错误，因为字段可能已存在
 
         // 创建索引（使用 execute_batch 避免返回结果）
         conn.execute_batch(
@@ -86,9 +96,73 @@ impl Database {
              CREATE INDEX IF NOT EXISTS idx_session ON clipboard_items(session_id, timestamp DESC);
              CREATE INDEX IF NOT EXISTS idx_pinned_fav ON clipboard_items(is_pinned DESC, is_favorite DESC, timestamp DESC);
              CREATE INDEX IF NOT EXISTS idx_content_hash ON clipboard_items(content_hash, timestamp DESC);
+             CREATE INDEX IF NOT EXISTS idx_date_key_time ON clipboard_items(date_key, is_pinned DESC, timestamp DESC);
              CREATE INDEX IF NOT EXISTS idx_session_time ON sessions(start_time DESC);
              CREATE INDEX IF NOT EXISTS idx_session_active ON sessions(is_active);"
         )?;
+
+        Ok(())
+    }
+
+    fn run_migrations(&self, data_dir: &Path) -> Result<()> {
+        self.backfill_date_keys()?;
+        self.migrate_image_paths_to_daily(data_dir)?;
+        Ok(())
+    }
+
+    fn backfill_date_keys(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, timestamp FROM clipboard_items WHERE date_key IS NULL OR date_key = ''",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        let items = rows.collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
+
+        for (id, timestamp) in items {
+            let date_key = date_key_from_timestamp(timestamp);
+            conn.execute(
+                "UPDATE clipboard_items SET date_key = ?1 WHERE id = ?2",
+                params![date_key, id],
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn migrate_image_paths_to_daily(&self, data_dir: &Path) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, image_path, thumbnail_path, date_key
+             FROM clipboard_items
+             WHERE type = 'image'",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        let items = rows.collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
+
+        for (id, image_path, thumbnail_path, date_key) in items {
+            let next_image_path =
+                migrate_month_image_path(data_dir, image_path.as_deref(), &date_key)?;
+            let next_thumbnail_path =
+                migrate_month_image_path(data_dir, thumbnail_path.as_deref(), &date_key)?;
+
+            if next_image_path != image_path || next_thumbnail_path != thumbnail_path {
+                conn.execute(
+                    "UPDATE clipboard_items SET image_path = ?1, thumbnail_path = ?2 WHERE id = ?3",
+                    params![next_image_path, next_thumbnail_path, id],
+                )?;
+            }
+        }
 
         Ok(())
     }
@@ -99,6 +173,7 @@ impl Database {
 
         let id = nanoid::nanoid!();
         let timestamp = Utc::now().timestamp_millis();
+        let date_key = Local::now().format("%Y-%m-%d").to_string();
         let preview = item.content.as_ref().map(|c| {
             // 安全地截取字符串，避免切断多字节字符
             let char_count = c.chars().count();
@@ -112,9 +187,9 @@ impl Database {
 
         conn.execute(
             "INSERT INTO clipboard_items (
-                id, type, content, image_path, thumbnail_path, preview, timestamp,
+                id, type, content, image_path, thumbnail_path, preview, timestamp, date_key,
                 source_app, content_hash, session_id
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 id,
                 item.type_.as_str(),
@@ -123,6 +198,7 @@ impl Database {
                 item.thumbnail_path,
                 preview,
                 timestamp,
+                date_key,
                 item.source_app,
                 item.content_hash,
                 item.session_id,
@@ -137,6 +213,7 @@ impl Database {
             thumbnail_path: item.thumbnail_path,
             preview,
             timestamp,
+            date_key,
             source_app: item.source_app,
             is_favorite: false,
             is_pinned: false,
@@ -151,7 +228,7 @@ impl Database {
 
         let mut stmt = conn.prepare(
             "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                    source_app, is_favorite, is_pinned, content_hash, session_id
+                    date_key, source_app, is_favorite, is_pinned, content_hash, session_id
              FROM clipboard_items
              ORDER BY is_pinned DESC, timestamp DESC
              LIMIT ?1 OFFSET ?2",
@@ -168,11 +245,12 @@ impl Database {
                     thumbnail_path: row.get(4)?,
                     preview: row.get(5)?,
                     timestamp: row.get(6)?,
-                    source_app: row.get(7)?,
-                    is_favorite: row.get::<_, i32>(8)? == 1,
-                    is_pinned: row.get::<_, i32>(9)? == 1,
-                    content_hash: row.get(10)?,
-                    session_id: row.get(11)?,
+                    date_key: row.get(7)?,
+                    source_app: row.get(8)?,
+                    is_favorite: row.get::<_, i32>(9)? == 1,
+                    is_pinned: row.get::<_, i32>(10)? == 1,
+                    content_hash: row.get(11)?,
+                    session_id: row.get(12)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -191,7 +269,7 @@ impl Database {
 
         let mut stmt = conn.prepare(
             "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                    source_app, is_favorite, is_pinned, content_hash, session_id
+                    date_key, source_app, is_favorite, is_pinned, content_hash, session_id
              FROM clipboard_items
              WHERE session_id = ?1
              ORDER BY is_pinned DESC, timestamp DESC
@@ -209,11 +287,12 @@ impl Database {
                     thumbnail_path: row.get(4)?,
                     preview: row.get(5)?,
                     timestamp: row.get(6)?,
-                    source_app: row.get(7)?,
-                    is_favorite: row.get::<_, i32>(8)? == 1,
-                    is_pinned: row.get::<_, i32>(9)? == 1,
-                    content_hash: row.get(10)?,
-                    session_id: row.get(11)?,
+                    date_key: row.get(7)?,
+                    source_app: row.get(8)?,
+                    is_favorite: row.get::<_, i32>(9)? == 1,
+                    is_pinned: row.get::<_, i32>(10)? == 1,
+                    content_hash: row.get(11)?,
+                    session_id: row.get(12)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -235,6 +314,43 @@ impl Database {
         )?;
 
         Ok(count > 0)
+    }
+
+    /// 获取单条剪贴板记录
+    pub fn get_item(&self, item_id: &str) -> Result<Option<ClipboardItem>> {
+        let conn = self.conn.lock().unwrap();
+
+        let result = conn.query_row(
+            "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
+                    date_key, source_app, is_favorite, is_pinned, content_hash, session_id
+             FROM clipboard_items
+             WHERE id = ?1",
+            params![item_id],
+            |row| {
+                Ok(ClipboardItem {
+                    id: row.get(0)?,
+                    type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
+                        .unwrap_or(ClipboardType::Text),
+                    content: row.get(2)?,
+                    image_path: row.get(3)?,
+                    thumbnail_path: row.get(4)?,
+                    preview: row.get(5)?,
+                    timestamp: row.get(6)?,
+                    date_key: row.get(7)?,
+                    source_app: row.get(8)?,
+                    is_favorite: row.get::<_, i32>(9)? == 1,
+                    is_pinned: row.get::<_, i32>(10)? == 1,
+                    content_hash: row.get(11)?,
+                    session_id: row.get(12)?,
+                })
+            },
+        );
+
+        match result {
+            Ok(item) => Ok(Some(item)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// 删除记录
@@ -417,6 +533,152 @@ impl Database {
         Ok(())
     }
 
+    /// 获取可用日期列表
+    pub fn get_available_days(&self, limit: i32) -> Result<Vec<ClipboardDay>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT date_key, COUNT(*) AS item_count, MIN(timestamp), MAX(timestamp)
+             FROM clipboard_items
+             WHERE date_key IS NOT NULL AND date_key != ''
+             GROUP BY date_key
+             ORDER BY date_key DESC
+             LIMIT ?1",
+        )?;
+
+        let days = stmt
+            .query_map(params![limit], |row| {
+                Ok(ClipboardDay {
+                    date_key: row.get(0)?,
+                    item_count: row.get(1)?,
+                    start_time: row.get(2)?,
+                    end_time: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(days)
+    }
+
+    /// 按日期获取记录
+    pub fn get_items_by_day(
+        &self,
+        date_key: &str,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<ClipboardItem>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
+                    date_key, source_app, is_favorite, is_pinned, content_hash, session_id
+             FROM clipboard_items
+             WHERE date_key = ?1
+             ORDER BY is_pinned DESC, timestamp DESC
+             LIMIT ?2 OFFSET ?3",
+        )?;
+
+        let items = stmt
+            .query_map(params![date_key, limit, offset], |row| {
+                Ok(ClipboardItem {
+                    id: row.get(0)?,
+                    type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
+                        .unwrap_or(ClipboardType::Text),
+                    content: row.get(2)?,
+                    image_path: row.get(3)?,
+                    thumbnail_path: row.get(4)?,
+                    preview: row.get(5)?,
+                    timestamp: row.get(6)?,
+                    date_key: row.get(7)?,
+                    source_app: row.get(8)?,
+                    is_favorite: row.get::<_, i32>(9)? == 1,
+                    is_pinned: row.get::<_, i32>(10)? == 1,
+                    content_hash: row.get(11)?,
+                    session_id: row.get(12)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(items)
+    }
+
+    /// 获取自定义清理候选记录
+    pub fn get_cleanup_candidates(
+        &self,
+        max_items: i32,
+        keep_days: i32,
+    ) -> Result<Vec<ClipboardItem>> {
+        let conn = self.conn.lock().unwrap();
+        let keep_threshold =
+            Utc::now().timestamp_millis() - (keep_days as i64 * 24 * 60 * 60 * 1000);
+
+        let mut stmt = conn.prepare(
+            "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
+                    date_key, source_app, is_favorite, is_pinned, content_hash, session_id
+             FROM clipboard_items
+             WHERE is_pinned = 0
+               AND is_favorite = 0
+               AND (
+                    timestamp < ?2
+                    OR id IN (
+                        SELECT id FROM (
+                            SELECT id
+                            FROM clipboard_items
+                            WHERE is_pinned = 0 AND is_favorite = 0
+                            ORDER BY timestamp DESC
+                            LIMIT -1 OFFSET ?1
+                        )
+                    )
+               )
+             ORDER BY timestamp ASC",
+        )?;
+
+        let rows = stmt.query_map(params![max_items.max(0), keep_threshold], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                type_: ClipboardType::from_str(&row.get::<_, String>(1)?)
+                    .unwrap_or(ClipboardType::Text),
+                content: row.get(2)?,
+                image_path: row.get(3)?,
+                thumbnail_path: row.get(4)?,
+                preview: row.get(5)?,
+                timestamp: row.get(6)?,
+                date_key: row.get(7)?,
+                source_app: row.get(8)?,
+                is_favorite: row.get::<_, i32>(9)? == 1,
+                is_pinned: row.get::<_, i32>(10)? == 1,
+                content_hash: row.get(11)?,
+                session_id: row.get(12)?,
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// 删除多条记录
+    pub fn delete_items(&self, item_ids: &[String]) -> Result<()> {
+        if item_ids.is_empty() {
+            return Ok(());
+        }
+
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        for item_id in item_ids {
+            tx.execute(
+                "DELETE FROM clipboard_items WHERE id = ?1",
+                params![item_id],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 预览自定义清理结果
+    pub fn cleanup_plan(&self, max_items: i32, keep_days: i32) -> Result<CleanupPlan> {
+        let candidates = self.get_cleanup_candidates(max_items, keep_days)?;
+        Ok(CleanupPlan::from_items(candidates))
+    }
+
     /// 搜索记录
     pub fn search_items(
         &self,
@@ -432,7 +694,7 @@ impl Database {
         let items = if let Some(sid) = session_id {
             let mut stmt = conn.prepare(
                 "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                        source_app, is_favorite, is_pinned, content_hash, session_id
+                        date_key, source_app, is_favorite, is_pinned, content_hash, session_id
                  FROM clipboard_items
                  WHERE session_id = ?1 AND (content LIKE ?2 OR preview LIKE ?2)
                  ORDER BY timestamp DESC
@@ -449,11 +711,12 @@ impl Database {
                     thumbnail_path: row.get(4)?,
                     preview: row.get(5)?,
                     timestamp: row.get(6)?,
-                    source_app: row.get(7)?,
-                    is_favorite: row.get::<_, i32>(8)? == 1,
-                    is_pinned: row.get::<_, i32>(9)? == 1,
-                    content_hash: row.get(10)?,
-                    session_id: row.get(11)?,
+                    date_key: row.get(7)?,
+                    source_app: row.get(8)?,
+                    is_favorite: row.get::<_, i32>(9)? == 1,
+                    is_pinned: row.get::<_, i32>(10)? == 1,
+                    content_hash: row.get(11)?,
+                    session_id: row.get(12)?,
                 })
             })?;
 
@@ -461,7 +724,7 @@ impl Database {
         } else {
             let mut stmt = conn.prepare(
                 "SELECT id, type, content, image_path, thumbnail_path, preview, timestamp,
-                        source_app, is_favorite, is_pinned, content_hash, session_id
+                        date_key, source_app, is_favorite, is_pinned, content_hash, session_id
                  FROM clipboard_items
                  WHERE content LIKE ?1 OR preview LIKE ?1
                  ORDER BY timestamp DESC
@@ -478,11 +741,12 @@ impl Database {
                     thumbnail_path: row.get(4)?,
                     preview: row.get(5)?,
                     timestamp: row.get(6)?,
-                    source_app: row.get(7)?,
-                    is_favorite: row.get::<_, i32>(8)? == 1,
-                    is_pinned: row.get::<_, i32>(9)? == 1,
-                    content_hash: row.get(10)?,
-                    session_id: row.get(11)?,
+                    date_key: row.get(7)?,
+                    source_app: row.get(8)?,
+                    is_favorite: row.get::<_, i32>(9)? == 1,
+                    is_pinned: row.get::<_, i32>(10)? == 1,
+                    content_hash: row.get(11)?,
+                    session_id: row.get(12)?,
                 })
             })?;
 
@@ -491,4 +755,69 @@ impl Database {
 
         Ok(items)
     }
+}
+
+fn date_key_from_timestamp(timestamp: i64) -> String {
+    Local
+        .timestamp_millis_opt(timestamp)
+        .single()
+        .unwrap_or_else(Local::now)
+        .format("%Y-%m-%d")
+        .to_string()
+}
+
+fn migrate_month_image_path(
+    data_dir: &Path,
+    relative_path: Option<&str>,
+    date_key: &str,
+) -> Result<Option<String>> {
+    let Some(relative_path) = relative_path else {
+        return Ok(None);
+    };
+
+    let normalized = relative_path.replace('\\', "/");
+    let parts = normalized.split('/').collect::<Vec<_>>();
+    if parts.len() != 3 || parts[0] != "images" || !is_month_key(parts[1]) {
+        return Ok(Some(normalized));
+    }
+
+    let filename = parts[2];
+    let target_relative = format!("images/{}/{}", date_key, filename);
+    let source_path = data_dir.join(path_from_forward_slashes(&normalized));
+    let target_path = data_dir.join(path_from_forward_slashes(&target_relative));
+
+    if target_path.exists() {
+        return Ok(Some(target_relative));
+    }
+
+    if !source_path.exists() {
+        return Ok(Some(normalized));
+    }
+
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::copy(&source_path, &target_path)?;
+
+    if target_path.exists() {
+        Ok(Some(target_relative))
+    } else {
+        Ok(Some(normalized))
+    }
+}
+
+fn is_month_key(value: &str) -> bool {
+    value.len() == 7
+        && value.as_bytes()[4] == b'-'
+        && value[..4].chars().all(|c| c.is_ascii_digit())
+        && value[5..].chars().all(|c| c.is_ascii_digit())
+}
+
+fn path_from_forward_slashes(path: &str) -> PathBuf {
+    let mut path_buf = PathBuf::new();
+    for part in path.split('/') {
+        path_buf.push(part);
+    }
+    path_buf
 }

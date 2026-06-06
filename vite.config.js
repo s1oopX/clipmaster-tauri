@@ -22,6 +22,7 @@ export default defineConfig({
       input: {
         main: './index.html',
         screenshot: './screenshot.html',
+        pin: './pin.html',
       },
     },
   },

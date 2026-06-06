@@ -83,18 +83,14 @@
       const currentWin = getCurrentWindow();
 
       let scale = 1;
-      let isDragging = false;
 
       // 从 URL 参数获取图片路径
       const urlParams = new URLSearchParams(window.location.search);
       const imagePath = urlParams.get('path');
 
       if (imagePath) {
-        console.log('加载图片:', imagePath);
-        // 转换为可访问的 URL（不需要第二个参数）
         const imageUrl = convertFileSrc(imagePath);
         image.src = imageUrl;
-        console.log('图片 URL:', imageUrl);
       } else {
         console.error('未提供图片路径');
       }
@@ -119,7 +115,7 @@
 
       image.onerror = (e) => {
         console.error('图片加载失败:', e);
-        alert('图片加载失败');
+        image.alt = '图片加载失败';
       };
 
       // Ctrl + 滚轮缩放
@@ -145,12 +141,9 @@
       }, { passive: false });
 
       // 拖动窗口
-      let startDragPos = null;
-
       container.addEventListener('mousedown', async (e) => {
         if (e.target === closeBtn) return;
 
-        isDragging = true;
         await currentWin.startDragging();
       });
 

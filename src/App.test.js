@@ -6,28 +6,46 @@ const api = vi.hoisted(() => ({
   clearSession: vi.fn(),
   convertImagePath: vi.fn(),
   copyToClipboard: vi.fn(),
-  captureScreenshot: vi.fn(),
+  copyImageToClipboard: vi.fn(),
+  startRegionScreenshot: vi.fn(),
   deleteItem: vi.fn(),
   getSettings: vi.fn(),
   getCurrentSession: vi.fn(),
   getItems: vi.fn(),
+  getAvailableDays: vi.fn(),
+  getItemsByDay: vi.fn(),
   getItemsBySession: vi.fn(),
   getSessions: vi.fn(),
   onNewItem: vi.fn(),
   pinImage: vi.fn(),
+  previewCustomCleanup: vi.fn(),
+  runCustomCleanup: vi.fn(),
   saveSettings: vi.fn(),
   searchItems: vi.fn(),
   toggleFavorite: vi.fn(),
   togglePinned: vi.fn(),
 }));
 
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(async () => vi.fn()),
+}));
+
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: vi.fn(() => ({
+    close: vi.fn(),
+  })),
+}));
+
 vi.mock('./lib/api.js', () => ({
   clipboardApi: {
     getItems: api.getItems,
+    getItemsByDay: api.getItemsByDay,
+    getAvailableDays: api.getAvailableDays,
     deleteItem: api.deleteItem,
     toggleFavorite: api.toggleFavorite,
     togglePinned: api.togglePinned,
     copyToClipboard: api.copyToClipboard,
+    copyImageToClipboard: api.copyImageToClipboard,
     onNewItem: api.onNewItem,
   },
   sessionApi: {
@@ -40,12 +58,14 @@ vi.mock('./lib/api.js', () => ({
     searchItems: api.searchItems,
   },
   toolApi: {
-    captureScreenshot: api.captureScreenshot,
+    startRegionScreenshot: api.startRegionScreenshot,
     pinImage: api.pinImage,
   },
   settingsApi: {
     getSettings: api.getSettings,
     saveSettings: api.saveSettings,
+    previewCustomCleanup: api.previewCustomCleanup,
+    runCustomCleanup: api.runCustomCleanup,
   },
   convertImagePath: api.convertImagePath,
 }));
@@ -66,6 +86,7 @@ function textItem(overrides = {}) {
     image_path: null,
     preview: 'Alpha token',
     timestamp: Date.now(),
+    date_key: '2026-06-06',
     source_app: null,
     is_favorite: false,
     is_pinned: false,
@@ -80,10 +101,11 @@ function imageItem(overrides = {}) {
     id: 'image_1',
     type: 'image',
     content: null,
-    image_path: 'images/2026-06/image.png',
-    thumbnail_path: 'images/2026-06/image_thumb.png',
+    image_path: 'images/2026-06-06/image.png',
+    thumbnail_path: 'images/2026-06-06/image_thumb.png',
     preview: null,
     timestamp: Date.now() - 1000,
+    date_key: '2026-06-06',
     source_app: null,
     is_favorite: true,
     is_pinned: false,
@@ -99,6 +121,8 @@ describe('App UI', () => {
 
     api.getCurrentSession.mockResolvedValue(session);
     api.getItems.mockResolvedValue([]);
+    api.getItemsByDay.mockResolvedValue([]);
+    api.getAvailableDays.mockResolvedValue([{ date_key: '2026-06-06', item_count: 2, start_time: 1780650000000, end_time: 1780653600000 }]);
     api.getSessions.mockResolvedValue([]);
     api.getItemsBySession.mockResolvedValue([]);
     api.getSettings.mockResolvedValue({
@@ -106,18 +130,37 @@ describe('App UI', () => {
       show_main_window_on_start: true,
       max_items: 50,
       capture_delay_ms: 150,
+      screenshot_hotkey: 'CommandOrControl+Shift+A',
+      auto_cleanup_enabled: false,
+      cleanup_max_items: 200,
+      cleanup_keep_days: 30,
     });
     api.clearSession.mockResolvedValue();
     api.onNewItem.mockResolvedValue(vi.fn());
     api.searchItems.mockResolvedValue([]);
-    api.captureScreenshot.mockResolvedValue(imageItem({ id: 'shot_1', image_path: 'images/2026-06/shot.png' }));
+    api.startRegionScreenshot.mockResolvedValue();
     api.pinImage.mockResolvedValue();
+    api.previewCustomCleanup.mockResolvedValue({
+      item_count: 0,
+      text_count: 0,
+      image_count: 0,
+      oldest_timestamp: null,
+      newest_timestamp: null,
+    });
+    api.runCustomCleanup.mockResolvedValue({
+      item_count: 0,
+      text_count: 0,
+      image_count: 0,
+      oldest_timestamp: null,
+      newest_timestamp: null,
+    });
     api.saveSettings.mockImplementation(async (settings) => settings);
     api.deleteItem.mockResolvedValue();
     api.toggleFavorite.mockResolvedValue(true);
     api.togglePinned.mockResolvedValue(true);
     api.copyToClipboard.mockResolvedValue();
-    api.convertImagePath.mockResolvedValue('asset://localhost/images/2026-06/image.png');
+    api.copyImageToClipboard.mockResolvedValue();
+    api.convertImagePath.mockResolvedValue('asset://localhost/images/2026-06-06/image.png');
   });
 
   it('renders the desktop app shell with search, filters, and an empty history state', async () => {
@@ -184,16 +227,14 @@ describe('App UI', () => {
     expect(document.body).toContainElement(screen.getByTestId('app-shell'));
   });
 
-  it('captures a screenshot and refreshes the clipboard history', async () => {
+  it('starts region screenshot selection from the toolbar', async () => {
     render(App);
 
     await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
 
     await fireEvent.click(screen.getByRole('button', { name: '截图' }));
 
-    await waitFor(() => expect(api.captureScreenshot).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText('截图已保存')).toBeInTheDocument();
-    expect(api.getItems).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(api.startRegionScreenshot).toHaveBeenCalledTimes(1));
   });
 
   it('pins the newest image globally and supports pinning an image item to desktop', async () => {
@@ -204,10 +245,24 @@ describe('App UI', () => {
     await screen.findByText('图片记录');
 
     await fireEvent.click(screen.getByRole('button', { name: '钉住' }));
-    expect(api.pinImage).toHaveBeenCalledWith('images/2026-06/image.png');
+    expect(api.pinImage).toHaveBeenCalledWith('images/2026-06-06/image.png');
 
     await fireEvent.click(screen.getByRole('button', { name: '钉到桌面 图片记录' }));
     expect(api.pinImage).toHaveBeenCalledTimes(2);
+  });
+
+  it('copies image items to the system clipboard', async () => {
+    api.getItems.mockResolvedValue([imageItem()]);
+
+    render(App);
+
+    await screen.findByText('图片记录');
+    await fireEvent.click(screen.getByRole('button', { name: '复制 图片记录' }));
+
+    await waitFor(() => {
+      expect(api.copyImageToClipboard).toHaveBeenCalledWith('images/2026-06-06/image.png');
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('已复制到剪贴板');
   });
 
   it('loads and saves app settings from the settings panel', async () => {
@@ -231,8 +286,68 @@ describe('App UI', () => {
         show_main_window_on_start: false,
         max_items: 120,
         capture_delay_ms: 150,
+        screenshot_hotkey: 'CommandOrControl+Shift+A',
+        auto_cleanup_enabled: false,
+        cleanup_max_items: 200,
+        cleanup_keep_days: 30,
       });
     });
+  });
+
+  it('previews and runs custom cleanup from the settings panel', async () => {
+    api.previewCustomCleanup.mockResolvedValue({
+      item_count: 3,
+      text_count: 2,
+      image_count: 1,
+      oldest_timestamp: 1780640000000,
+      newest_timestamp: 1780650000000,
+    });
+    api.runCustomCleanup.mockResolvedValue({
+      item_count: 3,
+      text_count: 2,
+      image_count: 1,
+      oldest_timestamp: 1780640000000,
+      newest_timestamp: 1780650000000,
+    });
+
+    render(App);
+
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+
+    const maxItems = screen.getByLabelText('普通记录最多保留');
+    const keepDays = screen.getByLabelText('普通记录保留天数');
+    await fireEvent.input(maxItems, { target: { value: '80' } });
+    await fireEvent.input(keepDays, { target: { value: '7' } });
+
+    await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
+
+    await waitFor(() => {
+      expect(api.previewCustomCleanup).toHaveBeenCalledWith(80, 7);
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('将清理 3 条记录');
+
+    await fireEvent.click(screen.getByRole('button', { name: '立即清理' }));
+
+    await waitFor(() => {
+      expect(api.runCustomCleanup).toHaveBeenCalledWith(80, 7);
+    });
+    expect(api.getItems).toHaveBeenCalledTimes(2);
+  });
+
+  it('loads records by selected day', async () => {
+    api.getItemsByDay.mockResolvedValue([imageItem()]);
+
+    render(App);
+
+    const daySelect = await screen.findByRole('combobox', { name: '按日期提取剪贴板记录' });
+    await screen.findByRole('option', { name: '2026-06-06（2）' });
+    await fireEvent.change(daySelect, { target: { value: '2026-06-06' } });
+
+    await waitFor(() => {
+      expect(api.getItemsByDay).toHaveBeenCalledWith('2026-06-06', 50, 0);
+    });
+    expect(await screen.findByText('图片记录')).toBeInTheDocument();
   });
 
   it('keeps live clipboard events within the configured item limit', async () => {
@@ -242,6 +357,10 @@ describe('App UI', () => {
       show_main_window_on_start: true,
       max_items: 1,
       capture_delay_ms: 150,
+      screenshot_hotkey: 'CommandOrControl+Shift+A',
+      auto_cleanup_enabled: false,
+      cleanup_max_items: 200,
+      cleanup_keep_days: 30,
     });
     api.getItems.mockResolvedValue([
       textItem({ id: 'old_item', content: 'Old token', preview: 'Old token' }),

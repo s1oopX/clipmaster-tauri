@@ -38,6 +38,15 @@ pub struct Session {
     pub is_active: bool,
 }
 
+/// 每日剪贴板记录聚合
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClipboardDay {
+    pub date_key: String,
+    pub item_count: i32,
+    pub start_time: i64,
+    pub end_time: i64,
+}
+
 /// 剪贴板记录
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipboardItem {
@@ -49,6 +58,7 @@ pub struct ClipboardItem {
     pub thumbnail_path: Option<String>,
     pub preview: Option<String>,
     pub timestamp: i64,
+    pub date_key: String,
     pub source_app: Option<String>,
     pub is_favorite: bool,
     pub is_pinned: bool,
@@ -66,4 +76,38 @@ pub struct CreateClipboardItem {
     pub source_app: Option<String>,
     pub content_hash: String,
     pub session_id: String,
+}
+
+/// 自定义清理预览
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CleanupPlan {
+    pub item_count: i32,
+    pub text_count: i32,
+    pub image_count: i32,
+    pub oldest_timestamp: Option<i64>,
+    pub newest_timestamp: Option<i64>,
+}
+
+impl CleanupPlan {
+    pub fn from_items(items: Vec<ClipboardItem>) -> Self {
+        let item_count = items.len() as i32;
+        let text_count = items
+            .iter()
+            .filter(|item| matches!(item.type_, ClipboardType::Text))
+            .count() as i32;
+        let image_count = items
+            .iter()
+            .filter(|item| matches!(item.type_, ClipboardType::Image))
+            .count() as i32;
+        let oldest_timestamp = items.iter().map(|item| item.timestamp).min();
+        let newest_timestamp = items.iter().map(|item| item.timestamp).max();
+
+        Self {
+            item_count,
+            text_count,
+            image_count,
+            oldest_timestamp,
+            newest_timestamp,
+        }
+    }
 }

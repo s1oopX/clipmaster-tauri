@@ -41,6 +41,21 @@
         z-index: 1000;
       }
 
+      #error {
+        position: absolute;
+        top: 54px;
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: min(520px, calc(100vw - 32px));
+        padding: 8px 12px;
+        background: rgba(185, 28, 28, 0.92);
+        color: white;
+        border-radius: 4px;
+        font-size: 13px;
+        display: none;
+        z-index: 1001;
+      }
+
       #toolbar {
         position: absolute;
         padding: 4px;
@@ -122,6 +137,7 @@
   </head>
   <body>
     <div id="info">拖动鼠标选择截图区域 | Enter 确定 | P 钉住 | ESC 取消</div>
+    <div id="error" role="alert" aria-live="assertive"></div>
     <canvas id="canvas"></canvas>
     <div id="toolbar">
       <button id="pinBtn" title="钉到桌面 (P)">
@@ -155,6 +171,7 @@
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
       const toolbar = document.getElementById('toolbar');
+      const errorBox = document.getElementById('error');
       const sizeInfo = document.getElementById('sizeInfo');
       const confirmBtn = document.getElementById('confirm');
       const cancelBtn = document.getElementById('cancel');
@@ -172,30 +189,32 @@
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
 
+      function showError(message) {
+        errorBox.textContent = message;
+        errorBox.style.display = 'block';
+      }
+
       // 加载背景截图
       async function loadScreenshot() {
         try {
           const tempPath = await invoke('get_screenshot_temp_path');
-          console.log('临时截图路径:', tempPath);
 
           const { convertFileSrc } = await import('@tauri-apps/api/core');
           const imageUrl = convertFileSrc(tempPath);
-          console.log('图片 URL:', imageUrl);
 
           backgroundImage = new Image();
           backgroundImage.onload = () => {
-            console.log('背景图片加载成功');
             drawCanvas();
           };
           backgroundImage.onerror = (e) => {
             console.error('背景图片加载失败:', e);
-            alert('加载截图失败，请重试');
+            showError('加载截图失败，请重试');
             closeWindow();
           };
           backgroundImage.src = imageUrl;
         } catch (error) {
           console.error('获取截图路径失败:', error);
-          alert('加载截图失败: ' + error);
+          showError('加载截图失败: ' + error);
           await closeWindow();
         }
       }
@@ -331,22 +350,19 @@
         const width = Math.abs(currentX - startX);
         const height = Math.abs(currentY - startY);
 
-        console.log('确认截图:', { x, y, width, height });
-
         try {
           // 调用后端捕获区域
-          const result = await invoke('capture_region_screenshot', {
+          await invoke('capture_region_screenshot', {
             x: Math.round(x),
             y: Math.round(y),
             width: Math.round(width),
             height: Math.round(height),
           });
 
-          console.log('截图成功:', result);
           await closeWindow();
         } catch (error) {
           console.error('截图失败:', error);
-          alert('截图失败: ' + error);
+          showError('截图失败: ' + error);
         }
       }
 
@@ -359,8 +375,6 @@
         const width = Math.abs(currentX - startX);
         const height = Math.abs(currentY - startY);
 
-        console.log('钉住截图:', { x, y, width, height });
-
         try {
           // 先捕获区域截图
           const result = await invoke('capture_region_screenshot', {
@@ -370,48 +384,38 @@
             height: Math.round(height),
           });
 
-          console.log('截图结果:', result);
-
           // 钉到桌面
           if (result && result.image_path) {
-            console.log('钉住图片:', result.image_path);
             await invoke('pin_image', {
               imagePath: result.image_path,
             });
-            console.log('钉住成功');
           }
 
           await closeWindow();
         } catch (error) {
           console.error('钉住截图失败:', error);
-          alert('钉住截图失败: ' + error);
+          showError('钉住截图失败: ' + error);
         }
       }
 
       // 取消截图
       async function cancelSelection() {
-        console.log('取消截图');
         await closeWindow();
       }
 
       // 关闭窗口
       async function closeWindow() {
-        console.log('开始关闭窗口');
-
         try {
           const currentWin = getCurrentWindow();
 
           // 恢复主窗口
           try {
-            console.log('尝试恢复主窗口');
             const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             const mainWindow = WebviewWindow.getByLabel('main');
 
             if (mainWindow) {
-              console.log('找到主窗口，准备显示');
               await mainWindow.show();
               await mainWindow.setFocus();
-              console.log('主窗口已显示');
             } else {
               console.warn('未找到主窗口');
             }
@@ -420,7 +424,6 @@
           }
 
           // 关闭当前窗口
-          console.log('关闭截图窗口');
           await currentWin.close();
         } catch (error) {
           console.error('关闭窗口失败:', error);
@@ -431,41 +434,32 @@
 
       // 按钮事件
       confirmBtn.addEventListener('click', () => {
-        console.log('点击确定按钮');
         confirmSelection();
       });
 
       cancelBtn.addEventListener('click', () => {
-        console.log('点击取消按钮');
         cancelSelection();
       });
 
       pinBtn.addEventListener('click', () => {
-        console.log('点击钉住按钮');
         pinSelection();
       });
 
       // 键盘事件
       document.addEventListener('keydown', (e) => {
-        console.log('按键:', e.key);
-
         if (e.key === 'Escape') {
           e.preventDefault();
-          console.log('ESC 取消');
           cancelSelection();
         } else if (e.key === 'Enter' && selectionComplete) {
           e.preventDefault();
-          console.log('Enter 确认');
           confirmSelection();
         } else if ((e.key === 'p' || e.key === 'P') && selectionComplete) {
           e.preventDefault();
-          console.log('P 钉住');
           pinSelection();
         }
       });
 
       // 初始化
-      console.log('初始化截图界面');
       loadScreenshot();
     </script>
   </body>
