@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security and privacy concerns
+    url: https://github.com/s1oopX/clipmaster-tauri/security/policy
+    about: Please report sensitive security or privacy issues privately when possible.

@@ -1,0 +1,62 @@
+name: Release Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows installers
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri installers
+        run: npm run tauri:build
+
+      - name: Generate SHA256SUMS
+        shell: pwsh
+        run: |
+          $bundleDir = "src-tauri\target\release\bundle"
+          $files = @()
+          $files += Get-ChildItem "$bundleDir\nsis" -Filter "*setup.exe" -File
+          $files += Get-ChildItem "$bundleDir\msi" -Filter "*.msi" -File
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
+          }
+          $lines | Set-Content -LiteralPath "$bundleDir\SHA256SUMS.txt" -Encoding ascii
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipmaster-windows-installers
+          path: |
+            src-tauri/target/release/bundle/nsis/*setup.exe
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/SHA256SUMS.txt
+          if-no-files-found: error

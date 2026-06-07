@@ -142,6 +142,7 @@ docs/                架构、API、数据库、工作流和排障文档
 - [开发工作流](./docs/WORKFLOW.md)
 - [隐私与数据](./docs/PRIVACY.md)
 - [用户 FAQ](./docs/FAQ.md)
+- [安全策略](./SECURITY.md)
 - [排障指南](./docs/TROUBLESHOOTING.md)
 - [变更记录](./CHANGELOG.md)
 

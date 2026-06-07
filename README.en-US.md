@@ -142,6 +142,7 @@ docs/                Architecture, API, database, workflow, and troubleshooting 
 - [Workflow](./docs/WORKFLOW.md)
 - [Privacy and Data](./docs/PRIVACY.md)
 - [FAQ](./docs/FAQ.md)
+- [Security Policy](./SECURITY.md)
 - [Troubleshooting](./docs/TROUBLESHOOTING.md)
 - [Changelog](./CHANGELOG.md)
 
