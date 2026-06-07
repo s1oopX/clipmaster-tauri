@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./src-tauri/icons/icon.png" alt="ClipMaster icon" width="96" height="96">
+
 # ClipMaster
 
 本地优先的 Windows 剪贴板管理器，用来找回、整理和复用你复制过的文字、图片与截图。

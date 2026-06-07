@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./src-tauri/icons/icon.png" alt="ClipMaster icon" width="96" height="96">
+
 # ClipMaster
 
 A local-first Windows clipboard manager for recovering, organizing, and reusing copied text, images, and screenshots.
