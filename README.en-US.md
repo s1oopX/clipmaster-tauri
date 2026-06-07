@@ -1,37 +1,63 @@
+<div align="center">
+
 # ClipMaster
 
-[简体中文](./README.md) | [English](./README.en-US.md)
+A local-first Windows clipboard manager for recovering, organizing, and reusing copied text, images, and screenshots.
 
-ClipMaster is a lightweight clipboard manager for Windows desktop. Built with Tauri 2, Rust, Svelte 5, Vite 8, and SQLite, it helps turn text snippets, images, screenshots, and frequently reused content into a searchable local history that can be pinned, starred, deleted, and restored.
+[简体中文](./README.md) · [Latest Release](https://github.com/s1oopX/clipmaster-tauri/releases/latest) · [Roadmap](./docs/ROADMAP.md)
 
-The project is currently in an early release stage. It is suitable as a personal productivity tool, a Tauri desktop application reference, and a practical example of a local Rust + Svelte app architecture.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D4.svg)
+![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8DB.svg)
+![Rust](https://img.shields.io/badge/Rust-2021-B7410E.svg)
+![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00.svg)
+
+</div>
+
+## Why ClipMaster
+
+Clipboard history is one of the easiest parts of a workflow to lose: a command you copied a minute ago, a temporary screenshot, or a snippet you paste repeatedly can disappear as soon as the next item replaces it. ClipMaster keeps that content on your machine so it can be searched, starred, pinned, and copied back to the clipboard.
+
+It is not a cloud clipboard or an account-based sync product. The current goal is intentionally narrow: a lightweight, understandable, and controllable local clipboard history for Windows desktop.
 
 ## Download
 
-The latest Windows installers are published on [GitHub Releases](https://github.com/s1oopX/clipmaster-tauri/releases/latest).
+Installers are available from [GitHub Releases](https://github.com/s1oopX/clipmaster-tauri/releases/latest).
 
-Current release artifacts:
+| File | Purpose |
+| --- | --- |
+| [`ClipMaster_0.1.0_x64-setup.exe`](https://github.com/s1oopX/clipmaster-tauri/releases/download/v0.1.0/ClipMaster_0.1.0_x64-setup.exe) | Recommended installer for most Windows users |
+| [`ClipMaster_0.1.0_x64_en-US.msi`](https://github.com/s1oopX/clipmaster-tauri/releases/download/v0.1.0/ClipMaster_0.1.0_x64_en-US.msi) | MSI installer for traditional deployment flows |
 
-- `ClipMaster_0.1.0_x64-setup.exe`: recommended Windows NSIS installer
-- `ClipMaster_0.1.0_x64_en-US.msi`: Windows MSI installer
-
-When building from source, installers are generated at:
-
-```text
-src-tauri/target/release/bundle/nsis/
-src-tauri/target/release/bundle/msi/
-```
+The current build is not code-signed yet, so Windows SmartScreen may show a warning. Download installers from this repository's Release page and verify the source before installing.
 
 ## Features
 
-- Tracks text and image clipboard content
-- Stores history locally with SQLite, without a cloud service
-- Supports search, sessions, starring, pinning, and deletion
-- Saves image files, renders thumbnails, and copies images back to the clipboard
-- Supports region screenshots, screenshot hotkeys, and pinned image windows
-- Supports system tray behavior: closing the main window hides it to the tray
-- Supports custom cleanup settings and image file lifecycle management
-- Supports legacy data directory migration to reduce upgrade data-loss risk
+| Feature | Details |
+| --- | --- |
+| Text and image history | Automatically tracks text and image clipboard content |
+| Search and filtering | Finds history items, sessions, and frequently reused snippets |
+| Star and pin | Keeps important items easy to find |
+| Image workflow | Saves images, generates thumbnails, previews them, and copies them back |
+| Screenshot helper | Supports region screenshots, screenshot hotkeys, and pinned image windows |
+| System tray | Closing the main window hides it to the tray, with restore and quit actions |
+| Cleanup settings | Supports count-based, age-based, and image-file lifecycle cleanup |
+| Data migration | Migrates legacy data directories to reduce upgrade data-loss risk |
+
+## Privacy and Data
+
+ClipMaster keeps the local machine as the default data boundary:
+
+- Clipboard history is stored in a local SQLite database.
+- Images and thumbnails are stored in the local app data directory.
+- The current version does not provide cloud sync, account login, or remote telemetry.
+- Clipboard content can include passwords, tokens, and personal data, so sensitive records should be cleaned up regularly.
+
+## Project Status
+
+ClipMaster 0.1.0 is an early usable release. It covers the core clipboard, image, screenshot, tray, migration, and packaging workflows. It is suitable for personal daily testing and as a reference project for Tauri 2 + Rust + Svelte desktop application architecture.
+
+The next priorities are session navigation, virtual scrolling, more global shortcuts, and further frontend state separation. See the [Roadmap](./docs/ROADMAP.md) and [Next Steps](./docs/NEXT_STEPS.md).
 
 ## Tech Stack
 
@@ -42,7 +68,7 @@ src-tauri/target/release/bundle/msi/
 - SQLite / rusqlite
 - Vitest + Svelte Testing Library
 
-## Quick Start
+## Local Development
 
 ### Requirements
 
@@ -64,43 +90,39 @@ npm install
 npm run tauri:dev
 ```
 
-The default development port is `5174`. The in-app Settings / Port panel can check whether the port is occupied and switch to another port. Local development configuration is written to the ignored `.clipmaster-dev.json` file.
+The default development port is `5174`. The in-app settings panel can check port availability and switch ports. Local development configuration is written to `.clipmaster-dev.json`, which is intentionally ignored by Git.
 
-### Build Production Installers
+### Build Installers
 
 ```powershell
 npm run tauri:build
 ```
 
-The build produces the desktop executable, MSI installer, and NSIS installer. The Rust/Tauri `src-tauri/target` build cache can become large; it can be removed when old build artifacts are no longer needed, and it will be regenerated on the next build.
-
-## Validation
-
-Recommended release checks:
-
-```powershell
-npm test
-npm run build
-cd src-tauri
-cargo fmt --check
-cargo check
-cargo test
-cd ..
-npm run tauri:build
-```
-
-As of 2026-06-07, the project has been verified to generate:
+Build artifacts are generated at:
 
 ```text
-src-tauri/target/release/clipmaster.exe
-src-tauri/target/release/bundle/msi/ClipMaster_0.1.0_x64_en-US.msi
-src-tauri/target/release/bundle/nsis/ClipMaster_0.1.0_x64-setup.exe
+src-tauri/target/release/bundle/nsis/
+src-tauri/target/release/bundle/msi/
 ```
+
+`src-tauri/target` is the Rust/Tauri build cache and can become large. Removing it does not affect the source code; the next build will regenerate it, although the first rebuild will take longer.
+
+## Commands
+
+| Command | Description |
+| --- | --- |
+| `npm run tauri:dev` | Start the Tauri development window |
+| `npm test` | Run frontend tests |
+| `npm run build` | Build frontend assets |
+| `npm run tauri:build` | Build the Windows desktop app and installers |
+| `cargo fmt --check` | Check Rust formatting |
+| `cargo check` | Check Rust compilation |
+| `cargo test` | Run Rust unit tests |
 
 ## Project Structure
 
 ```text
-src/                 Svelte frontend
+src/                 Svelte frontend entry
 src/components/      Frontend components
 src/lib/             Frontend API, configuration, and UI helpers
 src-tauri/src/       Rust backend, database, clipboard, tray, and commands
@@ -110,8 +132,8 @@ docs/                Architecture, API, database, workflow, and troubleshooting 
 
 ## Documentation
 
-- [Next Steps](./docs/NEXT_STEPS.md)
 - [Roadmap](./docs/ROADMAP.md)
+- [Next Steps](./docs/NEXT_STEPS.md)
 - [Architecture](./docs/ARCHITECTURE.md)
 - [API](./docs/API.md)
 - [Database](./docs/DATABASE.md)
@@ -121,8 +143,8 @@ docs/                Architecture, API, database, workflow, and troubleshooting 
 
 ## Contributing
 
-Issues, suggestions, and pull requests are welcome. Before contributing, review the [workflow](./docs/WORKFLOW.md) and [next steps](./docs/NEXT_STEPS.md), then add the relevant frontend, backend, or packaging validation for the change.
+Issues, suggestions, and pull requests are welcome. Before making changes, review the [development workflow](./docs/WORKFLOW.md), then add the relevant frontend tests, Rust tests, or packaging checks for the scope of the change.
 
 ## License
 
-This project is open-sourced under the [MIT License](./LICENSE).
+ClipMaster is open-sourced under the [MIT License](./LICENSE).
