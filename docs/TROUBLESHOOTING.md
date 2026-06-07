@@ -61,30 +61,44 @@ Vite 8 的生产构建需要项目显式安装 `esbuild`。当前已经在 `devD
 npm install --save-dev esbuild
 ```
 
-## Tauri identifier 警告
+## Tauri identifier 仍然提示 `.app`
 
-当前构建会提示：
-
-```text
-The bundle identifier "com.clipmaster.app" ends with `.app`.
-```
-
-这是非阻断警告。后续建议改为：
+当前 identifier 应为：
 
 ```text
 com.clipmaster.desktop
 ```
 
-改动后需要留意应用数据目录可能变化。
+如果构建仍提示：
+
+```text
+The bundle identifier "com.clipmaster.app" ends with `.app`.
+```
+
+检查 `src-tauri/tauri.conf.json` 是否被回退。升级后数据目录应位于 `%APPDATA%/com.clipmaster.desktop/`；首次启动会尝试从旧目录 `%APPDATA%/com.clipmaster.app/` 迁移。
+
+## 冒烟测试写入了真实历史
+
+打包版默认使用真实应用数据目录。需要隔离测试时，请在启动前设置：
+
+```powershell
+$env:CLIPMASTER_APP_DATA_DIR = "$env:TEMP\clipmaster-smoke-data"
+src-tauri\target\release\clipmaster.exe
+```
+
+不要只临时修改 `APPDATA` 或 `LOCALAPPDATA`，Windows Known Folder 解析不一定会采用它们。
+
+如果这次冒烟需要验证图片预览，不要把 `CLIPMASTER_APP_DATA_DIR` 指到任意临时目录。图片 URL 会经过 Tauri asset scope，隔离目录应放在 `%APPDATA%/com.clipmaster.desktop/Smoke-*` 这样的真实 app data 子目录下，测试后再删除该子目录。
 
 ## 图片不显示
 
 检查：
 
-- 数据库中的 `image_path` 是否类似 `images/2026-06/<file>.png`。
+- 数据库中的 `image_path` 是否类似 `images/2026-06-07/<file>.png`。
 - 应用数据目录下图片文件是否存在。
 - 前端是否调用 `convertImagePath`。
 - 打包版是否仍能通过 Tauri asset URL 访问本地文件。
+- 若使用 `CLIPMASTER_APP_DATA_DIR` 做隔离图片测试，确认隔离目录仍在 Tauri asset scope 允许的 app data 路径内。
 
 ## 构建产物位置
 

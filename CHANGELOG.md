@@ -4,6 +4,11 @@
 
 ### Build
 
+- 将 Tauri identifier 改为 `com.clipmaster.desktop`，移除 `.app` 结尾警告。
+- 启动时迁移旧数据目录 `com.clipmaster.app` 到 `com.clipmaster.desktop`，避免升级后历史记录丢失。
+- 增加 `schema_migrations` 表，记录旧 schema 升级、日期回填和图片路径迁移。
+- 增加 `CLIPMASTER_APP_DATA_DIR`，用于隔离打包版冒烟测试的数据目录。
+- 增加系统托盘；关闭主窗口时隐藏到托盘，托盘菜单支持显示和退出。
 - 修复前端重复导出导致的 Vite 构建失败。
 - 补充 `esbuild` devDependency。
 - 将 Vite build target 调整为 `esnext`，匹配现代 Tauri WebView。
@@ -17,11 +22,20 @@
 - 保留面向后续维护的文档集合。
 - 新增 `docs/NEXT_STEPS.md`。
 - 更新 README、Roadmap、API、Database、Architecture、Workflow 和 Troubleshooting。
+- 同步图片复制、自定义清理、数据目录迁移和图片文件生命周期的当前实现状态。
+- 补充中英双语 README、MIT License，并将 `src-tauri/Cargo.lock` 纳入版本控制以便复现构建。
 
 ### Tests
 
 - 新增 Vitest + Svelte Testing Library 测试环境。
 - 为主界面增加搜索、筛选、空状态、记录列表和操作按钮的 UI 行为测试。
+- 为旧数据目录迁移和图片文件清理补充 Rust 单元测试。
+- 为托盘主点击判断补充 Rust 单元测试。
+- 完成打包版受控冒烟，验证临时数据目录、旧目录迁移、迁移版本表和文本剪贴板监听。
+- 完成打包版托盘关闭冒烟，验证主窗口 `WM_CLOSE` 后进程留在托盘且窗口隐藏。
+- 补齐完整 UI 自动化冒烟，覆盖图片预览/复制、搜索、收藏、置顶、删除和重启加载。
+- 完成打包版重启持久化烟测，验证隔离 DB 的历史记录在重启后仍存在。
+- 完成打包版真实 WebView 图片预览烟测，验证 `convertFileSrc` 生成的本地缩略图可渲染。
 
 ### UI
 
@@ -29,6 +43,7 @@
 - 使用 `@lucide/svelte` 替换大部分 emoji 图标。
 - 为搜索框、筛选导航、图片预览和记录操作按钮补齐可访问标签。
 - 压缩窄窗口顶部区域，优化图片记录空状态和列表项操作区密度。
+- 整理前端结构：将 `App.svelte` 样式迁到 `src/app.css`，抽离配置常量、UI 工具函数和低耦合组件。
 
 ## 0.1.0-alpha
 

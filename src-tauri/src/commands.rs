@@ -8,6 +8,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tokio::time::sleep;
 
+use crate::app_data;
 use crate::database::{date_key_now, Database};
 use crate::dev_port::{check_dev_server_port as check_port, PortCheckResult};
 use crate::models::{
@@ -24,8 +25,7 @@ const ALLOWED_EXTERNAL_URLS: [&str; 2] = [
 /// 获取应用数据目录路径
 #[tauri::command]
 pub async fn get_app_data_dir(app: AppHandle) -> Result<String, String> {
-    app.path()
-        .app_data_dir()
+    app_data::resolve_app_data_dir(&app)
         .map(|p| p.to_string_lossy().to_string())
         .map_err(|e| e.to_string())
 }
@@ -45,7 +45,7 @@ pub async fn copy_image_to_clipboard(app: AppHandle, image_path: String) -> Resu
     use std::borrow::Cow;
 
     let safe_path = validate_relative_image_path(&image_path)?;
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_data_dir = app_data::resolve_app_data_dir(&app).map_err(|e| e.to_string())?;
     let absolute_path = app_data_dir.join(path_from_forward_slashes(&safe_path));
 
     if !absolute_path.exists() {
@@ -249,7 +249,7 @@ pub async fn run_custom_cleanup(
 #[tauri::command]
 pub async fn pin_image(app: AppHandle, image_path: String) -> Result<(), String> {
     let safe_path = validate_relative_image_path(&image_path)?;
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_data_dir = app_data::resolve_app_data_dir(&app).map_err(|e| e.to_string())?;
     let absolute_path = app_data_dir.join(path_from_forward_slashes(&safe_path));
 
     if !absolute_path.exists() {
@@ -658,16 +658,21 @@ pub fn restore_main_window(app: &AppHandle) -> Result<(), String> {
 }
 
 fn cleanup_item_files(app: &AppHandle, item: &ClipboardItem) -> Result<(), String> {
+    let app_data_dir = app_data::resolve_app_data_dir(app).map_err(|e| e.to_string())?;
+    cleanup_item_files_in_dir(&app_data_dir, item)
+}
+
+fn cleanup_item_files_in_dir(app_data_dir: &Path, item: &ClipboardItem) -> Result<(), String> {
     if !matches!(item.type_, ClipboardType::Image) {
         return Ok(());
     }
 
     if let Some(path) = &item.image_path {
-        remove_app_data_file(app, path)?;
+        remove_app_data_file_in_dir(app_data_dir, path)?;
     }
 
     if let Some(path) = &item.thumbnail_path {
-        remove_app_data_file(app, path)?;
+        remove_app_data_file_in_dir(app_data_dir, path)?;
     }
 
     Ok(())
@@ -700,9 +705,8 @@ fn cleanup_item_files_best_effort(app: &AppHandle, item: &ClipboardItem) {
     }
 }
 
-fn remove_app_data_file(app: &AppHandle, relative_path: &str) -> Result<(), String> {
+fn remove_app_data_file_in_dir(app_data_dir: &Path, relative_path: &str) -> Result<(), String> {
     let safe_path = validate_relative_image_path(relative_path)?;
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let absolute_path = app_data_dir.join(path_from_forward_slashes(&safe_path));
 
     match fs::remove_file(&absolute_path) {
@@ -718,7 +722,7 @@ fn save_cropped_image(
     content_hash: &str,
     time_zone: &str,
 ) -> Result<(String, String), String> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_data_dir = app_data::resolve_app_data_dir(app).map_err(|e| e.to_string())?;
     let date_key = date_key_now(time_zone);
     let images_dir = app_data_dir.join("images").join(&date_key);
 
@@ -857,6 +861,34 @@ fn encode_query_value(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    fn temp_data_dir() -> PathBuf {
+        std::env::temp_dir().join(format!("clipmaster-commands-{}", nanoid::nanoid!()))
+    }
+
+    fn clipboard_item(
+        type_: ClipboardType,
+        image_path: Option<&str>,
+        thumbnail_path: Option<&str>,
+    ) -> ClipboardItem {
+        ClipboardItem {
+            id: "item_1".to_string(),
+            type_,
+            content: None,
+            image_path: image_path.map(str::to_string),
+            thumbnail_path: thumbnail_path.map(str::to_string),
+            preview: None,
+            timestamp: 1_780_000_000_000,
+            date_key: "2026-06-07".to_string(),
+            source_app: None,
+            is_favorite: false,
+            is_pinned: false,
+            annotation: None,
+            content_hash: "hash".to_string(),
+            session_id: "session_1".to_string(),
+        }
+    }
 
     #[test]
     fn validates_image_paths_inside_daily_images_directory() {
@@ -930,5 +962,67 @@ mod tests {
     fn keeps_tiny_pin_window_usable_without_extra_content_area() {
         assert_eq!(fit_pin_window_size(48, 48), (100.0, 100.0));
         assert_eq!(fit_pin_window_size(320, 60), (320.0, 100.0));
+    }
+
+    #[test]
+    fn cleanup_item_files_removes_image_and_thumbnail_files() {
+        let data_dir = temp_data_dir();
+        let image_dir = data_dir.join("images").join("2026-06-07");
+        fs::create_dir_all(&image_dir).unwrap();
+        fs::write(image_dir.join("capture.png"), "image").unwrap();
+        fs::write(image_dir.join("capture_thumb.png"), "thumbnail").unwrap();
+        fs::write(image_dir.join("kept.png"), "kept").unwrap();
+
+        let item = clipboard_item(
+            ClipboardType::Image,
+            Some("images/2026-06-07/capture.png"),
+            Some("images/2026-06-07/capture_thumb.png"),
+        );
+
+        cleanup_item_files_in_dir(&data_dir, &item).unwrap();
+
+        assert!(!image_dir.join("capture.png").exists());
+        assert!(!image_dir.join("capture_thumb.png").exists());
+        assert!(image_dir.join("kept.png").exists());
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn cleanup_item_files_ignores_non_image_records() {
+        let data_dir = temp_data_dir();
+        let image_dir = data_dir.join("images").join("2026-06-07");
+        fs::create_dir_all(&image_dir).unwrap();
+        fs::write(image_dir.join("capture.png"), "image").unwrap();
+
+        let item = clipboard_item(
+            ClipboardType::Text,
+            Some("images/2026-06-07/capture.png"),
+            None,
+        );
+
+        cleanup_item_files_in_dir(&data_dir, &item).unwrap();
+
+        assert!(image_dir.join("capture.png").exists());
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn cleanup_item_files_rejects_paths_outside_images_directory() {
+        let data_dir = temp_data_dir();
+        fs::create_dir_all(&data_dir).unwrap();
+        fs::write(data_dir.join("settings.json"), "settings").unwrap();
+
+        let item = clipboard_item(ClipboardType::Image, Some("../settings.json"), None);
+        let error = cleanup_item_files_in_dir(&data_dir, &item).unwrap_err();
+
+        assert!(error.contains("图片路径"), "{error}");
+        assert_eq!(
+            fs::read_to_string(data_dir.join("settings.json")).unwrap(),
+            "settings"
+        );
+
+        let _ = fs::remove_dir_all(data_dir);
     }
 }

@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod app_data;
 mod clipboard;
 mod commands;
 mod database;
@@ -9,6 +10,7 @@ mod hotkey;
 mod models;
 mod session;
 mod settings;
+mod tray;
 
 use clipboard::ClipboardService;
 use database::Database;
@@ -21,14 +23,16 @@ fn main() {
     let mut context = tauri::generate_context!();
     dev_port::apply_project_dev_port_to_context(&mut context);
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // 获取应用数据目录
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .expect("Failed to get app data dir");
+            let app_data_dir =
+                app_data::resolve_app_data_dir(app.handle()).expect("Failed to get app data dir");
+
+            if let Err(error) = app_data::migrate_legacy_app_data_dir(&app_data_dir) {
+                eprintln!("Failed to migrate legacy app data directory: {}", error);
+            }
 
             // 初始化设置
             let settings_store =
@@ -64,8 +68,12 @@ fn main() {
                 eprintln!("注册全局快捷键失败: {}", e);
             }
 
-            if !show_main_window_on_start {
-                if let Some(window) = app.get_webview_window("main") {
+            tray::setup_tray(app).expect("Failed to setup tray");
+
+            if let Some(window) = app.get_webview_window("main") {
+                tray::register_main_window_close_handler(&window);
+
+                if !show_main_window_on_start {
                     window.hide().expect("Failed to hide main window");
                 }
             }
@@ -73,35 +81,6 @@ fn main() {
             println!("ClipMaster started successfully!");
 
             Ok(())
-        })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                if window.label() == "screenshot-selector" {
-                    let app_handle = window.app_handle();
-                    if let Err(error) = commands::restore_main_window(app_handle) {
-                        eprintln!("Failed to restore main window after screenshot: {}", error);
-                    }
-                    return;
-                }
-
-                if window.label() != "main" {
-                    return;
-                }
-
-                // 主窗口关闭时结束会话
-                let app_handle = window.app_handle();
-                let session_mgr = app_handle.state::<SessionManager>();
-                let db = app_handle.state::<Database>();
-
-                if let Some(session_id) = session_mgr.get_current_session_id() {
-                    if let Err(e) = db.end_session(&session_id) {
-                        eprintln!("Failed to end session: {}", e);
-                    } else {
-                        session_mgr.end_current_session();
-                        println!("Session ended: {}", session_id);
-                    }
-                }
-            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_clipboard_items,
@@ -131,6 +110,28 @@ fn main() {
             commands::capture_region_screenshot,
             commands::pin_image,
         ])
-        .run(context)
-        .expect("error while running tauri application");
+        .build(context)
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::WindowEvent { label, event, .. } = event {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if label == "screenshot-selector" {
+                    if let Err(error) = commands::restore_main_window(app_handle) {
+                        eprintln!("Failed to restore main window after screenshot: {}", error);
+                    }
+                    return;
+                }
+
+                if label != "main" {
+                    return;
+                }
+
+                api.prevent_close();
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    tray::hide_main_webview_window_to_tray(&window);
+                }
+            }
+        }
+    });
 }

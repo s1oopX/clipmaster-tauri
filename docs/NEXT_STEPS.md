@@ -4,34 +4,26 @@
 
 ## 立即处理
 
-- 修正 Tauri identifier：建议从 `com.clipmaster.app` 改为 `com.clipmaster.desktop` 或 `com.clipmaster.clipmaster`。
-- 运行打包版 `src-tauri/target/release/clipmaster.exe` 做冒烟测试。
-- 验证 `%APPDATA%/com.clipmaster.app/clipboard.db` 和图片目录是否按预期生成。
-- 确认删除记录时是否需要同时删除对应图片文件。
-- 决定窗口关闭语义：退出应用，还是隐藏到托盘。
+- 当前没有阻塞发布包构建的已知 P0。若准备发版，按 `docs/WORKFLOW.md` 做一次人工窗口走查。
 
 ## 下一轮功能
 
-- 图片复制回剪贴板。
 - 会话筛选 UI。
 - 虚拟滚动和分页加载。
 - 前端组件拆分和 store 化。
-- 系统托盘。
-- 全局快捷键。
+- 除截图外的全局快捷键：显示窗口、聚焦搜索、删除选中项。
 
 ## 技术债
 
-- `App.svelte` 已经承担太多 UI 和状态逻辑，需要拆分。
+- `App.svelte` 已完成第一轮瘦身，但仍承担列表、设置面板和数据流，需要继续拆 `SettingsPanel`、`ClipboardList`、`ClipboardItem` 和 store。
 - API 文档和实际命令需要随新增 command 同步维护。
-- 数据库没有迁移版本表，后续 schema 变更风险较高。
+- 后续 schema 变更需要持续登记到 `schema_migrations`。
 - 当前搜索是 `LIKE`，后续可升级 SQLite FTS5。
-- 图片保存为 PNG，体积可能偏大，后续可考虑缩略图和 WebP。
+- 图片保存为 PNG，已经有缩略图；后续可考虑 WebP 和孤儿文件扫描。
 
 ## 建议顺序
 
-1. 修 identifier 和冒烟测试。
-2. 清理图片文件生命周期。
-3. 拆前端组件。
-4. 做会话侧边栏。
-5. 做托盘和关闭行为。
-6. 做快捷键和设置面板。
+1. 继续拆前端组件：先 `SettingsPanel`，再列表和记录项。
+2. 做会话侧边栏和虚拟滚动。
+3. 做窗口/搜索相关全局快捷键。
+4. 发版前人工窗口走查。

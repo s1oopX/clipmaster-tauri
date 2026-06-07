@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const appSource = readFileSync('src/App.svelte', 'utf8');
+const appStyles = readFileSync('src/app.css', 'utf8');
 
 function cssBlock(selector) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = appSource.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`));
+  const match = appStyles.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`));
   return match?.[1] || '';
 }
 

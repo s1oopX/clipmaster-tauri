@@ -22,7 +22,7 @@ async function getAppDataDir() {
 
 /**
  * 将相对路径转换为可访问的文件 URL
- * @param {string} relativePath - 相对路径，如 "images/2026-06/xxx.png"
+ * @param {string} relativePath - 相对路径，如 "images/2026-06-07/xxx.png"
  * @returns {Promise<string>} 可访问的文件 URL
  */
 export async function convertImagePath(relativePath) {

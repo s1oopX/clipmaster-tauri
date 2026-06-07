@@ -12,11 +12,14 @@ interface ClipboardItem {
   type: ClipboardType;
   content: string | null;
   image_path: string | null;
+  thumbnail_path: string | null;
   preview: string | null;
   timestamp: number;
+  date_key: string;
   source_app: string | null;
   is_favorite: boolean;
   is_pinned: boolean;
+  annotation: string | null;
   content_hash: string;
   session_id: string;
 }
@@ -27,6 +30,42 @@ interface Session {
   end_time: number | null;
   item_count: number;
   is_active: boolean;
+}
+
+interface ClipboardDay {
+  date_key: string;
+  item_count: number;
+  start_time: number;
+  end_time: number;
+}
+
+interface CleanupPlan {
+  item_count: number;
+  text_count: number;
+  image_count: number;
+  oldest_timestamp: number | null;
+  newest_timestamp: number | null;
+}
+
+interface AppSettings {
+  clipboard_monitor_enabled: boolean;
+  show_main_window_on_start: boolean;
+  max_items: number;
+  capture_delay_ms: number;
+  screenshot_hotkey: string;
+  time_zone: string;
+  language: string;
+  auto_cleanup_enabled: boolean;
+  cleanup_max_items: number;
+  cleanup_keep_days: number;
+  dev_server_port: number;
+}
+
+interface PortCheckResult {
+  port: number;
+  available: boolean;
+  suggested_port: number | null;
+  message: string;
 }
 ```
 
@@ -43,6 +82,28 @@ invoke('get_clipboard_items', {
 }) => Promise<ClipboardItem[]>
 ```
 
+### `get_items_by_day`
+
+按日期获取剪贴板记录。
+
+```typescript
+invoke('get_items_by_day', {
+  dateKey: string,
+  limit?: number,
+  offset?: number
+}) => Promise<ClipboardItem[]>
+```
+
+### `get_available_days`
+
+获取有记录的日期列表。
+
+```typescript
+invoke('get_available_days', {
+  limit?: number
+}) => Promise<ClipboardDay[]>
+```
+
 ### `delete_item`
 
 删除单条记录。
@@ -52,6 +113,8 @@ invoke('delete_item', {
   itemId: string
 }) => Promise<void>
 ```
+
+图片记录删除后会 best-effort 删除对应原图和缩略图。
 
 ### `toggle_favorite`
 
@@ -83,7 +146,37 @@ invoke('copy_to_clipboard', {
 }) => Promise<void>
 ```
 
-当前只支持文本。图片复制是后续任务。
+### `copy_image_to_clipboard`
+
+把应用数据目录下的图片写回系统剪贴板。
+
+```typescript
+invoke('copy_image_to_clipboard', {
+  imagePath: string
+}) => Promise<void>
+```
+
+### `update_item_content`
+
+更新文本记录内容。
+
+```typescript
+invoke('update_item_content', {
+  itemId: string,
+  newContent: string
+}) => Promise<ClipboardItem>
+```
+
+### `update_item_annotation`
+
+更新记录标注，不改写原始剪贴板内容；非空标注会自动收藏记录。
+
+```typescript
+invoke('update_item_annotation', {
+  itemId: string,
+  annotation: string | null
+}) => Promise<string | null>
+```
 
 ## 会话接口
 
@@ -127,6 +220,8 @@ invoke('clear_session', {
 }) => Promise<void>
 ```
 
+清空会话时也会 best-effort 删除会话内图片记录对应的原图和缩略图。
+
 ## 搜索接口
 
 ### `search_items`
@@ -137,7 +232,8 @@ invoke('clear_session', {
 invoke('search_items', {
   query: string,
   sessionId?: string | null,
-  limit?: number
+  limit?: number,
+  dateKey?: string | null
 }) => Promise<ClipboardItem[]>
 ```
 
@@ -149,6 +245,109 @@ invoke('search_items', {
 
 ```typescript
 invoke('get_app_data_dir') => Promise<string>
+```
+
+## 工具接口
+
+### `start_region_screenshot`
+
+打开区域截图选择窗口。
+
+```typescript
+invoke('start_region_screenshot') => Promise<void>
+```
+
+### `capture_region_screenshot`
+
+根据截图窗口传入的区域捕获图片并写入历史记录。
+
+```typescript
+invoke('capture_region_screenshot', {
+  x: number,
+  y: number,
+  width: number,
+  height: number
+}) => Promise<ClipboardItem>
+```
+
+### `pin_image`
+
+将图片记录以置顶小窗打开。
+
+```typescript
+invoke('pin_image', {
+  imagePath: string
+}) => Promise<void>
+```
+
+### `open_external_url`
+
+在系统默认浏览器打开允许列表内的外部链接。
+
+```typescript
+invoke('open_external_url', {
+  url: string
+}) => Promise<void>
+```
+
+## 设置接口
+
+### `get_settings`
+
+获取应用设置。
+
+```typescript
+invoke('get_settings') => Promise<AppSettings>
+```
+
+### `save_settings`
+
+保存应用设置。保存时会校验截图快捷键、开发端口，并在时区变化时重建 `date_key`。
+
+```typescript
+invoke('save_settings', {
+  settings: AppSettings
+}) => Promise<AppSettings>
+```
+
+### `check_dev_server_port`
+
+检查开发端口是否可用，并在占用时返回建议端口。
+
+```typescript
+invoke('check_dev_server_port', {
+  port: number
+}) => Promise<PortCheckResult>
+```
+
+### `restart_app`
+
+请求重启应用。
+
+```typescript
+invoke('restart_app') => Promise<void>
+```
+
+### `preview_custom_cleanup`
+
+预览自定义清理候选记录。置顶和收藏记录会保留。
+
+```typescript
+invoke('preview_custom_cleanup', {
+  maxItems: number,
+  keepDays: number
+}) => Promise<CleanupPlan>
+```
+
+### `run_custom_cleanup`
+
+执行自定义清理，并 best-effort 删除图片文件。
+
+```typescript
+invoke('run_custom_cleanup', {
+  maxItems: number,
+  keepDays: number
+}) => Promise<CleanupPlan>
 ```
 
 ## 事件
@@ -170,6 +369,8 @@ listen<ClipboardItem>('clipboard:new-item', (event) => {
 - `clipboardApi`
 - `sessionApi`
 - `searchApi`
+- `toolApi`
+- `settingsApi`
 - `convertImagePath`
 
 新增 command 时，需要同步更新 Rust `generate_handler!`、前端封装和本文档。

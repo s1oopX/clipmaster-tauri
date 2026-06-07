@@ -43,6 +43,7 @@ impl Database {
         // 创建表结构
         db.create_tables()?;
         db.run_migrations(&data_dir)?;
+        db.create_indexes()?;
 
         Ok(db)
     }
@@ -85,20 +86,20 @@ impl Database {
             [],
         )?;
 
-        // 迁移：添加 thumbnail_path 字段（如果不存在）
         conn.execute(
-            "ALTER TABLE clipboard_items ADD COLUMN thumbnail_path TEXT",
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at INTEGER NOT NULL
+            )",
             [],
-        )
-        .ok(); // 忽略错误，因为字段可能已存在
+        )?;
 
-        // 迁移：添加 date_key 字段（如果不存在）
-        conn.execute("ALTER TABLE clipboard_items ADD COLUMN date_key TEXT", [])
-            .ok(); // 忽略错误，因为字段可能已存在
+        Ok(())
+    }
 
-        // 迁移：添加 annotation 字段（如果不存在），用于保存不改变原内容的用户标注
-        conn.execute("ALTER TABLE clipboard_items ADD COLUMN annotation TEXT", [])
-            .ok(); // 忽略错误，因为字段可能已存在
+    fn create_indexes(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
 
         // 创建索引（使用 execute_batch 避免返回结果）
         conn.execute_batch(
@@ -116,68 +117,143 @@ impl Database {
     }
 
     fn run_migrations(&self, data_dir: &Path) -> Result<()> {
-        self.backfill_date_keys()?;
-        self.migrate_image_paths_to_daily(data_dir)?;
+        self.run_migration(1, "add_thumbnail_path", |conn| {
+            add_column_if_missing(
+                conn,
+                "clipboard_items",
+                "thumbnail_path",
+                "thumbnail_path TEXT",
+            )
+        })?;
+        self.run_migration(2, "add_date_key", |conn| {
+            add_column_if_missing(conn, "clipboard_items", "date_key", "date_key TEXT")
+        })?;
+        self.run_migration(3, "add_annotation", |conn| {
+            add_column_if_missing(conn, "clipboard_items", "annotation", "annotation TEXT")
+        })?;
+        self.run_migration(4, "backfill_date_keys", backfill_date_keys)?;
+        self.run_migration(5, "migrate_image_paths_to_daily", |conn| {
+            migrate_image_paths_to_daily(conn, data_dir)
+        })?;
         Ok(())
     }
 
-    fn backfill_date_keys(&self) -> Result<()> {
+    fn run_migration<F>(&self, version: i32, name: &str, migration: F) -> Result<()>
+    where
+        F: FnOnce(&Connection) -> Result<()>,
+    {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, timestamp FROM clipboard_items WHERE date_key IS NULL OR date_key = ''",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })?;
-        let items = rows.collect::<Result<Vec<_>, _>>()?;
-        drop(stmt);
 
-        for (id, timestamp) in items {
-            let date_key = date_key_from_timestamp(timestamp, DEFAULT_TIME_ZONE);
-            conn.execute(
-                "UPDATE clipboard_items SET date_key = ?1 WHERE id = ?2",
-                params![date_key, id],
-            )?;
+        if migration_applied(&conn, version)? {
+            return Ok(());
         }
 
+        migration(&conn)?;
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_migrations (version, name, applied_at)
+             VALUES (?1, ?2, ?3)",
+            params![version, name, Utc::now().timestamp_millis()],
+        )?;
+
         Ok(())
     }
+}
 
-    fn migrate_image_paths_to_daily(&self, data_dir: &Path) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, image_path, thumbnail_path, date_key
+fn backfill_date_keys(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT id, timestamp FROM clipboard_items WHERE date_key IS NULL OR date_key = ''",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    let items = rows.collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    for (id, timestamp) in items {
+        let date_key = date_key_from_timestamp(timestamp, DEFAULT_TIME_ZONE);
+        conn.execute(
+            "UPDATE clipboard_items SET date_key = ?1 WHERE id = ?2",
+            params![date_key, id],
+        )?;
+    }
+
+    Ok(())
+}
+
+fn migrate_image_paths_to_daily(conn: &Connection, data_dir: &Path) -> Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT id, image_path, thumbnail_path, date_key
              FROM clipboard_items
              WHERE type = 'image'",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, String>(3)?,
-            ))
-        })?;
-        let items = rows.collect::<Result<Vec<_>, _>>()?;
-        drop(stmt);
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
+    let items = rows.collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
 
-        for (id, image_path, thumbnail_path, date_key) in items {
-            let next_image_path =
-                migrate_month_image_path(data_dir, image_path.as_deref(), &date_key)?;
-            let next_thumbnail_path =
-                migrate_month_image_path(data_dir, thumbnail_path.as_deref(), &date_key)?;
+    for (id, image_path, thumbnail_path, date_key) in items {
+        let next_image_path = migrate_month_image_path(data_dir, image_path.as_deref(), &date_key)?;
+        let next_thumbnail_path =
+            migrate_month_image_path(data_dir, thumbnail_path.as_deref(), &date_key)?;
 
-            if next_image_path != image_path || next_thumbnail_path != thumbnail_path {
-                conn.execute(
-                    "UPDATE clipboard_items SET image_path = ?1, thumbnail_path = ?2 WHERE id = ?3",
-                    params![next_image_path, next_thumbnail_path, id],
-                )?;
-            }
+        if next_image_path != image_path || next_thumbnail_path != thumbnail_path {
+            conn.execute(
+                "UPDATE clipboard_items SET image_path = ?1, thumbnail_path = ?2 WHERE id = ?3",
+                params![next_image_path, next_thumbnail_path, id],
+            )?;
         }
-
-        Ok(())
     }
 
+    Ok(())
+}
+
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    column_definition: &str,
+) -> Result<()> {
+    if column_exists(conn, table, column)? {
+        return Ok(());
+    }
+
+    conn.execute(
+        &format!("ALTER TABLE {table} ADD COLUMN {column_definition}"),
+        [],
+    )?;
+
+    Ok(())
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+
+    for row in rows {
+        if row? == column {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+fn migration_applied(conn: &Connection, version: i32) -> Result<bool> {
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = ?1",
+        params![version],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+impl Database {
     pub fn rebuild_date_keys(&self, time_zone: &str) -> Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
@@ -948,7 +1024,7 @@ fn refresh_duplicate_for_date(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::params;
+    use rusqlite::{params, Connection};
     use std::{fs, path::PathBuf, time::Duration};
 
     fn temp_database() -> (Database, PathBuf) {
@@ -957,6 +1033,64 @@ mod tests {
         let db = Database::new(data_dir.clone()).unwrap();
         db.create_session("session_1").unwrap();
         (db, data_dir)
+    }
+
+    fn migration_versions(db: &Database) -> Vec<i32> {
+        let conn = db.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT version FROM schema_migrations ORDER BY version")
+            .unwrap();
+        stmt.query_map([], |row| row.get::<_, i32>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    }
+
+    fn create_legacy_database(data_dir: &Path, timestamp: i64) {
+        fs::create_dir_all(data_dir).unwrap();
+        let conn = Connection::open(data_dir.join("clipboard.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                start_time INTEGER NOT NULL,
+                end_time INTEGER,
+                item_count INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1
+            );
+            CREATE TABLE clipboard_items (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL,
+                content TEXT,
+                image_path TEXT,
+                preview TEXT,
+                timestamp INTEGER NOT NULL,
+                source_app TEXT,
+                is_favorite INTEGER DEFAULT 0,
+                is_pinned INTEGER DEFAULT 0,
+                content_hash TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(id)
+            );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sessions (id, start_time, item_count, is_active)
+             VALUES ('session_1', ?1, 1, 1)",
+            params![timestamp],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO clipboard_items (
+                id, type, content, image_path, preview, timestamp, source_app,
+                is_favorite, is_pinned, content_hash, session_id
+             )
+             VALUES (
+                'legacy_image', 'image', NULL, 'images/2026-06/capture.png', '图片',
+                ?1, NULL, 0, 0, 'legacy_hash', 'session_1'
+             )",
+            params![timestamp],
+        )
+        .unwrap();
     }
 
     fn text_item(content_hash: &str) -> CreateClipboardItem {
@@ -1003,6 +1137,57 @@ mod tests {
             date_key_from_timestamp(timestamp, "America/New_York"),
             "2026-06-05"
         );
+    }
+
+    #[test]
+    fn records_schema_migrations_for_new_database() {
+        let (db, data_dir) = temp_database();
+
+        assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5]);
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn migrates_legacy_database_schema_and_image_paths() {
+        let data_dir =
+            std::env::temp_dir().join(format!("clipmaster-database-{}", nanoid::nanoid!()));
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 6, 5, 16, 30, 0)
+            .single()
+            .unwrap()
+            .timestamp_millis();
+        create_legacy_database(&data_dir, timestamp);
+
+        let old_image_dir = data_dir.join("images").join("2026-06");
+        fs::create_dir_all(&old_image_dir).unwrap();
+        fs::write(old_image_dir.join("capture.png"), "legacy-image").unwrap();
+
+        let db = Database::new(data_dir.clone()).unwrap();
+
+        {
+            let conn = db.conn.lock().unwrap();
+            assert!(column_exists(&conn, "clipboard_items", "thumbnail_path").unwrap());
+            assert!(column_exists(&conn, "clipboard_items", "date_key").unwrap());
+            assert!(column_exists(&conn, "clipboard_items", "annotation").unwrap());
+        }
+        assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5]);
+
+        let item = db.get_item("legacy_image").unwrap().unwrap();
+        assert_eq!(item.date_key, "2026-06-06");
+        assert_eq!(
+            item.image_path.as_deref(),
+            Some("images/2026-06-06/capture.png")
+        );
+        assert_eq!(item.thumbnail_path, None);
+        assert_eq!(item.annotation, None);
+        assert!(data_dir
+            .join("images")
+            .join("2026-06-06")
+            .join("capture.png")
+            .exists());
+
+        let _ = fs::remove_dir_all(data_dir);
     }
 
     #[test]

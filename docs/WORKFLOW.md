@@ -64,6 +64,23 @@ npm run tauri:build
 
 ## 手动冒烟测试
 
+为了避免污染真实历史记录，打包版冒烟可以用临时应用数据目录：
+
+```powershell
+$env:CLIPMASTER_APP_DATA_DIR = "$env:TEMP\clipmaster-smoke-data"
+src-tauri\target\release\clipmaster.exe
+```
+
+`CLIPMASTER_APP_DATA_DIR` 会覆盖数据库、设置和图片目录。不要只依赖临时修改 `APPDATA`，Tauri/Windows Known Folder 不一定会使用该环境变量。
+
+如果要验证打包版图片预览，隔离目录应放在真实 app data 目录下的子目录中，确保路径仍位于 Tauri asset scope 内：
+
+```powershell
+$smokeRoot = Join-Path $env:APPDATA "com.clipmaster.desktop\Smoke-$([guid]::NewGuid().ToString('N'))"
+$env:CLIPMASTER_APP_DATA_DIR = $smokeRoot
+src-tauri\target\release\clipmaster.exe
+```
+
 - 启动应用。
 - 复制一段普通文本，确认列表新增记录。
 - 再复制同一段文本，确认不会短时间重复刷屏。
@@ -72,7 +89,10 @@ npm run tauri:build
 - 切换置顶和收藏，确认 UI 状态和排序正确。
 - 删除记录，确认列表更新。
 - 点击复制按钮，确认文本写回剪贴板。
+- 关闭主窗口，确认应用仍在托盘运行；从托盘菜单显示窗口。
 - 重启应用，确认历史记录仍在。
+
+验证完成后关闭应用，清理临时目录，并恢复当前终端里的 `CLIPMASTER_APP_DATA_DIR`。
 
 ## 提交前检查
 
@@ -82,7 +102,7 @@ npm run tauri:build
   - Rust `generate_handler!`
   - `src/lib/api.js`
   - `docs/API.md`
-- 数据库表结构变化已考虑迁移。
+- 数据库表结构变化已追加 `schema_migrations` 版本和旧库升级测试。
 
 ## 推荐提交粒度
 

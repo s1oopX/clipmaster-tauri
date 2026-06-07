@@ -7,6 +7,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::time::sleep;
 
+use crate::app_data;
 use crate::database::{date_key_now, Database};
 use crate::models::{ClipboardType, CreateClipboardItem};
 use crate::session::SessionManager;
@@ -218,10 +219,7 @@ impl ClipboardService {
         time_zone: &str,
     ) -> Result<(String, String)> {
         // 获取应用数据目录
-        let app_data_dir = app_handle
-            .path()
-            .app_data_dir()
-            .map_err(|e| anyhow::anyhow!("Failed to get app data dir: {}", e))?;
+        let app_data_dir = app_data::resolve_app_data_dir(app_handle)?;
 
         // 创建按日期分组的图片目录
         let date_key = date_key_now(time_zone);

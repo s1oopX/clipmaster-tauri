@@ -3,10 +3,12 @@
 ClipMaster 使用 SQLite，数据库文件位于 Tauri 应用数据目录：
 
 ```text
-%APPDATA%/com.clipmaster.app/clipboard.db
+%APPDATA%/com.clipmaster.desktop/clipboard.db
 ```
 
-当前没有迁移版本表。后续改表结构前，应先补迁移机制。
+旧版数据目录 `%APPDATA%/com.clipmaster.app/` 会在启动时尽量迁移到新目录；如果新目录已有数据，则只移动没有冲突的旧文件，不覆盖新数据。
+
+数据库使用 `schema_migrations` 记录已执行的 schema 和数据迁移。后续改表结构时，需要追加新版本并补测试。
 
 ## `sessions`
 
@@ -39,11 +41,14 @@ CREATE TABLE IF NOT EXISTS clipboard_items (
   type TEXT NOT NULL,
   content TEXT,
   image_path TEXT,
+  thumbnail_path TEXT,
   preview TEXT,
   timestamp INTEGER NOT NULL,
+  date_key TEXT NOT NULL,
   source_app TEXT,
   is_favorite INTEGER DEFAULT 0,
   is_pinned INTEGER DEFAULT 0,
+  annotation TEXT,
   content_hash TEXT NOT NULL,
   session_id TEXT NOT NULL,
   FOREIGN KEY (session_id) REFERENCES sessions(id)
@@ -67,6 +72,31 @@ CREATE INDEX IF NOT EXISTS idx_pinned_fav
 
 CREATE INDEX IF NOT EXISTS idx_content_hash
   ON clipboard_items(content_hash, timestamp DESC);
+
+CREATE INDEX IF NOT EXISTS idx_date_key_time
+  ON clipboard_items(date_key, is_pinned DESC, timestamp DESC);
+```
+
+## `schema_migrations`
+
+记录已经执行过的迁移版本。
+
+```sql
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  applied_at INTEGER NOT NULL
+);
+```
+
+当前迁移：
+
+```text
+1 add_thumbnail_path
+2 add_date_key
+3 add_annotation
+4 backfill_date_keys
+5 migrate_image_paths_to_daily
 ```
 
 ## 图片存储
@@ -74,20 +104,24 @@ CREATE INDEX IF NOT EXISTS idx_content_hash
 图片保存为 PNG 文件，只在数据库中保存相对路径。
 
 ```text
-%APPDATA%/com.clipmaster.app/
+%APPDATA%/com.clipmaster.desktop/
   clipboard.db
+  settings.json
   images/
-    2026-06/
+    2026-06-07/
       <hash8>_<timestamp>.png
+      <hash8>_<timestamp>_thumb.png
 ```
 
 示例：
 
 ```text
-images/2026-06/4f8a91c0_1780650000.png
+images/2026-06-07/4f8a91c0_1780650000.png
 ```
 
 前端通过 `get_app_data_dir` 获取数据目录，再用 Tauri `convertFileSrc` 转为可显示 URL。
+
+删除单条图片记录、清空会话和自定义清理会 best-effort 删除对应原图和缩略图。置顶和收藏记录不会被自定义清理选为候选。
 
 ## 去重策略
 
@@ -103,14 +137,13 @@ WHERE content_hash = ?1 AND timestamp > ?2;
 
 ## 当前限制
 
-- 没有迁移表。
-- 删除图片记录时还没有同步删除图片文件。
 - 搜索使用 `LIKE`，大量文本时需要升级 FTS5。
-- 没有自动清理策略。
+- 没有周期后台清理任务；当前清理由设置保存或手动按钮触发。
+- 没有孤儿图片扫描。
 
 ## 后续建议
 
-- 增加 `schema_migrations` 表。
-- 增加清理任务：按最大条数和最大保留天数清理普通记录。
+- 后续 schema 变更继续追加 `schema_migrations` 版本和旧库升级测试。
+- 增加周期清理任务：按最大条数和最大保留天数清理普通记录。
 - 增加孤儿图片扫描和删除。
 - 评估图片缩略图和 WebP 压缩。

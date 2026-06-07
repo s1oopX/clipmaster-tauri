@@ -252,6 +252,35 @@ describe('App UI', () => {
     expect(unlistenNewItem).toHaveBeenCalledTimes(1);
   });
 
+  it('loads persisted history again when the app shell is mounted after a restart', async () => {
+    api.getItems
+      .mockResolvedValueOnce([
+        textItem({
+          id: 'before_restart',
+          content: 'Before restart token',
+          preview: 'Before restart token',
+        }),
+      ])
+      .mockResolvedValueOnce([
+        textItem({
+          id: 'after_restart',
+          content: 'Persisted after restart',
+          preview: 'Persisted after restart',
+        }),
+      ]);
+
+    const firstRun = render(App);
+
+    expect(await screen.findByText('Before restart token')).toBeInTheDocument();
+    firstRun.unmount();
+
+    render(App);
+
+    expect(await screen.findByText('Persisted after restart')).toBeInTheDocument();
+    expect(screen.queryByText('Before restart token')).not.toBeInTheDocument();
+    expect(api.getItems).toHaveBeenCalledTimes(2);
+  });
+
   it('shows clipboard items with accessible action buttons and image previews', async () => {
     api.getItems.mockResolvedValue([textItem(), imageItem()]);
 
@@ -429,6 +458,49 @@ describe('App UI', () => {
       expect(api.togglePinned).toHaveBeenCalledTimes(2);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
+  });
+
+  it('updates favorite and pinned UI state after successful actions', async () => {
+    api.getItems.mockResolvedValue([
+      textItem({
+        id: 'newer_text',
+        content: 'Newer token',
+        preview: 'Newer token',
+        timestamp: 2000,
+      }),
+      textItem({
+        id: 'older_text',
+        content: 'Older token',
+        preview: 'Older token',
+        timestamp: 1000,
+      }),
+    ]);
+    api.toggleFavorite.mockResolvedValueOnce(true);
+    api.togglePinned.mockResolvedValueOnce(true);
+
+    render(App);
+
+    expect(await screen.findByText('Newer token')).toBeInTheDocument();
+    expect(screen.getByText('Older token')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '收藏 Newer token' }));
+    await waitFor(() => {
+      expect(api.toggleFavorite).toHaveBeenCalledWith('newer_text');
+      expect(screen.getByRole('button', { name: '收藏 Newer token' })).toHaveClass('active');
+    });
+    expect(screen.getByText('Newer token').closest('.item')).toHaveTextContent('收藏');
+
+    await fireEvent.click(screen.getByRole('button', { name: '置顶 Older token' }));
+    await waitFor(() => {
+      expect(api.togglePinned).toHaveBeenCalledWith('older_text');
+      expect(screen.getByRole('button', { name: '置顶 Older token' })).toHaveClass('active');
+    });
+
+    const renderedItems = Array.from(document.querySelectorAll('.item'));
+    expect(renderedItems).toHaveLength(2);
+    expect(renderedItems[0]).toHaveTextContent('Older token');
+    expect(renderedItems[0]).toHaveTextContent('置顶');
+    expect(renderedItems[1]).toHaveTextContent('Newer token');
   });
 
   it('searches within the active day and can clear the query', async () => {
