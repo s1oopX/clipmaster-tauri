@@ -28,10 +28,10 @@ Installers are available from [GitHub Releases](https://github.com/s1oopX/clipma
 
 | File | Purpose |
 | --- | --- |
-| [`ClipMaster_0.1.0_x64-setup.exe`](https://github.com/s1oopX/clipmaster-tauri/releases/download/v0.1.0/ClipMaster_0.1.0_x64-setup.exe) | Recommended installer for most Windows users |
-| [`ClipMaster_0.1.0_x64_en-US.msi`](https://github.com/s1oopX/clipmaster-tauri/releases/download/v0.1.0/ClipMaster_0.1.0_x64_en-US.msi) | MSI installer for traditional deployment flows |
+| [`ClipMaster_0.1.1_x64-setup.exe`](https://github.com/s1oopX/clipmaster-tauri/releases/download/v0.1.1/ClipMaster_0.1.1_x64-setup.exe) | Recommended installer for most Windows users |
+| [`ClipMaster_0.1.1_x64_en-US.msi`](https://github.com/s1oopX/clipmaster-tauri/releases/download/v0.1.1/ClipMaster_0.1.1_x64_en-US.msi) | MSI installer for traditional deployment flows |
 
-The current build is not code-signed yet, so Windows SmartScreen may show a warning. Download installers from this repository's Release page and verify the source before installing.
+The current build is not code-signed yet, so Windows SmartScreen may show a warning. Download installers from this repository's Release page and verify files with the `SHA256SUMS.txt` file attached to the Release.
 
 ## Features
 
@@ -57,7 +57,7 @@ ClipMaster keeps the local machine as the default data boundary:
 
 ## Project Status
 
-ClipMaster 0.1.0 is an early usable release. It covers the core clipboard, image, screenshot, tray, migration, and packaging workflows. It is suitable for personal daily testing and as a reference project for Tauri 2 + Rust + Svelte desktop application architecture.
+ClipMaster 0.1.1 is an early usable release. It covers the core clipboard, image, screenshot, tray, migration, and packaging workflows. It is suitable for personal daily testing and as a reference project for Tauri 2 + Rust + Svelte desktop application architecture.
 
 The next priorities are session navigation, virtual scrolling, more global shortcuts, and further frontend state separation. See the [Roadmap](./docs/ROADMAP.md) and [Next Steps](./docs/NEXT_STEPS.md).
 
@@ -140,6 +140,8 @@ docs/                Architecture, API, database, workflow, and troubleshooting 
 - [API](./docs/API.md)
 - [Database](./docs/DATABASE.md)
 - [Workflow](./docs/WORKFLOW.md)
+- [Privacy and Data](./docs/PRIVACY.md)
+- [FAQ](./docs/FAQ.md)
 - [Troubleshooting](./docs/TROUBLESHOOTING.md)
 - [Changelog](./CHANGELOG.md)
 

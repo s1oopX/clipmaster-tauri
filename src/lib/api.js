@@ -240,6 +240,13 @@ export const toolApi = {
  */
 export const settingsApi = {
   /**
+   * 获取应用数据目录
+   */
+  async getAppDataDir() {
+    return await getAppDataDir();
+  },
+
+  /**
    * 获取应用设置
    */
   async getSettings() {

@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   startRegionScreenshot: vi.fn(),
   deleteItem: vi.fn(),
   checkDevServerPort: vi.fn(),
+  getAppDataDir: vi.fn(),
   getSettings: vi.fn(),
   getCurrentSession: vi.fn(),
   getItems: vi.fn(),
@@ -72,6 +73,7 @@ vi.mock('./lib/api.js', () => ({
   },
   settingsApi: {
     getSettings: api.getSettings,
+    getAppDataDir: api.getAppDataDir,
     saveSettings: api.saveSettings,
     checkDevServerPort: api.checkDevServerPort,
     restartApp: api.restartApp,
@@ -160,6 +162,7 @@ describe('App UI', () => {
     api.getAvailableDays.mockResolvedValue([{ date_key: '2026-06-06', item_count: 2, start_time: 1780650000000, end_time: 1780653600000 }]);
     api.getSessions.mockResolvedValue([]);
     api.getItemsBySession.mockResolvedValue([]);
+    api.getAppDataDir.mockResolvedValue('C:\\Users\\tester\\AppData\\Roaming\\com.clipmaster.desktop');
     api.getSettings.mockResolvedValue({
       clipboard_monitor_enabled: true,
       show_main_window_on_start: true,
@@ -226,11 +229,37 @@ describe('App UI', () => {
     expect(screen.getByRole('button', { name: '全部记录' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '收藏' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '图片' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '暂停' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '截图' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '钉住' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
     expect(screen.getByText('剪贴板历史')).toBeInTheDocument();
     expect(screen.getByText('复制内容后会自动出现在这里')).toBeInTheDocument();
+  });
+
+  it('pauses and resumes clipboard monitoring from the toolbar', async () => {
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+
+    await fireEvent.click(screen.getByRole('button', { name: '暂停' }));
+
+    await waitFor(() => {
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ clipboard_monitor_enabled: false })
+      );
+    });
+    expect(screen.getByRole('button', { name: '恢复' })).toBeInTheDocument();
+    expect(screen.getByText('已暂停剪贴板记录')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+
+    await waitFor(() => {
+      expect(api.saveSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ clipboard_monitor_enabled: true })
+      );
+    });
+    expect(screen.getByRole('button', { name: '暂停' })).toBeInTheDocument();
   });
 
   it('cleans up global event listeners when the app shell unmounts', async () => {
@@ -950,6 +979,7 @@ describe('App UI', () => {
 
     render(App);
 
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
     const search = await screen.findByRole('searchbox', { name: '搜索剪贴板内容' });
     await fireEvent.input(search, { target: { value: 'invoice' } });
 
@@ -970,7 +1000,7 @@ describe('App UI', () => {
   it('loads and saves app settings from the settings panel', async () => {
     render(App);
 
-    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
 
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
@@ -1023,6 +1053,9 @@ describe('App UI', () => {
       'https://github.com/s1oopX/clipmaster-tauri/issues'
     );
     expect(screen.getByText('本地保存')).toBeInTheDocument();
+    expect(
+      screen.getByText('C:\\Users\\tester\\AppData\\Roaming\\com.clipmaster.desktop')
+    ).toBeInTheDocument();
     expect(screen.getByText('纽约（自动夏令时）')).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
@@ -1058,7 +1091,7 @@ describe('App UI', () => {
 
     render(App);
 
-    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
     await fireEvent.click(screen.getByRole('tab', { name: '高级' }));
 
@@ -1141,7 +1174,7 @@ describe('App UI', () => {
 
     render(App);
 
-    await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
     await fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
 

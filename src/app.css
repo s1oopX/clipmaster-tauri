@@ -2857,6 +2857,18 @@ body {
     font-weight: 680;
   }
 
+  .about-list dd.path-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family:
+      'SFMono-Regular',
+      Consolas,
+      'Liberation Mono',
+      monospace;
+    font-size: 0.76rem;
+    font-weight: 600;
+  }
+
   .about-link {
     color: var(--accent-strong);
     background: rgba(255, 255, 255, 0.76);
@@ -3782,6 +3794,22 @@ body {
   .advanced-settings .restart-card {
     padding: 9px 10px;
     border-radius: 8px;
+  }
+
+  .monitor-toggle {
+    min-width: 68px;
+  }
+
+  .monitor-toggle.paused {
+    color: #92400e;
+    background: #fff7ed;
+    border-color: #fed7aa;
+  }
+
+  .monitor-toggle.paused:hover {
+    color: #7c2d12;
+    background: #ffedd5;
+    border-color: #fdba74;
   }
 
   @media (max-width: 720px) {

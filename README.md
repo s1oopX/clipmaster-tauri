@@ -28,10 +28,10 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| [`ClipMaster_0.1.0_x64-setup.exe`](https://github.com/s1oopX/clipmaster-tauri/releases/download/v0.1.0/ClipMaster_0.1.0_x64-setup.exe) | 推荐安装包，适合大多数 Windows 用户 |
-| [`ClipMaster_0.1.0_x64_en-US.msi`](https://github.com/s1oopX/clipmaster-tauri/releases/download/v0.1.0/ClipMaster_0.1.0_x64_en-US.msi) | MSI 安装包，适合需要传统安装流程的场景 |
+| [`ClipMaster_0.1.1_x64-setup.exe`](https://github.com/s1oopX/clipmaster-tauri/releases/download/v0.1.1/ClipMaster_0.1.1_x64-setup.exe) | 推荐安装包，适合大多数 Windows 用户 |
+| [`ClipMaster_0.1.1_x64_en-US.msi`](https://github.com/s1oopX/clipmaster-tauri/releases/download/v0.1.1/ClipMaster_0.1.1_x64_en-US.msi) | MSI 安装包，适合需要传统安装流程的场景 |
 
-当前版本尚未做代码签名，Windows 可能出现 SmartScreen 提示。请从本仓库的 Release 页面下载，并在安装前确认发布者与文件来源。
+当前版本尚未做代码签名，Windows 可能出现 SmartScreen 提示。请从本仓库的 Release 页面下载，并用 Release 中的 `SHA256SUMS.txt` 校验文件。
 
 ## 核心能力
 
@@ -57,7 +57,7 @@ ClipMaster 以本地存储为默认边界：
 
 ## 当前状态
 
-ClipMaster 0.1.0 是早期可用版本，已经覆盖主要剪贴板、图片、截图、托盘和打包流程。它适合个人日常试用，也适合作为 Tauri 2 + Rust + Svelte 桌面应用的参考项目。
+ClipMaster 0.1.1 是早期可用版本，已经覆盖主要剪贴板、图片、截图、托盘和打包流程。它适合个人日常试用，也适合作为 Tauri 2 + Rust + Svelte 桌面应用的参考项目。
 
 下一阶段会优先改进会话侧边栏、虚拟滚动、更多全局快捷键和前端状态拆分。详情见 [Roadmap](./docs/ROADMAP.md) 和 [Next Steps](./docs/NEXT_STEPS.md)。
 
@@ -140,6 +140,8 @@ docs/                架构、API、数据库、工作流和排障文档
 - [API 文档](./docs/API.md)
 - [数据库说明](./docs/DATABASE.md)
 - [开发工作流](./docs/WORKFLOW.md)
+- [隐私与数据](./docs/PRIVACY.md)
+- [用户 FAQ](./docs/FAQ.md)
 - [排障指南](./docs/TROUBLESHOOTING.md)
 - [变更记录](./CHANGELOG.md)
 

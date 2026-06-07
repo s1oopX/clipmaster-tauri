@@ -16,7 +16,9 @@
     Image as ImageIcon,
     Inbox,
     LoaderCircle,
+    Pause,
     Pin,
+    Play,
     Search,
     Settings,
     Star,
@@ -77,6 +79,7 @@
   let settingsOpen = false;
   let activeSettingsView = 'basic';
   let settingsSaving = false;
+  let monitorToggleSaving = false;
   let cleanupLoading = false;
   let cleanupPlan = null;
   let portCheckLoading = false;
@@ -85,6 +88,8 @@
   let restartingApp = false;
   let appSettings = { ...defaultSettings };
   let settingsDraft = { ...defaultSettings };
+  let appDataDir = '';
+  let appDataDirError = '';
   let isRecordingHotkey = false;
   let hotkeyRecordingMessage = '';
   let recordingHotkeyTimeout = null;
@@ -265,6 +270,7 @@
         ...(await settingsApi.getSettings()),
       };
       settingsDraft = { ...appSettings };
+      await loadAppDataDir();
 
       currentSession = await sessionApi.getCurrentSession();
       await loadAvailableDays();
@@ -304,6 +310,17 @@
       error = e.toString();
     }
   });
+
+  async function loadAppDataDir() {
+    try {
+      appDataDir = await settingsApi.getAppDataDir();
+      appDataDirError = '';
+    } catch (e) {
+      console.error('读取数据目录失败:', e);
+      appDataDir = '';
+      appDataDirError = e.toString();
+    }
+  }
 
   onDestroy(() => {
     if (typeof unlistenNewItem === 'function') {
@@ -786,6 +803,32 @@
     }
   }
 
+  async function setClipboardMonitoring(enabled) {
+    if (monitorToggleSaving || settingsSaving) return;
+    monitorToggleSaving = true;
+    error = null;
+
+    try {
+      const savedSettings = await settingsApi.saveSettings({
+        ...appSettings,
+        clipboard_monitor_enabled: enabled,
+      });
+      appSettings = savedSettings;
+      settingsDraft = settingsOpen
+        ? {
+            ...settingsDraft,
+            clipboard_monitor_enabled: savedSettings.clipboard_monitor_enabled,
+          }
+        : { ...savedSettings };
+      showActionNotice(enabled ? '已恢复剪贴板记录' : '已暂停剪贴板记录');
+    } catch (e) {
+      console.error('切换剪贴板监听失败:', e);
+      showActionError('切换剪贴板监听失败: ' + e);
+    } finally {
+      monitorToggleSaving = false;
+    }
+  }
+
   async function previewCleanup() {
     cleanupLoading = true;
     error = null;
@@ -1106,6 +1149,26 @@
       <div class="toolbar-tools">
         <div class="toolbar-primary">
           <div class="quick-actions" aria-label="快速工具">
+            <button
+              type="button"
+              class="tool-button monitor-toggle"
+              class:paused={!appSettings.clipboard_monitor_enabled}
+              on:click={() => setClipboardMonitoring(!appSettings.clipboard_monitor_enabled)}
+              aria-pressed={!appSettings.clipboard_monitor_enabled}
+              disabled={monitorToggleSaving || settingsSaving}
+            >
+              {#if monitorToggleSaving}
+                <LoaderCircle size={15} aria-hidden="true" />
+                <span>保存中</span>
+              {:else if appSettings.clipboard_monitor_enabled}
+                <Pause size={15} aria-hidden="true" />
+                <span>暂停</span>
+              {:else}
+                <Play size={15} aria-hidden="true" />
+                <span>恢复</span>
+              {/if}
+            </button>
+
             <button
               type="button"
               class="tool-button"
@@ -1780,6 +1843,12 @@
                 <div>
                   <dt>数据</dt>
                   <dd>本地保存</dd>
+                </div>
+                <div>
+                  <dt>数据目录</dt>
+                  <dd class="path-value">
+                    {appDataDir || (appDataDirError ? '读取失败，请查看排障文档' : '加载中')}
+                  </dd>
                 </div>
                 <div>
                   <dt>日期规则</dt>
