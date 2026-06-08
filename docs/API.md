@@ -350,6 +350,14 @@ invoke('run_custom_cleanup', {
 }) => Promise<CleanupPlan>
 ```
 
+### `clear_all_history`
+
+清空全部剪贴板历史，包括收藏、置顶、标注记录和图片文件。当前活动会话会保留为空会话，历史会话会被删除。
+
+```typescript
+invoke('clear_all_history') => Promise<CleanupPlan>
+```
+
 ## 事件
 
 ### `clipboard:new-item`

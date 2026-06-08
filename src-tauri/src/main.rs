@@ -106,6 +106,7 @@ fn main() {
             commands::restart_app,
             commands::preview_custom_cleanup,
             commands::run_custom_cleanup,
+            commands::clear_all_history,
             commands::start_region_screenshot,
             commands::capture_region_screenshot,
             commands::pin_image,

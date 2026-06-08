@@ -82,6 +82,8 @@
   let monitorToggleSaving = false;
   let cleanupLoading = false;
   let cleanupPlan = null;
+  let clearHistoryConfirmOpen = false;
+  let clearHistoryLoading = false;
   let portCheckLoading = false;
   let portCheckResult = null;
   let pendingRestartPort = null;
@@ -863,6 +865,52 @@
       showActionError('执行清理失败: ' + e);
     } finally {
       cleanupLoading = false;
+    }
+  }
+
+  function requestClearAllHistory() {
+    cleanupPlan = null;
+    closeContextMenu();
+    clearHistoryConfirmOpen = true;
+  }
+
+  function cancelClearAllHistory() {
+    if (clearHistoryLoading) return;
+    clearHistoryConfirmOpen = false;
+  }
+
+  async function confirmClearAllHistory() {
+    if (clearHistoryLoading) return;
+
+    clearHistoryLoading = true;
+    error = null;
+
+    try {
+      const plan = await settingsApi.clearAllHistory();
+      clearHistoryConfirmOpen = false;
+      selectedDay = '';
+      searchQuery = '';
+      items = [];
+      imageUrls = {};
+      thumbnailUrls = {};
+      viewingImageId = null;
+      deleteCandidate = null;
+      closeContextMenu();
+      recordsRequestId++;
+
+      currentSession = await sessionApi.getCurrentSession();
+      await loadAvailableDays();
+      await refreshVisibleRecords();
+      showActionNotice(
+        plan.item_count > 0
+          ? `已清空 ${plan.item_count} 条记录`
+          : '没有需要清空的记录'
+      );
+    } catch (e) {
+      console.error('清空历史失败:', e);
+      showActionError('清空历史失败: ' + e);
+    } finally {
+      clearHistoryLoading = false;
     }
   }
 
@@ -1734,6 +1782,28 @@
                 </div>
               </section>
 
+              <section class="settings-card advanced-card danger-card" aria-label="危险操作">
+                <header class="settings-card-header">
+                  <div>
+                    <h3>危险操作</h3>
+                    <p>清空全部记录、收藏、置顶、标注和图片文件。</p>
+                  </div>
+                </header>
+
+                <div class="danger-actions">
+                  <p class="danger-copy">这个操作无法撤销，当前窗口会立即刷新为空历史。</p>
+                  <button
+                    type="button"
+                    class="danger-button clear-history-button"
+                    on:click={requestClearAllHistory}
+                    disabled={clearHistoryLoading}
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                    {clearHistoryLoading ? '清空中' : '清空全部历史'}
+                  </button>
+                </div>
+              </section>
+
               <section class="settings-card advanced-card" aria-label="开发端口设置">
                 <header class="settings-card-header">
                   <div>
@@ -1898,6 +1968,55 @@
         </button>
         <button type="button" class="primary-button" on:click={saveSettings} disabled={settingsSaving}>
           {settingsSaving ? '保存中' : '保存设置'}
+        </button>
+      </footer>
+    </div>
+  {/if}
+
+  {#if clearHistoryConfirmOpen}
+    <button
+      type="button"
+      class="confirm-backdrop"
+      aria-label="取消清空历史确认"
+      on:click={cancelClearAllHistory}
+    ></button>
+    <div
+      class="confirm-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="clear-history-confirm-title"
+      aria-describedby="clear-history-confirm-desc"
+    >
+      <header>
+        <div class="confirm-icon">
+          <Trash2 size={18} aria-hidden="true" />
+        </div>
+        <div>
+          <h2 id="clear-history-confirm-title">确认清空历史</h2>
+          <p id="clear-history-confirm-desc">
+            所有剪贴板记录、收藏、置顶、标注、图片原图和缩略图都会被删除。
+          </p>
+        </div>
+      </header>
+      <div class="confirm-preview">
+        清空后无法恢复，当前活动会话会保留为空会话。
+      </div>
+      <footer>
+        <button
+          type="button"
+          class="ghost-button"
+          on:click={cancelClearAllHistory}
+          disabled={clearHistoryLoading}
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          class="danger-button"
+          on:click={confirmClearAllHistory}
+          disabled={clearHistoryLoading}
+        >
+          {clearHistoryLoading ? '清空中' : '确认清空'}
         </button>
       </footer>
     </div>

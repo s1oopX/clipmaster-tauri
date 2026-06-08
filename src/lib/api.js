@@ -293,4 +293,11 @@ export const settingsApi = {
   async runCustomCleanup(maxItems, keepDays) {
     return await invoke('run_custom_cleanup', { maxItems, keepDays });
   },
+
+  /**
+   * 清空全部剪贴板历史，包括收藏、置顶、标注记录和图片文件
+   */
+  async clearAllHistory() {
+    return await invoke('clear_all_history');
+  },
 };

@@ -827,6 +827,27 @@ impl Database {
         Ok(())
     }
 
+    /// 清空全部剪贴板历史，保留当前活动会话并重置计数。
+    pub fn clear_all_history(&self) -> Result<Vec<ClipboardItem>> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let items = {
+            let sql = format!("SELECT {} FROM clipboard_items", CLIPBOARD_ITEM_COLUMNS);
+            let mut stmt = tx.prepare(&sql)?;
+            let rows = stmt
+                .query_map([], clipboard_item_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+
+        tx.execute("DELETE FROM clipboard_items", [])?;
+        tx.execute("DELETE FROM sessions WHERE is_active = 0", [])?;
+        tx.execute("UPDATE sessions SET item_count = 0 WHERE is_active = 1", [])?;
+        tx.commit()?;
+
+        Ok(items)
+    }
+
     /// 预览自定义清理结果
     pub fn cleanup_plan(&self, max_items: i32, keep_days: i32) -> Result<CleanupPlan> {
         let candidates = self.get_cleanup_candidates(max_items, keep_days)?;
@@ -1424,6 +1445,44 @@ mod tests {
                 .item_count,
             0
         );
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn clearing_all_history_removes_records_and_preserves_active_session() {
+        let (db, data_dir) = temp_database();
+        let first = db
+            .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+
+        db.create_session("session_2").unwrap();
+        let second = db
+            .insert_item(
+                CreateClipboardItem {
+                    session_id: "session_2".to_string(),
+                    ..text_item_with_content("Beta token")
+                },
+                DEFAULT_TIME_ZONE,
+            )
+            .unwrap();
+
+        let removed = db.clear_all_history().unwrap();
+        let removed_ids = removed
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(removed.len(), 2);
+        assert!(removed_ids.contains(&first.id.as_str()));
+        assert!(removed_ids.contains(&second.id.as_str()));
+        assert!(db.get_items(10, 0).unwrap().is_empty());
+
+        let sessions = db.get_sessions(10).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "session_2");
+        assert!(sessions[0].is_active);
+        assert_eq!(sessions[0].item_count, 0);
 
         let _ = fs::remove_dir_all(data_dir);
     }

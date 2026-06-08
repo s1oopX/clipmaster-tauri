@@ -43,7 +43,7 @@ The current build is not code-signed yet, so Windows SmartScreen may show a warn
 | Image workflow | Saves images, generates thumbnails, previews them, and copies them back |
 | Screenshot helper | Supports region screenshots, screenshot hotkeys, and pinned image windows |
 | System tray | Closing the main window hides it to the tray, with restore and quit actions |
-| Cleanup settings | Supports count-based, age-based, and image-file lifecycle cleanup |
+| Cleanup settings | Supports count-based, age-based, image-file lifecycle cleanup, and full history clearing |
 | Data migration | Migrates legacy data directories to reduce upgrade data-loss risk |
 
 ## Privacy and Data
@@ -53,7 +53,7 @@ ClipMaster keeps the local machine as the default data boundary:
 - Clipboard history is stored in a local SQLite database.
 - Images and thumbnails are stored in the local app data directory.
 - The current version does not provide cloud sync, account login, or remote telemetry.
-- Clipboard content can include passwords, tokens, and personal data, so sensitive records should be cleaned up regularly.
+- Clipboard content can include passwords, tokens, and personal data, so pause monitoring before copying sensitive content or use the full history clear action in Advanced settings.
 
 ## Project Status
 

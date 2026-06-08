@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   getItemsByDay: vi.fn(),
   getItemsBySession: vi.fn(),
   getSessions: vi.fn(),
+  clearAllHistory: vi.fn(),
   listen: vi.fn(),
   onNewItem: vi.fn(),
   openExternalUrl: vi.fn(),
@@ -79,6 +80,7 @@ vi.mock('./lib/api.js', () => ({
     restartApp: api.restartApp,
     previewCustomCleanup: api.previewCustomCleanup,
     runCustomCleanup: api.runCustomCleanup,
+    clearAllHistory: api.clearAllHistory,
   },
   convertImagePath: api.convertImagePath,
 }));
@@ -191,6 +193,13 @@ describe('App UI', () => {
       newest_timestamp: null,
     });
     api.runCustomCleanup.mockResolvedValue({
+      item_count: 0,
+      text_count: 0,
+      image_count: 0,
+      oldest_timestamp: null,
+      newest_timestamp: null,
+    });
+    api.clearAllHistory.mockResolvedValue({
       item_count: 0,
       text_count: 0,
       image_count: 0,
@@ -1321,6 +1330,45 @@ describe('App UI', () => {
       expect(screen.getByTestId('toast-stack')).toContainElement(alert);
     });
     expect(document.querySelector('.notice.error')).toBeNull();
+  });
+
+  it('requires confirmation before clearing all history and refreshes the visible records', async () => {
+    api.getItems
+      .mockResolvedValueOnce([textItem(), imageItem({ is_favorite: false })])
+      .mockResolvedValue([]);
+    api.clearAllHistory.mockResolvedValue({
+      item_count: 2,
+      text_count: 1,
+      image_count: 1,
+      oldest_timestamp: 1780640000000,
+      newest_timestamp: 1780650000000,
+    });
+
+    render(App);
+
+    expect(await screen.findByText('Alpha token')).toBeInTheDocument();
+    expect(await screen.findByText('图片记录')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '高级' }));
+    await fireEvent.click(screen.getByRole('button', { name: '清空全部历史' }));
+
+    expect(api.clearAllHistory).not.toHaveBeenCalled();
+    const confirmDialog = screen.getByRole('dialog', { name: '确认清空历史' });
+    expect(confirmDialog).toHaveTextContent('所有剪贴板记录、收藏、置顶、标注、图片原图和缩略图都会被删除。');
+
+    await fireEvent.click(within(confirmDialog).getByRole('button', { name: '确认清空' }));
+
+    await waitFor(() => {
+      expect(api.clearAllHistory).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(api.getItems).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByRole('dialog', { name: '确认清空历史' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Alpha token')).not.toBeInTheDocument();
+    expect(screen.queryByText('图片记录')).not.toBeInTheDocument();
+    expect(await screen.findByText('已清空 2 条记录')).toBeInTheDocument();
   });
 
   it('loads records by precisely selected calendar day', async () => {

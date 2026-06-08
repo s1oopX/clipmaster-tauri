@@ -3760,6 +3760,41 @@ body {
     padding-top: 2px;
   }
 
+  .advanced-settings .danger-card {
+    background: #fffafa;
+    border-color: #fecdd3;
+  }
+
+  .danger-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .danger-copy {
+    margin: 0;
+    min-width: 0;
+    color: #7f1d1d;
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  .clear-history-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    min-height: 32px;
+    white-space: nowrap;
+  }
+
+  .clear-history-button svg {
+    flex: 0 0 auto;
+  }
+
   .advanced-settings .ghost-button,
   .advanced-settings .primary-button {
     min-height: 32px;
@@ -3836,6 +3871,14 @@ body {
     }
 
     .port-input-group {
+      width: 100%;
+    }
+
+    .danger-actions {
+      display: grid;
+    }
+
+    .clear-history-button {
       width: 100%;
     }
 

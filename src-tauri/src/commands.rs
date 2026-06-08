@@ -245,6 +245,22 @@ pub async fn run_custom_cleanup(
     run_cleanup(&app, &db, max_items, keep_days)
 }
 
+/// 清空全部剪贴板历史，包括收藏、置顶、标注记录和图片文件。
+#[tauri::command]
+pub async fn clear_all_history(
+    app: AppHandle,
+    db: State<'_, Database>,
+) -> Result<CleanupPlan, String> {
+    let items = db.clear_all_history().map_err(|e| e.to_string())?;
+    let plan = CleanupPlan::from_items(items.clone());
+
+    for item in &items {
+        cleanup_item_files_best_effort(&app, item);
+    }
+
+    Ok(plan)
+}
+
 /// 将图片记录以置顶小窗打开
 #[tauri::command]
 pub async fn pin_image(app: AppHandle, image_path: String) -> Result<(), String> {
