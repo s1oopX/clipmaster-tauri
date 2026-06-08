@@ -91,6 +91,7 @@ pub async fn save_settings(
     let hotkey_changed = previous.screenshot_hotkey != result.screenshot_hotkey;
     let time_zone_changed = previous.time_zone != result.time_zone;
     let dev_server_port_changed = previous.dev_server_port != result.dev_server_port;
+    let auto_start_changed = previous.auto_start_enabled != result.auto_start_enabled;
 
     if hotkey_changed {
         if let Err(error) =
@@ -103,8 +104,15 @@ pub async fn save_settings(
 
     if time_zone_changed {
         if let Err(error) = db.rebuild_date_keys(&result.time_zone) {
-            let rollback_error =
-                rollback_settings_side_effects(&app, &db, &previous, hotkey_changed, false, false);
+            let rollback_error = rollback_settings_side_effects(
+                &app,
+                &db,
+                &previous,
+                hotkey_changed,
+                false,
+                false,
+                false,
+            );
             return Err(append_rollback_error(error.to_string(), rollback_error));
         }
     }
@@ -119,6 +127,7 @@ pub async fn save_settings(
                 hotkey_changed,
                 time_zone_changed,
                 false,
+                false,
             );
             return Err(append_rollback_error(port_check.message, rollback_error));
         }
@@ -131,6 +140,22 @@ pub async fn save_settings(
                 hotkey_changed,
                 time_zone_changed,
                 true,
+                false,
+            );
+            return Err(append_rollback_error(error.to_string(), rollback_error));
+        }
+    }
+
+    if auto_start_changed {
+        if let Err(error) = apply_autostart_setting(&app, result.auto_start_enabled) {
+            let rollback_error = rollback_settings_side_effects(
+                &app,
+                &db,
+                &previous,
+                hotkey_changed,
+                time_zone_changed,
+                dev_server_port_changed,
+                false,
             );
             return Err(append_rollback_error(error.to_string(), rollback_error));
         }
@@ -144,11 +169,20 @@ pub async fn save_settings(
             hotkey_changed,
             time_zone_changed,
             dev_server_port_changed,
+            auto_start_changed,
         );
         return Err(append_rollback_error(error.to_string(), rollback_error));
     }
 
     Ok(result)
+}
+
+fn apply_autostart_setting(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    if enabled {
+        crate::autostart::enable_autostart(app).map_err(|e| format!("启用开机自启动失败: {}", e))
+    } else {
+        crate::autostart::disable_autostart(app).map_err(|e| format!("禁用开机自启动失败: {}", e))
+    }
 }
 
 fn rollback_settings_hotkey(
@@ -172,8 +206,15 @@ fn rollback_settings_side_effects(
     hotkey_changed: bool,
     time_zone_changed: bool,
     dev_server_port_changed: bool,
+    auto_start_changed: bool,
 ) -> Option<String> {
     let mut errors = Vec::new();
+
+    if auto_start_changed {
+        if let Err(error) = apply_autostart_setting(app, previous.auto_start_enabled) {
+            errors.push(format!("开机自启动回滚失败: {}", error));
+        }
+    }
 
     if time_zone_changed {
         if let Err(error) = db.rebuild_date_keys(&previous.time_zone) {

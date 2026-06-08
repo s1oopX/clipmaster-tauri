@@ -50,6 +50,7 @@ interface CleanupPlan {
 interface AppSettings {
   clipboard_monitor_enabled: boolean;
   show_main_window_on_start: boolean;
+  auto_start_enabled: boolean;
   max_items: number;
   capture_delay_ms: number;
   screenshot_hotkey: string;

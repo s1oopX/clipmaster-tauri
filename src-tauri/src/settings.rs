@@ -26,6 +26,7 @@ const SUPPORTED_LANGUAGES: &[&str] = &["zh-CN", "en-US"];
 pub struct AppSettings {
     pub clipboard_monitor_enabled: bool,
     pub show_main_window_on_start: bool,
+    pub auto_start_enabled: bool,
     pub max_items: i32,
     pub capture_delay_ms: i32,
     pub screenshot_hotkey: String,
@@ -42,6 +43,7 @@ impl Default for AppSettings {
         Self {
             clipboard_monitor_enabled: true,
             show_main_window_on_start: true,
+            auto_start_enabled: false,
             max_items: 50,
             capture_delay_ms: 150,
             screenshot_hotkey: "CommandOrControl+Shift+A".to_string(),
@@ -102,6 +104,7 @@ impl SettingsStore {
         AppSettings {
             clipboard_monitor_enabled: settings.clipboard_monitor_enabled,
             show_main_window_on_start: settings.show_main_window_on_start,
+            auto_start_enabled: settings.auto_start_enabled,
             max_items: settings.max_items.clamp(10, 500),
             capture_delay_ms: settings.capture_delay_ms.clamp(0, 3000),
             screenshot_hotkey: normalize_screenshot_hotkey(&settings.screenshot_hotkey),
@@ -180,6 +183,7 @@ mod tests {
             .save_normalized(AppSettings {
                 clipboard_monitor_enabled: false,
                 show_main_window_on_start: false,
+                auto_start_enabled: true,
                 max_items: 900,
                 capture_delay_ms: -30,
                 screenshot_hotkey: "CommandOrControl+Alt+S".to_string(),
@@ -200,6 +204,7 @@ mod tests {
         assert_eq!(saved.cleanup_keep_days, 1);
         assert_eq!(saved.dev_server_port, 6123);
         assert_eq!(saved.screenshot_hotkey, "CommandOrControl+Alt+S");
+        assert!(saved.auto_start_enabled);
 
         let reloaded = SettingsStore::new(&data_dir).unwrap();
         assert_eq!(reloaded.get(), saved);

@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app_data;
+mod autostart;
 mod clipboard;
 mod commands;
 mod database;

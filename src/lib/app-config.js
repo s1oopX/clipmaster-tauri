@@ -1,6 +1,7 @@
 export const defaultSettings = {
   clipboard_monitor_enabled: true,
   show_main_window_on_start: true,
+  auto_start_enabled: false,
   max_items: 50,
   capture_delay_ms: 150,
   screenshot_hotkey: 'CommandOrControl+Shift+A',

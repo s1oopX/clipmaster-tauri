@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "ClipMaster",
-        "width": 520,
-        "height": 680,
-        "minWidth": 420,
-        "minHeight": 560,
+        "width": 440,
+        "height": 560,
+        "minWidth": 380,
+        "minHeight": 480,
         "resizable": true,
         "fullscreen": false,
         "center": true

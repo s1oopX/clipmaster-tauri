@@ -25,6 +25,9 @@ arboard = "3.4"
 image = "0.25"
 screenshots = "0.8.10"
 
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

@@ -168,6 +168,7 @@ describe('App UI', () => {
     api.getSettings.mockResolvedValue({
       clipboard_monitor_enabled: true,
       show_main_window_on_start: true,
+      auto_start_enabled: false,
       max_items: 50,
       capture_delay_ms: 150,
       screenshot_hotkey: 'CommandOrControl+Shift+A',
@@ -630,6 +631,10 @@ describe('App UI', () => {
 
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-layout', 'compact-ready');
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-density', 'tool');
+    expect(screen.getByTestId('app-shell')).toHaveAttribute(
+      'data-reference',
+      'figma-utility-grid'
+    );
     expect(screen.getByTestId('history-panel')).toHaveAttribute('data-scroll', 'internal');
     expect(screen.getByRole('button', { name: '全部记录' })).toHaveClass('filter-button');
     expect(screen.getByRole('button', { name: '收藏' })).toHaveClass('filter-button');
@@ -1073,6 +1078,7 @@ describe('App UI', () => {
       expect(api.saveSettings).toHaveBeenCalledWith({
         clipboard_monitor_enabled: true,
         show_main_window_on_start: false,
+        auto_start_enabled: false,
         max_items: 120,
         capture_delay_ms: 0,
         screenshot_hotkey: 'CommandOrControl+Shift+A',

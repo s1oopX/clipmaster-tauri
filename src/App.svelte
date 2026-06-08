@@ -729,6 +729,7 @@
     const normalized = {
       clipboard_monitor_enabled: settingsDraft.clipboard_monitor_enabled,
       show_main_window_on_start: settingsDraft.show_main_window_on_start,
+      auto_start_enabled: settingsDraft.auto_start_enabled,
       max_items: numberSettingValue(settingsDraft.max_items, defaultSettings.max_items),
       capture_delay_ms: numberSettingValue(
         settingsDraft.capture_delay_ms,
@@ -1178,7 +1179,13 @@
 {#if pinMode}
   <PinShell {pinImagePath} {pinImageUrl} onClose={closePinWindow} />
 {:else}
-<main class="app-shell" data-testid="app-shell" data-layout="compact-ready" data-density="tool">
+<main
+  class="app-shell"
+  data-testid="app-shell"
+  data-layout="compact-ready"
+  data-density="tool"
+  data-reference="figma-utility-grid"
+>
   <Sidebar {activeFilter} {filters} onFilterChange={(filterId) => (activeFilter = filterId)} />
 
   <section class="workspace" aria-label="剪贴板历史">
@@ -1622,6 +1629,16 @@
                     updateSettingsDraft('show_main_window_on_start', event.currentTarget.checked)}
                 />
                 <span>启动时显示主窗口</span>
+              </label>
+
+              <label class="switch-row">
+                <input
+                  type="checkbox"
+                  checked={settingsDraft.auto_start_enabled}
+                  on:change={(event) =>
+                    updateSettingsDraft('auto_start_enabled', event.currentTarget.checked)}
+                />
+                <span>开机自启动</span>
               </label>
 
               <label class="field-row">
