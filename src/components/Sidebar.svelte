@@ -4,6 +4,17 @@
   export let activeFilter = 'all';
   export let filters = [];
   export let onFilterChange = () => {};
+
+  const shortLabels = {
+    all: '全部',
+    favorite: '收藏',
+    link: '链接',
+    image: '图片',
+  };
+
+  function shortFilterLabel(filter) {
+    return shortLabels[filter.id] || filter.label;
+  }
 </script>
 
 <aside class="sidebar">
@@ -24,6 +35,7 @@
         class:active={activeFilter === filter.id}
         on:click={() => onFilterChange(filter.id)}
         type="button"
+        aria-label={filter.label}
       >
         {#if filter.id === 'all'}
           <List size={16} aria-hidden="true" />
@@ -34,7 +46,8 @@
         {:else}
           <ImageIcon size={16} aria-hidden="true" />
         {/if}
-        <span>{filter.label}</span>
+        <span class="filter-label-full">{filter.label}</span>
+        <span class="filter-label-short" aria-hidden="true">{shortFilterLabel(filter)}</span>
       </button>
     {/each}
   </nav>

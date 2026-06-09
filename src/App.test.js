@@ -806,6 +806,8 @@ describe('App UI', () => {
     expect(screen.getByRole('button', { name: '全部记录' })).toHaveClass('filter-button');
     expect(screen.getByRole('button', { name: '收藏' })).toHaveClass('filter-button');
     expect(screen.getByRole('button', { name: '图片' })).toHaveClass('filter-button');
+    expect(document.querySelector('.filter-label-short')).toBeInTheDocument();
+    expect(document.querySelector('.filter-button[title]')).not.toBeInTheDocument();
     expect(document.body).toContainElement(screen.getByTestId('app-shell'));
   });
 

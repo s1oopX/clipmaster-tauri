@@ -1280,7 +1280,6 @@
   <section class="workspace" aria-label="剪贴板历史">
     <header class="toolbar">
       <div class="toolbar-title">
-        <p class="eyebrow">History</p>
         <div class="toolbar-heading">
           <h2>剪贴板历史</h2>
           <p class="toolbar-context" aria-label="当前范围">
@@ -1545,7 +1544,7 @@
                       <ExternalLink size={15} aria-hidden="true" />
                       <span>{linkDisplayLabel(item.content || item.preview)}</span>
                     </div>
-                    <p>Ctrl/Command+左键打开，Enter 直接打开。复制按钮会复制原始链接。</p>
+                    <p class="sr-only">Ctrl/Command+左键打开，Enter 直接打开。复制按钮会复制原始链接。</p>
                   </div>
                 {:else if item.type === 'text'}
                   {#if editingId === item.id}
