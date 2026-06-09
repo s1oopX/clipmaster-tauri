@@ -9,6 +9,7 @@ use tokio::time::sleep;
 
 use crate::app_data;
 use crate::database::{date_key_now, Database};
+use crate::link::{is_safe_web_url, link_content_hash, normalize_web_url};
 use crate::models::{ClipboardType, CreateClipboardItem};
 use crate::session::SessionManager;
 use crate::settings::SettingsStore;
@@ -132,7 +133,7 @@ impl ClipboardService {
     fn calculate_hash(content: &ClipboardContent) -> String {
         match content {
             ClipboardContent::Text(text) => {
-                if is_web_url(text) {
+                if is_safe_web_url(text) {
                     link_content_hash(text)
                 } else {
                     format!("{:x}", md5::compute(text.as_bytes()))
@@ -181,18 +182,14 @@ impl ClipboardService {
         // 创建记录
         let item = match content {
             ClipboardContent::Text(text) => {
-                let is_link = is_web_url(&text);
+                let normalized_link = normalize_web_url(&text);
                 CreateClipboardItem {
-                    type_: if is_link {
+                    type_: if normalized_link.is_some() {
                         ClipboardType::Link
                     } else {
                         ClipboardType::Text
                     },
-                    content: Some(if is_link {
-                        text.trim().to_string()
-                    } else {
-                        text
-                    }),
+                    content: Some(normalized_link.unwrap_or(text)),
                     image_path: None,
                     thumbnail_path: None,
                     source_app: None,
@@ -296,30 +293,6 @@ enum ClipboardContent {
     Image(arboard::ImageData<'static>),
 }
 
-fn is_web_url(value: &str) -> bool {
-    let trimmed = value.trim();
-    let Some((scheme, rest)) = trimmed.split_once("://") else {
-        return false;
-    };
-
-    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
-        return false;
-    }
-
-    !rest.is_empty()
-        && rest.contains('.')
-        && !trimmed
-            .chars()
-            .any(|character| character.is_control() || character.is_whitespace())
-}
-
-fn link_content_hash(url: &str) -> String {
-    format!(
-        "{:x}",
-        md5::compute(format!("link:{}", url.trim()).as_bytes())
-    )
-}
-
 #[cfg(target_os = "windows")]
 fn clipboard_sequence_number() -> Option<u32> {
     #[link(name = "user32")]
@@ -346,27 +319,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn detects_only_single_web_urls() {
-        assert!(is_web_url("https://example.com"));
-        assert!(is_web_url(" http://docs.example.com/path?q=1#install "));
-
-        for value in [
-            "example.com",
-            "https://localhost",
-            "https://example",
-            "https://example.com with words",
-            "javascript:alert(1)",
-            "file:///C:/temp/a.txt",
-        ] {
-            assert!(!is_web_url(value), "{value}");
-        }
-    }
-
-    #[test]
-    fn hashes_links_with_a_type_prefix() {
-        assert_ne!(
-            link_content_hash("https://example.com"),
-            format!("{:x}", md5::compute("https://example.com".as_bytes()))
-        );
+    fn detects_only_safe_web_urls() {
+        assert!(is_safe_web_url("https://example.com"));
+        assert!(is_safe_web_url(
+            " http://docs.example.com/path?q=1#install "
+        ));
+        assert!(!is_safe_web_url("https://localhost"));
     }
 }

@@ -14,8 +14,10 @@ use tokio::time::sleep;
 use crate::app_data;
 use crate::database::{date_key_now, Database};
 use crate::dev_port::{check_dev_server_port as check_port, PortCheckResult};
+use crate::link::normalize_web_url;
 use crate::models::{
-    CleanupPlan, ClipboardDay, ClipboardItem, ClipboardType, CreateClipboardItem, Session,
+    CleanupFileTarget, CleanupPlan, ClipboardDay, ClipboardItem, ClipboardType,
+    CreateClipboardItem, Session,
 };
 use crate::session::SessionManager;
 use crate::settings::{AppSettings, SettingsStore};
@@ -302,11 +304,10 @@ pub async fn clear_all_history(
     app: AppHandle,
     db: State<'_, Database>,
 ) -> Result<CleanupPlan, String> {
-    let items = db.clear_all_history().map_err(|e| e.to_string())?;
-    let plan = CleanupPlan::from_items(items.clone());
+    let (plan, file_targets) = db.clear_all_history().map_err(|e| e.to_string())?;
 
-    for item in &items {
-        cleanup_item_files_best_effort(&app, item);
+    for target in &file_targets {
+        cleanup_file_target_best_effort(&app, target);
     }
 
     Ok(plan)
@@ -480,14 +481,10 @@ pub async fn clear_session(
         return Err("不能清空当前活动会话".to_string());
     }
 
-    let items = db
-        .get_items_by_session(&session_id, i32::MAX, 0)
-        .map_err(|e| e.to_string())?;
+    let file_targets = db.clear_session(&session_id).map_err(|e| e.to_string())?;
 
-    db.clear_session(&session_id).map_err(|e| e.to_string())?;
-
-    for item in &items {
-        cleanup_item_files_best_effort(&app, item);
+    for target in &file_targets {
+        cleanup_file_target_best_effort(&app, target);
     }
 
     Ok(())
@@ -928,20 +925,26 @@ pub fn restore_main_window(app: &AppHandle) -> Result<(), String> {
 }
 
 fn cleanup_item_files(app: &AppHandle, item: &ClipboardItem) -> Result<(), String> {
-    let app_data_dir = app_data::resolve_app_data_dir(app).map_err(|e| e.to_string())?;
-    cleanup_item_files_in_dir(&app_data_dir, item)
+    let Some(target) = CleanupFileTarget::from_item(item) else {
+        return Ok(());
+    };
+    cleanup_file_target(app, &target)
 }
 
-fn cleanup_item_files_in_dir(app_data_dir: &Path, item: &ClipboardItem) -> Result<(), String> {
-    if !matches!(item.type_, ClipboardType::Image) {
-        return Ok(());
-    }
+fn cleanup_file_target(app: &AppHandle, target: &CleanupFileTarget) -> Result<(), String> {
+    let app_data_dir = app_data::resolve_app_data_dir(app).map_err(|e| e.to_string())?;
+    cleanup_file_target_in_dir(&app_data_dir, target)
+}
 
-    if let Some(path) = &item.image_path {
+fn cleanup_file_target_in_dir(
+    app_data_dir: &Path,
+    target: &CleanupFileTarget,
+) -> Result<(), String> {
+    if let Some(path) = &target.image_path {
         remove_app_data_file_in_dir(app_data_dir, path)?;
     }
 
-    if let Some(path) = &item.thumbnail_path {
+    if let Some(path) = &target.thumbnail_path {
         remove_app_data_file_in_dir(app_data_dir, path)?;
     }
 
@@ -972,6 +975,12 @@ fn run_cleanup(
 fn cleanup_item_files_best_effort(app: &AppHandle, item: &ClipboardItem) {
     if let Err(error) = cleanup_item_files(app, item) {
         eprintln!("清理记录文件失败（{}）: {}", item.id, error);
+    }
+}
+
+fn cleanup_file_target_best_effort(app: &AppHandle, target: &CleanupFileTarget) {
+    if let Err(error) = cleanup_file_target(app, target) {
+        eprintln!("清理记录文件失败（{}）: {}", target.id, error);
     }
 }
 
@@ -1064,28 +1073,7 @@ fn path_from_forward_slashes(path: &str) -> PathBuf {
 }
 
 fn validate_external_url(url: &str) -> Result<String, String> {
-    let trimmed = url.trim();
-
-    let Some((scheme, rest)) = trimmed.split_once("://") else {
-        return Err("只能打开 http 或 https 链接".to_string());
-    };
-
-    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
-        return Err("只能打开 http 或 https 链接".to_string());
-    }
-
-    if rest.is_empty() || !rest.contains('.') {
-        return Err("链接地址不完整".to_string());
-    }
-
-    if trimmed
-        .chars()
-        .any(|character| character.is_control() || character.is_whitespace())
-    {
-        return Err("链接地址包含非法字符".to_string());
-    }
-
-    Ok(trimmed.to_string())
+    normalize_web_url(url).ok_or_else(|| "只能打开安全的 http 或 https 链接".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -1270,7 +1258,8 @@ mod tests {
             Some("images/2026-06-07/capture_thumb.png"),
         );
 
-        cleanup_item_files_in_dir(&data_dir, &item).unwrap();
+        let target = CleanupFileTarget::from_item(&item).unwrap();
+        cleanup_file_target_in_dir(&data_dir, &target).unwrap();
 
         assert!(!image_dir.join("capture.png").exists());
         assert!(!image_dir.join("capture_thumb.png").exists());
@@ -1292,7 +1281,7 @@ mod tests {
             None,
         );
 
-        cleanup_item_files_in_dir(&data_dir, &item).unwrap();
+        cleanup_item_files_in_dir_for_test(&data_dir, &item).unwrap();
 
         assert!(image_dir.join("capture.png").exists());
 
@@ -1306,7 +1295,8 @@ mod tests {
         fs::write(data_dir.join("settings.json"), "settings").unwrap();
 
         let item = clipboard_item(ClipboardType::Image, Some("../settings.json"), None);
-        let error = cleanup_item_files_in_dir(&data_dir, &item).unwrap_err();
+        let target = CleanupFileTarget::from_item(&item).unwrap();
+        let error = cleanup_file_target_in_dir(&data_dir, &target).unwrap_err();
 
         assert!(error.contains("图片路径"), "{error}");
         assert_eq!(
@@ -1315,5 +1305,15 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(data_dir);
+    }
+
+    fn cleanup_item_files_in_dir_for_test(
+        app_data_dir: &Path,
+        item: &ClipboardItem,
+    ) -> Result<(), String> {
+        let Some(target) = CleanupFileTarget::from_item(item) else {
+            return Ok(());
+        };
+        cleanup_file_target_in_dir(app_data_dir, &target)
     }
 }

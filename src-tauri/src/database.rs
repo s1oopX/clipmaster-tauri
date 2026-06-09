@@ -6,8 +6,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::link::{is_safe_web_url, link_content_hash, normalize_web_url};
 use crate::models::{
-    CleanupPlan, ClipboardDay, ClipboardItem, ClipboardType, CreateClipboardItem, Session,
+    CleanupFileTarget, CleanupPlan, ClipboardDay, ClipboardItem, ClipboardType,
+    CreateClipboardItem, Session,
 };
 use crate::settings::DEFAULT_TIME_ZONE;
 
@@ -228,16 +230,14 @@ fn migrate_text_urls_to_links(conn: &Connection) -> Result<()> {
     drop(stmt);
 
     for (id, content) in items {
-        if !is_web_url(&content) {
+        let Some(url) = normalize_web_url(&content) else {
             continue;
-        }
-
-        let url = content.trim();
+        };
         conn.execute(
             "UPDATE clipboard_items
              SET type = 'link', content = ?1, preview = ?2, content_hash = ?3
              WHERE id = ?4",
-            params![url, preview_from_content(url), link_content_hash(url), id],
+            params![url, preview_from_content(&url), link_content_hash(&url), id],
         )?;
     }
 
@@ -631,7 +631,7 @@ impl Database {
     }
 
     /// 清空会话
-    pub fn clear_session(&self, session_id: &str) -> Result<()> {
+    pub fn clear_session(&self, session_id: &str) -> Result<Vec<CleanupFileTarget>> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
 
@@ -644,6 +644,16 @@ impl Database {
             return Err(anyhow::anyhow!("会话不存在"));
         }
 
+        let file_targets = query_cleanup_file_targets(
+            &tx,
+            "SELECT id, image_path, thumbnail_path
+             FROM clipboard_items
+             WHERE session_id = ?1
+               AND type = 'image'
+               AND (image_path IS NOT NULL OR thumbnail_path IS NOT NULL)",
+            params![session_id],
+        )?;
+
         tx.execute(
             "DELETE FROM clipboard_items WHERE session_id = ?1",
             params![session_id],
@@ -653,7 +663,7 @@ impl Database {
 
         tx.commit()?;
 
-        Ok(())
+        Ok(file_targets)
     }
 
     /// 更新记录内容
@@ -676,19 +686,19 @@ impl Database {
             return Err(anyhow::anyhow!("原文不能为空"));
         }
 
-        let is_link = is_web_url(new_content);
-        let content = if is_link {
-            new_content.trim().to_string()
+        let normalized_link = normalize_web_url(new_content);
+        let content = if let Some(url) = normalized_link {
+            url
         } else {
             new_content.to_string()
         };
-        let next_type = if is_link {
+        let next_type = if is_safe_web_url(&content) {
             ClipboardType::Link
         } else {
             ClipboardType::Text
         };
         let preview = preview_from_content(&content);
-        let content_hash = if is_link {
+        let content_hash = if matches!(next_type, ClipboardType::Link) {
             link_content_hash(&content)
         } else {
             format!("{:x}", md5::compute(content.as_bytes()))
@@ -883,24 +893,34 @@ impl Database {
     }
 
     /// 清空全部剪贴板历史，保留当前活动会话并重置计数。
-    pub fn clear_all_history(&self) -> Result<Vec<ClipboardItem>> {
+    pub fn clear_all_history(&self) -> Result<(CleanupPlan, Vec<CleanupFileTarget>)> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
-        let items = {
-            let sql = format!("SELECT {} FROM clipboard_items", CLIPBOARD_ITEM_COLUMNS);
-            let mut stmt = tx.prepare(&sql)?;
-            let rows = stmt
-                .query_map([], clipboard_item_from_row)?
-                .collect::<Result<Vec<_>, _>>()?;
-            rows
-        };
+        let plan = query_cleanup_plan(
+            &tx,
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE WHEN type IN ('text', 'link') THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN type = 'image' THEN 1 ELSE 0 END), 0),
+                    MIN(timestamp),
+                    MAX(timestamp)
+             FROM clipboard_items",
+            [],
+        )?;
+        let file_targets = query_cleanup_file_targets(
+            &tx,
+            "SELECT id, image_path, thumbnail_path
+             FROM clipboard_items
+             WHERE type = 'image'
+               AND (image_path IS NOT NULL OR thumbnail_path IS NOT NULL)",
+            [],
+        )?;
 
         tx.execute("DELETE FROM clipboard_items", [])?;
         tx.execute("DELETE FROM sessions WHERE is_active = 0", [])?;
         tx.execute("UPDATE sessions SET item_count = 0 WHERE is_active = 1", [])?;
         tx.commit()?;
 
-        Ok(items)
+        Ok((plan, file_targets))
     }
 
     /// 预览自定义清理结果
@@ -1027,30 +1047,6 @@ fn preview_from_content(content: &str) -> String {
     }
 }
 
-fn is_web_url(value: &str) -> bool {
-    let trimmed = value.trim();
-    let Some((scheme, rest)) = trimmed.split_once("://") else {
-        return false;
-    };
-
-    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
-        return false;
-    }
-
-    !rest.is_empty()
-        && rest.contains('.')
-        && !trimmed
-            .chars()
-            .any(|character| character.is_control() || character.is_whitespace())
-}
-
-fn link_content_hash(url: &str) -> String {
-    format!(
-        "{:x}",
-        md5::compute(format!("link:{}", url.trim()).as_bytes())
-    )
-}
-
 fn clipboard_item_from_row(row: &Row<'_>) -> rusqlite::Result<ClipboardItem> {
     Ok(ClipboardItem {
         id: row.get(0)?,
@@ -1068,6 +1064,48 @@ fn clipboard_item_from_row(row: &Row<'_>) -> rusqlite::Result<ClipboardItem> {
         session_id: row.get(12)?,
         annotation: row.get(13)?,
     })
+}
+
+fn query_cleanup_plan<P>(conn: &Connection, sql: &str, params: P) -> Result<CleanupPlan>
+where
+    P: rusqlite::Params,
+{
+    conn.query_row(sql, params, |row| {
+        Ok(CleanupPlan::from_counts(
+            count_to_i32(row.get::<_, i64>(0)?),
+            count_to_i32(row.get::<_, i64>(1)?),
+            count_to_i32(row.get::<_, i64>(2)?),
+            row.get(3)?,
+            row.get(4)?,
+        ))
+    })
+    .map_err(Into::into)
+}
+
+fn query_cleanup_file_targets<P>(
+    conn: &Connection,
+    sql: &str,
+    params: P,
+) -> Result<Vec<CleanupFileTarget>>
+where
+    P: rusqlite::Params,
+{
+    let mut stmt = conn.prepare(sql)?;
+    let targets = stmt
+        .query_map(params, |row| {
+            Ok(CleanupFileTarget {
+                id: row.get(0)?,
+                image_path: row.get(1)?,
+                thumbnail_path: row.get(2)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(targets)
+}
+
+fn count_to_i32(value: i64) -> i32 {
+    i32::try_from(value).unwrap_or(i32::MAX)
 }
 
 pub fn date_key_now(time_zone: &str) -> String {
@@ -1251,6 +1289,22 @@ mod tests {
             source_app: None,
             content_hash: text_hash(content),
             session_id: "session_1".to_string(),
+        }
+    }
+
+    fn image_item_with_paths(
+        image_path: &str,
+        thumbnail_path: &str,
+        session_id: &str,
+    ) -> CreateClipboardItem {
+        CreateClipboardItem {
+            type_: ClipboardType::Image,
+            content: None,
+            image_path: Some(image_path.to_string()),
+            thumbnail_path: Some(thumbnail_path.to_string()),
+            source_app: None,
+            content_hash: text_hash(image_path),
+            session_id: session_id.to_string(),
         }
     }
 
@@ -1679,30 +1733,65 @@ mod tests {
     #[test]
     fn clearing_all_history_removes_records_and_preserves_active_session() {
         let (db, data_dir) = temp_database();
-        let first = db
-            .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
+        db.insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
             .unwrap();
-
-        db.create_session("session_2").unwrap();
-        let second = db
+        let first_image = db
             .insert_item(
-                CreateClipboardItem {
-                    session_id: "session_2".to_string(),
-                    ..text_item_with_content("Beta token")
-                },
+                image_item_with_paths(
+                    "images/2026-06-09/first.png",
+                    "images/2026-06-09/first-thumb.png",
+                    "session_1",
+                ),
                 DEFAULT_TIME_ZONE,
             )
             .unwrap();
 
-        let removed = db.clear_all_history().unwrap();
-        let removed_ids = removed
+        db.create_session("session_2").unwrap();
+        db.insert_item(
+            CreateClipboardItem {
+                session_id: "session_2".to_string(),
+                ..text_item_with_content("Beta token")
+            },
+            DEFAULT_TIME_ZONE,
+        )
+        .unwrap();
+        let session_image = db
+            .insert_item(
+                image_item_with_paths(
+                    "images/2026-06-09/session.png",
+                    "images/2026-06-09/session-thumb.png",
+                    "session_2",
+                ),
+                DEFAULT_TIME_ZONE,
+            )
+            .unwrap();
+
+        let (plan, file_targets) = db.clear_all_history().unwrap();
+        let file_target_ids = file_targets
             .iter()
-            .map(|item| item.id.as_str())
+            .map(|target| target.id.as_str())
             .collect::<Vec<_>>();
 
-        assert_eq!(removed.len(), 2);
-        assert!(removed_ids.contains(&first.id.as_str()));
-        assert!(removed_ids.contains(&second.id.as_str()));
+        assert_eq!(plan.item_count, 4);
+        assert_eq!(plan.text_count, 2);
+        assert_eq!(plan.image_count, 2);
+        assert!(plan.oldest_timestamp.is_some());
+        assert!(plan.newest_timestamp.is_some());
+        assert_eq!(file_targets.len(), 2);
+        assert!(file_target_ids.contains(&session_image.id.as_str()));
+        assert!(file_target_ids.contains(&first_image.id.as_str()));
+        let session_target = file_targets
+            .iter()
+            .find(|target| target.id == session_image.id)
+            .unwrap();
+        assert_eq!(
+            session_target.image_path.as_deref(),
+            Some("images/2026-06-09/session.png")
+        );
+        assert_eq!(
+            session_target.thumbnail_path.as_deref(),
+            Some("images/2026-06-09/session-thumb.png")
+        );
         assert!(db
             .get_items_filtered(10, 0, None, false)
             .unwrap()
@@ -1747,8 +1836,24 @@ mod tests {
         let item = db
             .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
             .unwrap();
+        let image = db
+            .insert_item(
+                image_item_with_paths(
+                    "images/2026-06-09/capture.png",
+                    "images/2026-06-09/thumb.png",
+                    "session_1",
+                ),
+                DEFAULT_TIME_ZONE,
+            )
+            .unwrap();
 
-        db.clear_session("session_1").unwrap();
+        let file_targets = db.clear_session("session_1").unwrap();
+        assert_eq!(file_targets.len(), 1);
+        assert_eq!(file_targets[0].id, image.id);
+        assert_eq!(
+            file_targets[0].image_path.as_deref(),
+            Some("images/2026-06-09/capture.png")
+        );
         assert!(db.get_item(&item.id).unwrap().is_none());
         assert!(!db
             .get_sessions(10)

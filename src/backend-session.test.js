@@ -10,7 +10,6 @@ describe('Backend session commands', () => {
     const clearSessionSource = commandsSource.slice(clearSessionStart, searchStart);
 
     const activeGuardIndex = clearSessionSource.indexOf('get_current_session_id()');
-    const loadItemsIndex = clearSessionSource.indexOf('get_items_by_session');
     const deleteSessionIndex = clearSessionSource.indexOf('db.clear_session');
 
     expect(clearSessionStart).toBeGreaterThan(-1);
@@ -18,7 +17,7 @@ describe('Backend session commands', () => {
     expect(clearSessionSource).toContain('session_mgr: State<');
     expect(clearSessionSource).toContain('不能清空当前活动会话');
     expect(activeGuardIndex).toBeGreaterThan(-1);
-    expect(loadItemsIndex).toBeGreaterThan(activeGuardIndex);
     expect(deleteSessionIndex).toBeGreaterThan(activeGuardIndex);
+    expect(clearSessionSource).not.toContain('get_items_by_session(&session_id, i32::MAX, 0)');
   });
 });

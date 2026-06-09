@@ -8,6 +8,7 @@ mod commands;
 mod database;
 mod dev_port;
 mod hotkey;
+mod link;
 mod models;
 mod session;
 mod settings;

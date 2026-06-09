@@ -39,10 +39,30 @@ export function effectiveItemType(item) {
 
 export function isWebUrl(value) {
   const trimmed = String(value || '').trim();
-  const match = /^(https?):\/\/([^\s/?#]+)([^\s]*)$/i.exec(trimmed);
-  if (!match) return false;
+  if (!trimmed || /[\s\\\u0000-\u001f\u007f]/.test(trimmed)) return false;
 
-  return match[2].includes('.');
+  try {
+    const url = new URL(trimmed);
+    if (!['http:', 'https:'].includes(url.protocol)) return false;
+    if (url.username || url.password) return false;
+
+    const host = url.hostname.replace(/\.$/, '').toLowerCase();
+    if (!host || host === 'localhost' || !host.includes('.')) return false;
+    if (
+      host === '127.0.0.1' ||
+      host.startsWith('10.') ||
+      host.startsWith('192.168.') ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
+      host === '::1' ||
+      host === '[::1]'
+    ) {
+      return false;
+    }
+
+    return true;
+  } catch (_e) {
+    return false;
+  }
 }
 
 export function linkDisplayLabel(value) {

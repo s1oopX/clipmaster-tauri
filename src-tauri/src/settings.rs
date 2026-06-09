@@ -68,11 +68,25 @@ impl SettingsStore {
         let path = data_dir.join("settings.json");
         let settings = if path.exists() {
             let raw = fs::read_to_string(&path)?;
-            serde_json::from_str(&raw).unwrap_or_default()
+            match serde_json::from_str(&raw) {
+                Ok(settings) => settings,
+                Err(error) => {
+                    eprintln!("设置文件解析失败，已进入安全默认配置: {}", error);
+                    if let Err(backup_error) = backup_corrupt_settings_file(&path) {
+                        eprintln!("备份损坏设置文件失败，已继续使用安全默认配置: {backup_error}");
+                    }
+                    safe_fallback_settings()
+                }
+            }
         } else {
             AppSettings::default()
         };
         let settings = Self::normalize(settings);
+        if !path.exists() {
+            if let Err(error) = fs::write(&path, serde_json::to_string_pretty(&settings)?) {
+                eprintln!("写入默认设置失败，已继续启动: {}", error);
+            }
+        }
 
         Ok(Self {
             path,
@@ -120,6 +134,23 @@ impl SettingsStore {
             dev_server_port: normalize_dev_server_port(settings.dev_server_port),
         }
     }
+}
+
+fn safe_fallback_settings() -> AppSettings {
+    AppSettings {
+        clipboard_monitor_enabled: false,
+        show_main_window_on_start: true,
+        ..AppSettings::default()
+    }
+}
+
+fn backup_corrupt_settings_file(path: &Path) -> Result<()> {
+    let backup_path = path.with_file_name(format!(
+        "settings.corrupt-{}.json",
+        chrono::Utc::now().timestamp_millis()
+    ));
+    fs::rename(path, backup_path)?;
+    Ok(())
 }
 
 pub fn validate_screenshot_hotkey(value: &str) -> Result<(), String> {
@@ -323,6 +354,28 @@ mod tests {
             store.get().screenshot_hotkey,
             AppSettings::default().screenshot_hotkey
         );
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn corrupt_settings_file_falls_back_to_visible_window_and_disabled_monitor() {
+        let data_dir =
+            std::env::temp_dir().join(format!("clipmaster-settings-{}", nanoid::nanoid!()));
+        fs::create_dir_all(&data_dir).unwrap();
+        fs::write(data_dir.join("settings.json"), "{not valid json").unwrap();
+
+        let store = SettingsStore::new(&data_dir).unwrap();
+        let settings = store.get();
+
+        assert!(!settings.clipboard_monitor_enabled);
+        assert!(settings.show_main_window_on_start);
+        assert!(fs::read_dir(&data_dir).unwrap().any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("settings.corrupt-")));
+        assert!(data_dir.join("settings.json").exists());
 
         let _ = fs::remove_dir_all(data_dir);
     }

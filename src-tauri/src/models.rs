@@ -93,6 +93,22 @@ pub struct CleanupPlan {
 }
 
 impl CleanupPlan {
+    pub fn from_counts(
+        item_count: i32,
+        text_count: i32,
+        image_count: i32,
+        oldest_timestamp: Option<i64>,
+        newest_timestamp: Option<i64>,
+    ) -> Self {
+        Self {
+            item_count,
+            text_count,
+            image_count,
+            oldest_timestamp,
+            newest_timestamp,
+        }
+    }
+
     pub fn from_items(items: Vec<ClipboardItem>) -> Self {
         let item_count = items.len() as i32;
         let text_count = items
@@ -113,5 +129,27 @@ impl CleanupPlan {
             oldest_timestamp,
             newest_timestamp,
         }
+    }
+}
+
+/// 删除历史后需要同步清理的图片文件。
+#[derive(Debug, Clone)]
+pub struct CleanupFileTarget {
+    pub id: String,
+    pub image_path: Option<String>,
+    pub thumbnail_path: Option<String>,
+}
+
+impl CleanupFileTarget {
+    pub fn from_item(item: &ClipboardItem) -> Option<Self> {
+        if !matches!(item.type_, ClipboardType::Image) {
+            return None;
+        }
+
+        Some(Self {
+            id: item.id.clone(),
+            image_path: item.image_path.clone(),
+            thumbnail_path: item.thumbnail_path.clone(),
+        })
     }
 }
