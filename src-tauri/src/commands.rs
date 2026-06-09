@@ -20,11 +20,6 @@ use crate::models::{
 use crate::session::SessionManager;
 use crate::settings::{AppSettings, SettingsStore};
 
-const ALLOWED_EXTERNAL_URLS: [&str; 2] = [
-    "https://github.com/s1oopX",
-    "https://github.com/s1oopX/clipmaster-tauri/issues",
-];
-
 #[derive(Debug, Clone, Serialize)]
 struct FrozenScreenSnapshot {
     path: String,
@@ -367,9 +362,17 @@ pub async fn get_clipboard_items(
     db: State<'_, Database>,
     limit: Option<i32>,
     offset: Option<i32>,
+    item_type: Option<String>,
+    favorite_only: Option<bool>,
 ) -> Result<Vec<ClipboardItem>, String> {
-    db.get_items(bounded_limit(limit, 100, 500), bounded_offset(offset))
-        .map_err(|e| e.to_string())
+    let item_type = normalized_item_type(item_type.as_deref())?;
+    db.get_items_filtered(
+        bounded_limit(limit, 100, 500),
+        bounded_offset(offset),
+        item_type,
+        favorite_only.unwrap_or(false),
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// 按会话获取记录
@@ -395,12 +398,17 @@ pub async fn get_items_by_day(
     date_key: String,
     limit: Option<i32>,
     offset: Option<i32>,
+    item_type: Option<String>,
+    favorite_only: Option<bool>,
 ) -> Result<Vec<ClipboardItem>, String> {
     validate_date_key(&date_key)?;
-    db.get_items_by_day(
+    let item_type = normalized_item_type(item_type.as_deref())?;
+    db.get_items_by_day_filtered(
         &date_key,
         bounded_limit(limit, 100, 500),
         bounded_offset(offset),
+        item_type,
+        favorite_only.unwrap_or(false),
     )
     .map_err(|e| e.to_string())
 }
@@ -494,6 +502,9 @@ pub async fn search_items(
     session_id: Option<String>,
     date_key: Option<String>,
     limit: Option<i32>,
+    offset: Option<i32>,
+    item_type: Option<String>,
+    favorite_only: Option<bool>,
 ) -> Result<Vec<ClipboardItem>, String> {
     let effective_date_key = date_key
         .as_deref()
@@ -503,12 +514,16 @@ pub async fn search_items(
         .unwrap_or_else(|| date_key_now(&settings.get().time_zone));
 
     validate_date_key(&effective_date_key)?;
+    let item_type = normalized_item_type(item_type.as_deref())?;
 
     db.search_items(
         &query,
         session_id.as_deref(),
         &effective_date_key,
         bounded_limit(limit, 100, 500),
+        bounded_offset(offset),
+        item_type,
+        favorite_only.unwrap_or(false),
     )
     .map_err(|e| e.to_string())
 }
@@ -519,7 +534,7 @@ pub async fn update_item_content(
     db: State<'_, Database>,
     item_id: String,
     new_content: String,
-) -> Result<(), String> {
+) -> Result<ClipboardItem, String> {
     db.update_item_content(&item_id, &new_content)
         .map_err(|e| e.to_string())
 }
@@ -890,6 +905,17 @@ fn bounded_offset(offset: Option<i32>) -> i32 {
     offset.unwrap_or(0).max(0)
 }
 
+fn normalized_item_type(item_type: Option<&str>) -> Result<Option<&str>, String> {
+    match item_type.map(str::trim).filter(|value| !value.is_empty()) {
+        None | Some("all") => Ok(None),
+        Some("text") => Ok(Some("text")),
+        Some("link") => Ok(Some("link")),
+        Some("image") => Ok(Some("image")),
+        Some("file") => Ok(Some("file")),
+        Some(_) => Err("记录类型筛选无效".to_string()),
+    }
+}
+
 pub fn restore_main_window(app: &AppHandle) -> Result<(), String> {
     if let Some(main_window) = app.get_webview_window("main") {
         main_window.show().map_err(|e| e.to_string())?;
@@ -1038,11 +1064,26 @@ fn path_from_forward_slashes(path: &str) -> PathBuf {
 fn validate_external_url(url: &str) -> Result<String, String> {
     let trimmed = url.trim();
 
-    if ALLOWED_EXTERNAL_URLS.contains(&trimmed) {
-        Ok(trimmed.to_string())
-    } else {
-        Err("不允许打开该外部链接".to_string())
+    let Some((scheme, rest)) = trimmed.split_once("://") else {
+        return Err("只能打开 http 或 https 链接".to_string());
+    };
+
+    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
+        return Err("只能打开 http 或 https 链接".to_string());
     }
+
+    if rest.is_empty() || !rest.contains('.') {
+        return Err("链接地址不完整".to_string());
+    }
+
+    if trimmed
+        .chars()
+        .any(|character| character.is_control() || character.is_whitespace())
+    {
+        return Err("链接地址包含非法字符".to_string());
+    }
+
+    Ok(trimmed.to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -1159,7 +1200,7 @@ mod tests {
     }
 
     #[test]
-    fn validates_only_known_external_links() {
+    fn validates_safe_external_links() {
         assert_eq!(
             validate_external_url(" https://github.com/s1oopX ").unwrap(),
             "https://github.com/s1oopX"
@@ -1168,13 +1209,19 @@ mod tests {
             validate_external_url("https://github.com/s1oopX/clipmaster-tauri/issues").unwrap(),
             "https://github.com/s1oopX/clipmaster-tauri/issues"
         );
+        assert_eq!(
+            validate_external_url("https://example.com/docs?q=clipmaster#install").unwrap(),
+            "https://example.com/docs?q=clipmaster#install"
+        );
 
         for url in [
             "",
-            "https://github.com",
-            "https://github.com/s1oopX/clipmaster-tauri",
-            "https://example.com",
+            "localhost",
+            "https://localhost",
+            "https://example",
             "javascript:alert(1)",
+            "file:///C:/Windows/System32/calc.exe",
+            "https://example.com/a b",
         ] {
             assert!(validate_external_url(url).is_err(), "{url}");
         }

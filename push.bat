@@ -28,7 +28,7 @@ echo.
 echo [3/4] 提交更改...
 git commit -m "%~1
 
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+Co-authored-by: Codex <codex@openai.com>"
 
 if %ERRORLEVEL% NEQ 0 (
     echo [提示] 没有更改需要提交

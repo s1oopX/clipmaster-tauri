@@ -1,11 +1,13 @@
 <script>
-  import { Copy, FileText } from '@lucide/svelte';
+  import { Copy, ExternalLink, FileText } from '@lucide/svelte';
+  import { effectiveItemType } from '../lib/clipboard-ui.js';
 
   export let activeContextItem = null;
   export let contextMenu = { open: false, x: 0, y: 0, itemId: null };
   export let onAddAnnotation = () => {};
   export let onCopy = () => {};
   export let onEditContent = () => {};
+  export let onOpenLink = () => {};
   export let runContextAction = (action) => action();
 </script>
 
@@ -24,7 +26,17 @@
       <Copy size={15} aria-hidden="true" />
       复制
     </button>
-    {#if activeContextItem.type === 'text'}
+    {#if effectiveItemType(activeContextItem) === 'link'}
+      <button
+        type="button"
+        role="menuitem"
+        on:click={() => runContextAction(() => onOpenLink(activeContextItem))}
+      >
+        <ExternalLink size={15} aria-hidden="true" />
+        打开链接
+      </button>
+    {/if}
+    {#if effectiveItemType(activeContextItem) === 'text'}
       <button
         type="button"
         role="menuitem"

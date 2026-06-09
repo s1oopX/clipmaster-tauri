@@ -31,6 +31,31 @@ export function itemMatchesSearchQuery(item, query) {
   );
 }
 
+export function effectiveItemType(item) {
+  if (item?.type === 'link') return 'link';
+  if (item?.type !== 'text') return item?.type || 'text';
+  return isWebUrl(item.content || item.preview || '') ? 'link' : 'text';
+}
+
+export function isWebUrl(value) {
+  const trimmed = String(value || '').trim();
+  const match = /^(https?):\/\/([^\s/?#]+)([^\s]*)$/i.exec(trimmed);
+  if (!match) return false;
+
+  return match[2].includes('.');
+}
+
+export function linkDisplayLabel(value) {
+  const trimmed = String(value || '').trim();
+  try {
+    const url = new URL(trimmed);
+    const path = `${url.pathname}${url.search}${url.hash}`;
+    return path && path !== '/' ? `${url.host}${path}` : url.host;
+  } catch (_e) {
+    return trimmed;
+  }
+}
+
 export function isActivationKey(event) {
   return event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar';
 }
@@ -55,6 +80,10 @@ export function formatTime(timestamp) {
 }
 
 export function itemLabel(item) {
+  if (effectiveItemType(item) === 'link') {
+    return item.preview || item.content || '链接记录';
+  }
+
   if (item.type === 'text') {
     return item.preview || item.content || '文本记录';
   }

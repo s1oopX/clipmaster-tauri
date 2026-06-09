@@ -97,7 +97,19 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 3 add_annotation
 4 backfill_date_keys
 5 migrate_image_paths_to_daily
+6 migrate_text_urls_to_links
 ```
+
+第 6 版迁移会把旧的单 URL 文本记录转换为 `type = 'link'`，并清理首尾空白、重建预览和链接专用 hash。
+
+## 记录类型
+
+`clipboard_items.type` 当前支持：
+
+- `text`：普通文本
+- `link`：完整的 `http` 或 `https` 链接
+- `image`：图片或截图
+- `file`：预留文件类型
 
 ## 图片存储
 
@@ -133,7 +145,7 @@ FROM clipboard_items
 WHERE content_hash = ?1 AND timestamp > ?2;
 ```
 
-文本 hash 使用完整文本；图片 hash 使用宽高和采样字节。
+普通文本 hash 使用完整文本；链接 hash 使用 `link:` 前缀加规范化 URL，避免和普通文本 hash 混淆。图片 hash 使用宽高和采样字节。
 
 ## 当前限制
 

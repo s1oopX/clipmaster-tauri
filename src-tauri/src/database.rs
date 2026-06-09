@@ -135,6 +135,7 @@ impl Database {
         self.run_migration(5, "migrate_image_paths_to_daily", |conn| {
             migrate_image_paths_to_daily(conn, data_dir)
         })?;
+        self.run_migration(6, "migrate_text_urls_to_links", migrate_text_urls_to_links)?;
         Ok(())
     }
 
@@ -208,6 +209,36 @@ fn migrate_image_paths_to_daily(conn: &Connection, data_dir: &Path) -> Result<()
                 params![next_image_path, next_thumbnail_path, id],
             )?;
         }
+    }
+
+    Ok(())
+}
+
+fn migrate_text_urls_to_links(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT id, content
+         FROM clipboard_items
+         WHERE type = 'text'
+           AND content IS NOT NULL",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let items = rows.collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    for (id, content) in items {
+        if !is_web_url(&content) {
+            continue;
+        }
+
+        let url = content.trim();
+        conn.execute(
+            "UPDATE clipboard_items
+             SET type = 'link', content = ?1, preview = ?2, content_hash = ?3
+             WHERE id = ?4",
+            params![url, preview_from_content(url), link_content_hash(url), id],
+        )?;
     }
 
     Ok(())
@@ -299,16 +330,7 @@ impl Database {
             return Ok(existing);
         }
 
-        let preview = item.content.as_ref().map(|c| {
-            // 安全地截取字符串，避免切断多字节字符
-            let char_count = c.chars().count();
-            if char_count > 100 {
-                let preview_text: String = c.chars().take(100).collect();
-                format!("{}...", preview_text)
-            } else {
-                c.clone()
-            }
-        });
+        let preview = item.content.as_ref().map(|c| preview_from_content(c));
 
         tx.execute(
             "INSERT INTO clipboard_items (
@@ -350,13 +372,20 @@ impl Database {
         })
     }
 
-    /// 获取剪贴板记录列表
-    pub fn get_items(&self, limit: i32, offset: i32) -> Result<Vec<ClipboardItem>> {
+    pub fn get_items_filtered(
+        &self,
+        limit: i32,
+        offset: i32,
+        item_type: Option<&str>,
+        favorite_only: bool,
+    ) -> Result<Vec<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
 
         let sql = format!(
             "SELECT {}
              FROM clipboard_items
+             WHERE (?3 IS NULL OR type = ?3)
+               AND (?4 = 0 OR is_favorite = 1)
              ORDER BY is_pinned DESC, timestamp DESC
              LIMIT ?1 OFFSET ?2",
             CLIPBOARD_ITEM_COLUMNS
@@ -364,7 +393,10 @@ impl Database {
         let mut stmt = conn.prepare(&sql)?;
 
         let items = stmt
-            .query_map(params![limit, offset], clipboard_item_from_row)?
+            .query_map(
+                params![limit, offset, item_type, favorite_only as i32],
+                clipboard_item_from_row,
+            )?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(items)
@@ -625,7 +657,7 @@ impl Database {
     }
 
     /// 更新记录内容
-    pub fn update_item_content(&self, item_id: &str, new_content: &str) -> Result<()> {
+    pub fn update_item_content(&self, item_id: &str, new_content: &str) -> Result<ClipboardItem> {
         let conn = self.conn.lock().unwrap();
         let (item_type, date_key): (String, String) = conn
             .query_row(
@@ -644,15 +676,23 @@ impl Database {
             return Err(anyhow::anyhow!("原文不能为空"));
         }
 
-        // 生成新的预览文本
-        let char_count = new_content.chars().count();
-        let preview = if char_count > 100 {
-            let preview_text: String = new_content.chars().take(100).collect();
-            format!("{}...", preview_text)
+        let is_link = is_web_url(new_content);
+        let content = if is_link {
+            new_content.trim().to_string()
         } else {
             new_content.to_string()
         };
-        let content_hash = format!("{:x}", md5::compute(new_content.as_bytes()));
+        let next_type = if is_link {
+            ClipboardType::Link
+        } else {
+            ClipboardType::Text
+        };
+        let preview = preview_from_content(&content);
+        let content_hash = if is_link {
+            link_content_hash(&content)
+        } else {
+            format!("{:x}", md5::compute(content.as_bytes()))
+        };
         let duplicate_id = conn
             .query_row(
                 "SELECT id FROM clipboard_items
@@ -668,11 +708,20 @@ impl Database {
         }
 
         conn.execute(
-            "UPDATE clipboard_items SET content = ?1, preview = ?2, content_hash = ?3 WHERE id = ?4",
-            params![new_content, preview, content_hash, item_id],
+            "UPDATE clipboard_items
+             SET type = ?1, content = ?2, preview = ?3, content_hash = ?4
+             WHERE id = ?5",
+            params![next_type.as_str(), content, preview, content_hash, item_id],
         )?;
 
-        Ok(())
+        let sql = format!(
+            "SELECT {}
+             FROM clipboard_items
+             WHERE id = ?1",
+            CLIPBOARD_ITEM_COLUMNS
+        );
+        conn.query_row(&sql, params![item_id], clipboard_item_from_row)
+            .map_err(Into::into)
     }
 
     /// 更新记录标注，不修改原始内容和预览
@@ -724,18 +773,21 @@ impl Database {
         Ok(days)
     }
 
-    /// 按日期获取记录
-    pub fn get_items_by_day(
+    pub fn get_items_by_day_filtered(
         &self,
         date_key: &str,
         limit: i32,
         offset: i32,
+        item_type: Option<&str>,
+        favorite_only: bool,
     ) -> Result<Vec<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
         let sql = format!(
             "SELECT {}
              FROM clipboard_items
              WHERE date_key = ?1
+               AND (?4 IS NULL OR type = ?4)
+               AND (?5 = 0 OR is_favorite = 1)
              ORDER BY is_pinned DESC, timestamp DESC
              LIMIT ?2 OFFSET ?3",
             CLIPBOARD_ITEM_COLUMNS
@@ -743,7 +795,10 @@ impl Database {
         let mut stmt = conn.prepare(&sql)?;
 
         let items = stmt
-            .query_map(params![date_key, limit, offset], clipboard_item_from_row)?
+            .query_map(
+                params![date_key, limit, offset, item_type, favorite_only as i32],
+                clipboard_item_from_row,
+            )?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(items)
@@ -861,6 +916,9 @@ impl Database {
         session_id: Option<&str>,
         date_key: &str,
         limit: i32,
+        offset: i32,
+        item_type: Option<&str>,
+        favorite_only: bool,
     ) -> Result<Vec<ClipboardItem>> {
         let Some(search_pattern) = like_literal_pattern(query) else {
             return Ok(Vec::new());
@@ -875,19 +933,29 @@ impl Database {
                  FROM clipboard_items
                  WHERE date_key = ?1
                    AND session_id = ?2
+                   AND (?6 IS NULL OR type = ?6)
+                   AND (?7 = 0 OR is_favorite = 1)
                    AND (
                        content LIKE ?3 ESCAPE '\\'
                        OR preview LIKE ?3 ESCAPE '\\'
                        OR annotation LIKE ?3 ESCAPE '\\'
                    )
                  ORDER BY timestamp DESC
-                 LIMIT ?4",
+                 LIMIT ?4 OFFSET ?5",
                 CLIPBOARD_ITEM_COLUMNS
             );
             let mut stmt = conn.prepare(&sql)?;
 
             let rows = stmt.query_map(
-                params![date_key, sid, &search_pattern, limit],
+                params![
+                    date_key,
+                    sid,
+                    &search_pattern,
+                    limit,
+                    offset,
+                    item_type,
+                    favorite_only as i32
+                ],
                 clipboard_item_from_row,
             )?;
 
@@ -897,19 +965,28 @@ impl Database {
                 "SELECT {}
                  FROM clipboard_items
                  WHERE date_key = ?1
+                   AND (?5 IS NULL OR type = ?5)
+                   AND (?6 = 0 OR is_favorite = 1)
                    AND (
                        content LIKE ?2 ESCAPE '\\'
                        OR preview LIKE ?2 ESCAPE '\\'
                        OR annotation LIKE ?2 ESCAPE '\\'
                    )
                  ORDER BY timestamp DESC
-                 LIMIT ?3",
+                 LIMIT ?3 OFFSET ?4",
                 CLIPBOARD_ITEM_COLUMNS
             );
             let mut stmt = conn.prepare(&sql)?;
 
             let rows = stmt.query_map(
-                params![date_key, &search_pattern, limit],
+                params![
+                    date_key,
+                    &search_pattern,
+                    limit,
+                    offset,
+                    item_type,
+                    favorite_only as i32
+                ],
                 clipboard_item_from_row,
             )?;
 
@@ -937,6 +1014,40 @@ fn like_literal_pattern(query: &str) -> Option<String> {
     pattern.push('%');
 
     Some(pattern)
+}
+
+fn preview_from_content(content: &str) -> String {
+    let char_count = content.chars().count();
+    if char_count > 100 {
+        let preview_text: String = content.chars().take(100).collect();
+        format!("{}...", preview_text)
+    } else {
+        content.to_string()
+    }
+}
+
+fn is_web_url(value: &str) -> bool {
+    let trimmed = value.trim();
+    let Some((scheme, rest)) = trimmed.split_once("://") else {
+        return false;
+    };
+
+    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
+        return false;
+    }
+
+    !rest.is_empty()
+        && rest.contains('.')
+        && !trimmed
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+}
+
+fn link_content_hash(url: &str) -> String {
+    format!(
+        "{:x}",
+        md5::compute(format!("link:{}", url.trim()).as_bytes())
+    )
 }
 
 fn clipboard_item_from_row(row: &Row<'_>) -> rusqlite::Result<ClipboardItem> {
@@ -1164,7 +1275,7 @@ mod tests {
     fn records_schema_migrations_for_new_database() {
         let (db, data_dir) = temp_database();
 
-        assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5]);
+        assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5, 6]);
 
         let _ = fs::remove_dir_all(data_dir);
     }
@@ -1192,7 +1303,7 @@ mod tests {
             assert!(column_exists(&conn, "clipboard_items", "date_key").unwrap());
             assert!(column_exists(&conn, "clipboard_items", "annotation").unwrap());
         }
-        assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5]);
+        assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5, 6]);
 
         let item = db.get_item("legacy_image").unwrap().unwrap();
         assert_eq!(item.date_key, "2026-06-06");
@@ -1227,7 +1338,7 @@ mod tests {
         assert_eq!(refreshed.date_key, date_key_now(DEFAULT_TIME_ZONE));
         assert!(refreshed.timestamp > first.timestamp);
 
-        let items = db.get_items(10, 0).unwrap();
+        let items = db.get_items_filtered(10, 0, None, false).unwrap();
         assert_eq!(items.len(), 1);
 
         let _ = fs::remove_dir_all(data_dir);
@@ -1259,7 +1370,7 @@ mod tests {
         assert_ne!(first.id, second.id);
         assert_eq!(second.date_key, date_key_now(DEFAULT_TIME_ZONE));
 
-        let items = db.get_items(10, 0).unwrap();
+        let items = db.get_items_filtered(10, 0, None, false).unwrap();
         assert_eq!(items.len(), 2);
         assert!(items.iter().any(|item| item.date_key == yesterday_key));
 
@@ -1275,9 +1386,7 @@ mod tests {
             .insert_item(text_item(&alpha_hash), DEFAULT_TIME_ZONE)
             .unwrap();
 
-        db.update_item_content(&item.id, "Beta token").unwrap();
-
-        let updated = db.get_item(&item.id).unwrap().unwrap();
+        let updated = db.update_item_content(&item.id, "Beta token").unwrap();
         assert_eq!(updated.content.as_deref(), Some("Beta token"));
         assert_eq!(updated.content_hash, beta_hash);
 
@@ -1291,6 +1400,123 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(beta_match.id, item.id);
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn updating_text_content_to_url_stores_link_type_and_prefixed_hash() {
+        let (db, data_dir) = temp_database();
+        let item = db
+            .insert_item(text_item_with_content("Alpha token"), DEFAULT_TIME_ZONE)
+            .unwrap();
+
+        let updated = db
+            .update_item_content(&item.id, " https://example.com/docs ")
+            .unwrap();
+
+        assert!(matches!(updated.type_, ClipboardType::Link));
+        assert_eq!(updated.content.as_deref(), Some("https://example.com/docs"));
+        assert_eq!(updated.preview.as_deref(), Some("https://example.com/docs"));
+        assert_eq!(
+            updated.content_hash,
+            link_content_hash("https://example.com/docs")
+        );
+
+        let links = db.get_items_filtered(10, 0, Some("link"), false).unwrap();
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].id, item.id);
+
+        let stale_text_match = db
+            .refresh_duplicate_for_time_zone(
+                &text_hash("https://example.com/docs"),
+                DEFAULT_TIME_ZONE,
+            )
+            .unwrap();
+        assert!(stale_text_match.is_none());
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn migrates_single_url_text_records_to_link_type() {
+        let data_dir =
+            std::env::temp_dir().join(format!("clipmaster-database-{}", nanoid::nanoid!()));
+        fs::create_dir_all(&data_dir).unwrap();
+        let timestamp = Utc::now().timestamp_millis();
+        let conn = Connection::open(data_dir.join("clipboard.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                start_time INTEGER NOT NULL,
+                end_time INTEGER,
+                item_count INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1
+            );
+            CREATE TABLE clipboard_items (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL,
+                content TEXT,
+                image_path TEXT,
+                thumbnail_path TEXT,
+                preview TEXT,
+                timestamp INTEGER NOT NULL,
+                date_key TEXT NOT NULL,
+                source_app TEXT,
+                is_favorite INTEGER DEFAULT 0,
+                is_pinned INTEGER DEFAULT 0,
+                annotation TEXT,
+                content_hash TEXT NOT NULL,
+                session_id TEXT NOT NULL
+            );
+            CREATE TABLE schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at INTEGER NOT NULL
+            );",
+        )
+        .unwrap();
+        for version in 1..=5 {
+            conn.execute(
+                "INSERT INTO schema_migrations (version, name, applied_at)
+                 VALUES (?1, ?2, ?3)",
+                params![version, format!("migration_{version}"), timestamp],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO sessions (id, start_time, item_count, is_active)
+             VALUES ('session_1', ?1, 1, 1)",
+            params![timestamp],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO clipboard_items (
+                id, type, content, image_path, thumbnail_path, preview, timestamp,
+                date_key, source_app, is_favorite, is_pinned, annotation, content_hash, session_id
+             )
+             VALUES (
+                'legacy_link', 'text', ' https://example.com/docs ', NULL, NULL,
+                ' https://example.com/docs ', ?1, ?2, NULL, 0, 0, NULL, ?3, 'session_1'
+             )",
+            params![
+                timestamp,
+                date_key_from_timestamp(timestamp, DEFAULT_TIME_ZONE),
+                text_hash(" https://example.com/docs ")
+            ],
+        )
+        .unwrap();
+        drop(conn);
+
+        let db = Database::new(data_dir.clone()).unwrap();
+        let item = db.get_item("legacy_link").unwrap().unwrap();
+        assert!(matches!(item.type_, ClipboardType::Link));
+        assert_eq!(item.content.as_deref(), Some("https://example.com/docs"));
+        assert_eq!(
+            item.content_hash,
+            link_content_hash("https://example.com/docs")
+        );
+        assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5, 6]);
 
         let _ = fs::remove_dir_all(data_dir);
     }
@@ -1476,7 +1702,10 @@ mod tests {
         assert_eq!(removed.len(), 2);
         assert!(removed_ids.contains(&first.id.as_str()));
         assert!(removed_ids.contains(&second.id.as_str()));
-        assert!(db.get_items(10, 0).unwrap().is_empty());
+        assert!(db
+            .get_items_filtered(10, 0, None, false)
+            .unwrap()
+            .is_empty());
 
         let sessions = db.get_sessions(10).unwrap();
         assert_eq!(sessions.len(), 1);
@@ -1503,7 +1732,10 @@ mod tests {
             .to_string();
 
         assert!(error.contains("会话不存在"));
-        assert!(db.get_items(10, 0).unwrap().is_empty());
+        assert!(db
+            .get_items_filtered(10, 0, None, false)
+            .unwrap()
+            .is_empty());
 
         let _ = fs::remove_dir_all(data_dir);
     }
@@ -1560,7 +1792,7 @@ mod tests {
 
         db.rebuild_date_keys("America/New_York").unwrap();
 
-        let items = db.get_items(10, 0).unwrap();
+        let items = db.get_items_filtered(10, 0, None, false).unwrap();
         assert_eq!(items[0].date_key, "2026-06-05");
 
         let _ = fs::remove_dir_all(data_dir);
@@ -1591,24 +1823,42 @@ mod tests {
         }
 
         let today_results = db
-            .search_items("Alpha", Some("session_1"), &today.date_key, 10)
+            .search_items(
+                "Alpha",
+                Some("session_1"),
+                &today.date_key,
+                10,
+                0,
+                None,
+                false,
+            )
             .unwrap();
         assert_eq!(today_results.len(), 1);
         assert_eq!(today_results[0].id, today.id);
 
         let other_day_results = db
-            .search_items("Alpha", Some("session_1"), &other_date_key, 10)
+            .search_items(
+                "Alpha",
+                Some("session_1"),
+                &other_date_key,
+                10,
+                0,
+                None,
+                false,
+            )
             .unwrap();
         assert_eq!(other_day_results.len(), 1);
         assert_eq!(other_day_results[0].id, other_day.id);
 
-        let all_session_today_results =
-            db.search_items("Alpha", None, &today.date_key, 10).unwrap();
+        let all_session_today_results = db
+            .search_items("Alpha", None, &today.date_key, 10, 0, None, false)
+            .unwrap();
         assert_eq!(all_session_today_results.len(), 1);
         assert_eq!(all_session_today_results[0].id, today.id);
 
-        let all_session_other_day_results =
-            db.search_items("Alpha", None, &other_date_key, 10).unwrap();
+        let all_session_other_day_results = db
+            .search_items("Alpha", None, &other_date_key, 10, 0, None, false)
+            .unwrap();
         assert_eq!(all_session_other_day_results.len(), 1);
         assert_eq!(all_session_other_day_results[0].id, other_day.id);
 
@@ -1638,19 +1888,19 @@ mod tests {
             .unwrap();
 
         let empty_results = db
-            .search_items("   ", None, &percent_item.date_key, 10)
+            .search_items("   ", None, &percent_item.date_key, 10, 0, None, false)
             .unwrap();
         assert!(empty_results.is_empty());
 
         let percent_results = db
-            .search_items("%", None, &percent_item.date_key, 10)
+            .search_items("%", None, &percent_item.date_key, 10, 0, None, false)
             .unwrap();
         assert_eq!(percent_results.len(), 1);
         assert_eq!(percent_results[0].id, percent_item.id);
         assert_ne!(percent_results[0].id, percent_neighbor.id);
 
         let underscore_results = db
-            .search_items("_", None, &underscore_item.date_key, 10)
+            .search_items("_", None, &underscore_item.date_key, 10, 0, None, false)
             .unwrap();
         assert_eq!(underscore_results.len(), 1);
         assert_eq!(underscore_results[0].id, underscore_item.id);

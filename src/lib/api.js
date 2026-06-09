@@ -49,8 +49,8 @@ export const clipboardApi = {
    * @param {number} limit - 返回数量
    * @param {number} offset - 偏移量
    */
-  async getItems(limit = 100, offset = 0) {
-    return await invoke('get_clipboard_items', { limit, offset });
+  async getItems(limit = 100, offset = 0, filter = {}) {
+    return await invoke('get_clipboard_items', { limit, offset, ...filter });
   },
 
   /**
@@ -59,8 +59,8 @@ export const clipboardApi = {
    * @param {number} limit - 返回数量
    * @param {number} offset - 偏移量
    */
-  async getItemsByDay(dateKey, limit = 100, offset = 0) {
-    return await invoke('get_items_by_day', { dateKey, limit, offset });
+  async getItemsByDay(dateKey, limit = 100, offset = 0, filter = {}) {
+    return await invoke('get_items_by_day', { dateKey, limit, offset, ...filter });
   },
 
   /**
@@ -196,13 +196,23 @@ export const searchApi = {
    * @param {string} sessionId - 可选：会话ID
    * @param {number} limit
    * @param {string} dateKey - 限定日期，如 "2026-06-06"
+   * @param {number} offset
    */
-  async searchItems(query, sessionId = null, limit = 100, dateKey = null) {
+  async searchItems(
+    query,
+    sessionId = null,
+    limit = 100,
+    dateKey = null,
+    offset = 0,
+    filter = {}
+  ) {
     return await invoke('search_items', {
       query,
       sessionId,
       limit,
       dateKey,
+      offset,
+      ...filter,
     });
   },
 };
@@ -227,7 +237,7 @@ export const toolApi = {
   },
 
   /**
-   * 使用系统默认浏览器打开允许的外部链接
+   * 使用系统默认浏览器打开安全的 http/https 外部链接
    * @param {string} url
    */
   async openExternalUrl(url) {

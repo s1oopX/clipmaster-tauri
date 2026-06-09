@@ -4409,6 +4409,73 @@ body {
     border-color: var(--accent-line);
   }
 
+  .link-content {
+    display: grid;
+    gap: 4px;
+    margin-top: 5px;
+    padding: 6px 7px;
+    color: #0f5f72;
+    background: #eef8fb;
+    border: 1px solid #c5e4ec;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+
+  .link-content:hover,
+  .link-content:focus-visible {
+    background: #e4f3f8;
+    border-color: #93cfdd;
+    outline: none;
+  }
+
+  .link-copy {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 0.86rem;
+    font-weight: 720;
+  }
+
+  .link-copy span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .link-content p {
+    margin: 0;
+    color: #4e6c74;
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .load-more-row {
+    display: grid;
+    place-items: center;
+    padding: 8px;
+  }
+
+  .load-more-row button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 30px;
+    padding: 0 12px;
+    color: var(--accent-strong);
+    background: #eef7f4;
+    border: 1px solid var(--accent-line);
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 720;
+  }
+
+  .load-more-row button:disabled {
+    cursor: wait;
+    opacity: 0.72;
+  }
+
   .image-summary {
     gap: 6px;
     margin-top: 5px;

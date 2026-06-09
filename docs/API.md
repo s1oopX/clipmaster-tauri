@@ -5,7 +5,8 @@ ClipMaster 前端通过 Tauri `invoke` 调用 Rust command，通过 `listen` 接
 ## 数据类型
 
 ```typescript
-type ClipboardType = 'text' | 'image' | 'file';
+type ClipboardType = 'text' | 'link' | 'image' | 'file';
+type ClipboardFilterType = 'text' | 'link' | 'image' | 'file';
 
 interface ClipboardItem {
   id: string;
@@ -79,9 +80,13 @@ interface PortCheckResult {
 ```typescript
 invoke('get_clipboard_items', {
   limit?: number,
-  offset?: number
+  offset?: number,
+  itemType?: ClipboardFilterType,
+  favoriteOnly?: boolean
 }) => Promise<ClipboardItem[]>
 ```
+
+`limit` 会被后端限制在安全范围内，`offset` 用于列表“加载更多”。`itemType` 和 `favoriteOnly` 在数据库查询阶段过滤，避免只筛当前已加载页。
 
 ### `get_items_by_day`
 
@@ -91,9 +96,13 @@ invoke('get_clipboard_items', {
 invoke('get_items_by_day', {
   dateKey: string,
   limit?: number,
-  offset?: number
+  offset?: number,
+  itemType?: ClipboardFilterType,
+  favoriteOnly?: boolean
 }) => Promise<ClipboardItem[]>
 ```
+
+`dateKey` 使用 `YYYY-MM-DD`。类型和收藏筛选同样在后端执行。
 
 ### `get_available_days`
 
@@ -168,6 +177,8 @@ invoke('update_item_content', {
 }) => Promise<ClipboardItem>
 ```
 
+如果更新后的内容是完整 `http` 或 `https` 链接，后端会把记录类型改为 `link`，并使用链接专用 hash。
+
 ### `update_item_annotation`
 
 更新记录标注，不改写原始剪贴板内容；非空标注会自动收藏记录。
@@ -234,9 +245,14 @@ invoke('search_items', {
   query: string,
   sessionId?: string | null,
   limit?: number,
-  dateKey?: string | null
+  dateKey?: string | null,
+  offset?: number,
+  itemType?: ClipboardFilterType,
+  favoriteOnly?: boolean
 }) => Promise<ClipboardItem[]>
 ```
+
+搜索支持分页式增量加载；`itemType` 和 `favoriteOnly` 会参与 SQL 查询。
 
 ## 文件路径接口
 
@@ -283,7 +299,7 @@ invoke('pin_image', {
 
 ### `open_external_url`
 
-在系统默认浏览器打开允许列表内的外部链接。
+在系统默认浏览器打开安全的外部链接。当前只允许 `http` 和 `https`，会拒绝非 Web scheme、不完整 host、空白字符和控制字符。
 
 ```typescript
 invoke('open_external_url', {

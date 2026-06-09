@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "lowercase")]
 pub enum ClipboardType {
     Text,
+    Link,
     Image,
     File,
 }
@@ -13,6 +14,7 @@ impl ClipboardType {
     pub fn as_str(&self) -> &str {
         match self {
             ClipboardType::Text => "text",
+            ClipboardType::Link => "link",
             ClipboardType::Image => "image",
             ClipboardType::File => "file",
         }
@@ -21,6 +23,7 @@ impl ClipboardType {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "text" => Some(ClipboardType::Text),
+            "link" => Some(ClipboardType::Link),
             "image" => Some(ClipboardType::Image),
             "file" => Some(ClipboardType::File),
             _ => None,
@@ -94,7 +97,7 @@ impl CleanupPlan {
         let item_count = items.len() as i32;
         let text_count = items
             .iter()
-            .filter(|item| matches!(item.type_, ClipboardType::Text))
+            .filter(|item| matches!(item.type_, ClipboardType::Text | ClipboardType::Link))
             .count() as i32;
         let image_count = items
             .iter()

@@ -47,14 +47,14 @@ images/
 在 PowerShell 中运行：
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\ClipMaster_0.1.1_x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\ClipMaster_0.1.2_x64-setup.exe
 ```
 
 将输出的哈希与 Release 页面里 `SHA256SUMS.txt` 对应文件名的值对比。
 
 ## 当前适合长期生产使用吗？
 
-0.1.1 是早期可用版本。它已经覆盖文本/图片历史、搜索、收藏、置顶、截图、托盘、清理和打包流程，但仍缺少代码签名、自动更新、应用黑名单、备份恢复和更完整的长期维护工具。
+0.1.2 是早期可用版本。它已经覆盖文本/链接/图片历史、搜索、筛选、收藏、置顶、截图、托盘、清理和打包流程，但仍缺少代码签名、自动更新、应用黑名单、备份恢复和更完整的长期维护工具。
 
 ## 发现问题怎么办？
 

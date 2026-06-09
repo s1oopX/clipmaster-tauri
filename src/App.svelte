@@ -11,6 +11,7 @@
     Check,
     Clipboard,
     Copy,
+    ExternalLink,
     FileText,
     GitPullRequest,
     Image as ImageIcon,
@@ -57,6 +58,8 @@
     itemMatchesSearchQuery,
     runKeyboardAction,
     todayDateKey,
+    effectiveItemType,
+    linkDisplayLabel,
   } from './lib/clipboard-ui.js';
 
   let items = [];
@@ -114,16 +117,15 @@
   let selectedDay = '';
   let recordsScope = '全部日期';
   let recordsRequestId = 0;
+  let hasMoreRecords = false;
+  let loadingMore = false;
+  let searchTimer = null;
 
   $: activeContextItem = contextMenu.open
     ? items.find((item) => item.id === contextMenu.itemId) || null
     : null;
 
-  $: filteredItems = activeFilter === 'favorite'
-    ? items.filter((item) => item.is_favorite)
-    : activeFilter === 'image'
-      ? items.filter((item) => item.type === 'image')
-      : items;
+  $: filteredItems = items;
 
   $: recordsScope = selectedDay
     || (searchQuery.trim() ? todayDateKey(appSettings.time_zone) : '全部日期');
@@ -296,10 +298,6 @@
           sortItems();
           reconcileTransientItemState(items);
 
-          if (item.type === 'image' && item.image_path) {
-            imageUrls[item.id] = await convertImagePath(item.image_path);
-          }
-
           if (item.type === 'image' && item.thumbnail_path) {
             thumbnailUrls[item.id] = await convertImagePath(item.thumbnail_path);
           }
@@ -337,23 +335,38 @@
     if (noticeTimer) clearTimeout(noticeTimer);
     if (errorNoticeTimer) clearTimeout(errorNoticeTimer);
     if (recordingHotkeyTimeout) clearTimeout(recordingHotkeyTimeout);
+    if (searchTimer) clearTimeout(searchTimer);
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('keydown', handleDocumentKeyDown);
   });
 
-  async function loadItems(day = selectedDay) {
+  async function loadItems(day = selectedDay, { append = false } = {}) {
     const requestId = ++recordsRequestId;
     isSearching = false;
-    loading = true;
+    if (append) {
+      loadingMore = true;
+    } else {
+      loading = true;
+      hasMoreRecords = false;
+    }
 
     try {
+      const offset = append ? items.length : 0;
+      const limit = pageSize();
+      const filter = activeFilterQuery();
+      const hasFilter = Object.keys(filter).length > 0;
       const nextItems = day
-        ? await clipboardApi.getItemsByDay(day, itemLimit(), 0)
-        : await clipboardApi.getItems(itemLimit(), 0);
+        ? hasFilter
+          ? await clipboardApi.getItemsByDay(day, limit, offset, filter)
+          : await clipboardApi.getItemsByDay(day, limit, offset)
+        : hasFilter
+          ? await clipboardApi.getItems(limit, offset, filter)
+          : await clipboardApi.getItems(limit, offset);
 
       if (requestId !== recordsRequestId) return;
 
-      items = nextItems;
+      items = append ? mergeItems(items, nextItems) : nextItems;
+      hasMoreRecords = nextItems.length === limit;
       error = null;
       actionError = '';
       pruneImageUrls(items);
@@ -367,6 +380,7 @@
     } finally {
       if (requestId === recordsRequestId) {
         loading = false;
+        loadingMore = false;
       }
     }
   }
@@ -392,14 +406,6 @@
 
   async function loadImageUrls() {
     for (const item of items) {
-      if (item.type === 'image' && item.image_path && !imageUrls[item.id]) {
-        try {
-          imageUrls[item.id] = await convertImagePath(item.image_path);
-        } catch (e) {
-          console.error('加载图片 URL 失败:', e);
-        }
-      }
-
       if (item.type === 'image' && item.thumbnail_path && !thumbnailUrls[item.id]) {
         try {
           thumbnailUrls[item.id] = await convertImagePath(item.thumbnail_path);
@@ -409,7 +415,6 @@
       }
     }
 
-    imageUrls = imageUrls;
     thumbnailUrls = thumbnailUrls;
   }
 
@@ -508,30 +513,36 @@
     });
   }
 
-  async function handleSearch() {
+  async function handleSearch({ append = false } = {}) {
     const query = searchQuery.trim();
 
     if (!query) {
-      await loadItems();
+      await loadItems(selectedDay, { append });
       return;
     }
 
     const requestId = ++recordsRequestId;
-    loading = false;
-    isSearching = true;
+    if (append) {
+      loadingMore = true;
+    } else {
+      loading = false;
+      isSearching = true;
+      hasMoreRecords = false;
+    }
 
     try {
       const dateKey = activeSearchDateKey();
-      const nextItems = await searchApi.searchItems(
-        query,
-        null,
-        itemLimit(),
-        dateKey
-      );
+      const limit = pageSize();
+      const offset = append ? items.length : 0;
+      const filter = activeFilterQuery();
+      const nextItems = Object.keys(filter).length > 0
+        ? await searchApi.searchItems(query, null, limit, dateKey, offset, filter)
+        : await searchApi.searchItems(query, null, limit, dateKey, offset);
 
       if (requestId !== recordsRequestId) return;
 
-      items = nextItems;
+      items = append ? mergeItems(items, nextItems) : nextItems;
+      hasMoreRecords = nextItems.length === limit;
       error = null;
       actionError = '';
       pruneImageUrls(items);
@@ -546,6 +557,7 @@
     } finally {
       if (requestId === recordsRequestId) {
         isSearching = false;
+        loadingMore = false;
       }
     }
   }
@@ -559,13 +571,14 @@
   }
 
   function clearSearch() {
+    if (searchTimer) clearTimeout(searchTimer);
     searchQuery = '';
     loadItems();
   }
 
   async function copyItem(item) {
     try {
-      if (item.type === 'text' && item.content) {
+      if ((item.type === 'text' || effectiveItemType(item) === 'link') && item.content) {
         await clipboardApi.copyToClipboard(item.content);
         error = null;
         showCopyToast();
@@ -654,6 +667,26 @@
 
   async function openExternalLink(event, url) {
     event.preventDefault();
+    await openLinkUrl(url);
+  }
+
+  async function openRecordLink(event, item) {
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
+    }
+
+    event.preventDefault();
+    await openLinkUrl(item.content);
+  }
+
+  function handleRecordLinkKeyDown(event, item) {
+    if (!isActivationKey(event)) return;
+    event.preventDefault();
+    void openLinkUrl(item.content);
+  }
+
+  async function openLinkUrl(url) {
+    if (!url) return;
 
     try {
       await toolApi.openExternalUrl(url);
@@ -661,6 +694,35 @@
       console.error('打开链接失败:', e);
       showActionError('打开链接失败: ' + e);
     }
+  }
+
+  function queueSearch() {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      void handleSearch();
+    }, 200);
+  }
+
+  function activeFilterQuery() {
+    if (activeFilter === 'favorite') {
+      return { favoriteOnly: true };
+    }
+
+    if (activeFilter === 'image') {
+      return { itemType: 'image' };
+    }
+
+    if (activeFilter === 'link') {
+      return { itemType: 'link' };
+    }
+
+    return {};
+  }
+
+  async function selectFilter(filterId) {
+    if (activeFilter === filterId) return;
+    activeFilter = filterId;
+    await refreshVisibleRecords();
   }
 
   function updateSettingsDraft(key, value) {
@@ -1039,12 +1101,34 @@
     return filteredItems;
   }
 
-  function itemLimit() {
+  async function loadMoreRecords() {
+    if (loading || loadingMore || isSearching || !hasMoreRecords) return;
+
+    if (searchQuery.trim()) {
+      await handleSearch({ append: true });
+    } else {
+      await loadItems(selectedDay, { append: true });
+    }
+  }
+
+  function pageSize() {
     return appSettings.max_items || defaultSettings.max_items;
   }
 
   function limitItems(nextItems) {
-    return nextItems.slice(0, itemLimit());
+    return nextItems.slice(0, pageSize());
+  }
+
+  function mergeItems(existingItems, nextItems) {
+    const seen = new Set(existingItems.map((item) => item.id));
+    return [
+      ...existingItems,
+      ...nextItems.filter((item) => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      }),
+    ];
   }
 
   function pruneImageUrls(nextItems = items) {
@@ -1121,7 +1205,19 @@
     annotationDraft = '';
   }
 
-  function viewFullImage(itemId) {
+  async function viewFullImage(itemId) {
+    const item = items.find((entry) => entry.id === itemId);
+    if (item?.image_path && !imageUrls[itemId]) {
+      try {
+        imageUrls[itemId] = await convertImagePath(item.image_path);
+        imageUrls = imageUrls;
+      } catch (e) {
+        console.error('加载原图 URL 失败:', e);
+        showActionError('加载原图失败: ' + e);
+        return;
+      }
+    }
+
     viewingImageId = itemId;
   }
 
@@ -1136,15 +1232,8 @@
     }
 
     try {
-      await clipboardApi.updateItemContent(itemId, editContent);
-
-      updateVisibleItem(itemId, (item) => ({
-        ...item,
-        content: editContent,
-        preview: editContent.length > 100
-          ? editContent.substring(0, 100) + '...'
-          : editContent,
-      }));
+      const updatedItem = await clipboardApi.updateItemContent(itemId, editContent);
+      updateVisibleItem(itemId, () => updatedItem);
 
       editingId = null;
       editContent = '';
@@ -1186,7 +1275,7 @@
   data-density="tool"
   data-reference="figma-utility-grid"
 >
-  <Sidebar {activeFilter} {filters} onFilterChange={(filterId) => (activeFilter = filterId)} />
+  <Sidebar {activeFilter} {filters} onFilterChange={selectFilter} />
 
   <section class="workspace" aria-label="剪贴板历史">
     <header class="toolbar">
@@ -1196,7 +1285,7 @@
           <h2>剪贴板历史</h2>
           <p class="toolbar-context" aria-label="当前范围">
             <span class="status-dot"></span>
-            {recordsScope} · {filteredItems.length} 条
+            {recordsScope} · 已加载 {filteredItems.length} 条
           </p>
         </div>
       </div>
@@ -1295,7 +1384,7 @@
               aria-label="搜索剪贴板内容"
               placeholder="搜索内容"
               bind:value={searchQuery}
-              on:input={handleSearch}
+              on:input={queueSearch}
             />
             {#if searchQuery}
               <button type="button" class="clear-search" on:click={clearSearch} aria-label="清除搜索">
@@ -1354,6 +1443,9 @@
                       {#if item.type === 'image'}
                         <ImageIcon size={14} aria-hidden="true" />
                         图片
+                      {:else if effectiveItemType(item) === 'link'}
+                        <ExternalLink size={14} aria-hidden="true" />
+                        链接
                       {:else if item.type === 'file'}
                         <FileText size={14} aria-hidden="true" />
                         文件
@@ -1402,6 +1494,16 @@
                         <Pin size={16} aria-hidden="true" />
                       </button>
                     {/if}
+                    {#if effectiveItemType(item) === 'link' && item.content}
+                      <button
+                        type="button"
+                        class="item-action secondary-action"
+                        on:click={() => openLinkUrl(item.content)}
+                        aria-label={`打开 ${itemLabel(item)}`}
+                      >
+                        <ExternalLink size={16} aria-hidden="true" />
+                      </button>
+                    {/if}
                     <button
                       type="button"
                       class="item-action secondary-action"
@@ -1431,7 +1533,21 @@
                   </div>
                 </div>
 
-                {#if item.type === 'text'}
+                {#if effectiveItemType(item) === 'link'}
+                  <div
+                    class="link-content"
+                    role="link"
+                    tabindex="0"
+                    on:click={(event) => openRecordLink(event, item)}
+                    on:keydown={(event) => handleRecordLinkKeyDown(event, item)}
+                  >
+                    <div class="link-copy">
+                      <ExternalLink size={15} aria-hidden="true" />
+                      <span>{linkDisplayLabel(item.content || item.preview)}</span>
+                    </div>
+                    <p>Ctrl/Command+左键打开，Enter 直接打开。复制按钮会复制原始链接。</p>
+                  </div>
+                {:else if item.type === 'text'}
                   {#if editingId === item.id}
                     <div class="edit-area">
                       <textarea
@@ -1540,6 +1656,18 @@
               </div>
             </article>
           {/each}
+          {#if hasMoreRecords}
+            <div class="load-more-row">
+              <button type="button" on:click={loadMoreRecords} disabled={loadingMore}>
+                {#if loadingMore}
+                  <LoaderCircle size={15} aria-hidden="true" />
+                  加载中
+                {:else}
+                  加载更多
+                {/if}
+              </button>
+            </div>
+          {/if}
         </div>
       {/if}
     </div>
@@ -1553,6 +1681,7 @@
     onAddAnnotation={startAnnotationEdit}
     onCopy={copyItem}
     onEditContent={startContentEdit}
+    onOpenLink={(item) => openLinkUrl(item.content)}
   />
   {#if settingsOpen}
     <div class="settings-backdrop" on:click={() => (settingsOpen = false)} aria-hidden="true"></div>

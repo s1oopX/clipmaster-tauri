@@ -132,7 +132,11 @@ impl ClipboardService {
     fn calculate_hash(content: &ClipboardContent) -> String {
         match content {
             ClipboardContent::Text(text) => {
-                format!("{:x}", md5::compute(text.as_bytes()))
+                if is_web_url(text) {
+                    link_content_hash(text)
+                } else {
+                    format!("{:x}", md5::compute(text.as_bytes()))
+                }
             }
             ClipboardContent::Image(img) => {
                 // 使用图片的宽高和采样像素数据计算哈希
@@ -176,15 +180,26 @@ impl ClipboardService {
 
         // 创建记录
         let item = match content {
-            ClipboardContent::Text(text) => CreateClipboardItem {
-                type_: ClipboardType::Text,
-                content: Some(text),
-                image_path: None,
-                thumbnail_path: None,
-                source_app: None,
-                content_hash,
-                session_id,
-            },
+            ClipboardContent::Text(text) => {
+                let is_link = is_web_url(&text);
+                CreateClipboardItem {
+                    type_: if is_link {
+                        ClipboardType::Link
+                    } else {
+                        ClipboardType::Text
+                    },
+                    content: Some(if is_link {
+                        text.trim().to_string()
+                    } else {
+                        text
+                    }),
+                    image_path: None,
+                    thumbnail_path: None,
+                    source_app: None,
+                    content_hash,
+                    session_id,
+                }
+            }
             ClipboardContent::Image(img) => {
                 // 保存图片到文件系统
                 let (image_path, thumbnail_path) =
@@ -281,6 +296,30 @@ enum ClipboardContent {
     Image(arboard::ImageData<'static>),
 }
 
+fn is_web_url(value: &str) -> bool {
+    let trimmed = value.trim();
+    let Some((scheme, rest)) = trimmed.split_once("://") else {
+        return false;
+    };
+
+    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
+        return false;
+    }
+
+    !rest.is_empty()
+        && rest.contains('.')
+        && !trimmed
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+}
+
+fn link_content_hash(url: &str) -> String {
+    format!(
+        "{:x}",
+        md5::compute(format!("link:{}", url.trim()).as_bytes())
+    )
+}
+
 #[cfg(target_os = "windows")]
 fn clipboard_sequence_number() -> Option<u32> {
     #[link(name = "user32")]
@@ -300,4 +339,34 @@ fn clipboard_sequence_number() -> Option<u32> {
 #[cfg(not(target_os = "windows"))]
 fn clipboard_sequence_number() -> Option<u32> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_only_single_web_urls() {
+        assert!(is_web_url("https://example.com"));
+        assert!(is_web_url(" http://docs.example.com/path?q=1#install "));
+
+        for value in [
+            "example.com",
+            "https://localhost",
+            "https://example",
+            "https://example.com with words",
+            "javascript:alert(1)",
+            "file:///C:/temp/a.txt",
+        ] {
+            assert!(!is_web_url(value), "{value}");
+        }
+    }
+
+    #[test]
+    fn hashes_links_with_a_type_prefix() {
+        assert_ne!(
+            link_content_hash("https://example.com"),
+            format!("{:x}", md5::compute("https://example.com".as_bytes()))
+        );
+    }
 }

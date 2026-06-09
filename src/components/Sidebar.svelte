@@ -1,5 +1,5 @@
 <script>
-  import { Clipboard, Heart, Image as ImageIcon, List } from '@lucide/svelte';
+  import { Clipboard, Heart, Image as ImageIcon, Link, List } from '@lucide/svelte';
 
   export let activeFilter = 'all';
   export let filters = [];
@@ -29,6 +29,8 @@
           <List size={16} aria-hidden="true" />
         {:else if filter.id === 'favorite'}
           <Heart size={16} aria-hidden="true" />
+        {:else if filter.id === 'link'}
+          <Link size={16} aria-hidden="true" />
         {:else}
           <ImageIcon size={16} aria-hidden="true" />
         {/if}

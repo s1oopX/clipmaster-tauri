@@ -112,6 +112,20 @@ function textItem(overrides = {}) {
   };
 }
 
+function linkItem(overrides = {}) {
+  const content = 'https://example.com/docs?q=clipmaster';
+  return {
+    ...textItem({
+      id: 'link_1',
+      type: 'link',
+      content,
+      preview: content,
+      content_hash: 'hash_link',
+      ...overrides,
+    }),
+  };
+}
+
 function imageItem(overrides = {}) {
   return {
     id: 'image_1',
@@ -220,7 +234,16 @@ describe('App UI', () => {
     api.togglePinned.mockResolvedValue(true);
     api.copyToClipboard.mockResolvedValue();
     api.copyImageToClipboard.mockResolvedValue();
-    api.updateItemContent.mockResolvedValue();
+    api.updateItemContent.mockImplementation(async (itemId, newContent) => {
+      const trimmed = newContent.trim();
+      const isLink = /^https?:\/\/[^\s/?#]+\.[^\s]*$/i.test(trimmed);
+      return textItem({
+        id: itemId,
+        type: isLink ? 'link' : 'text',
+        content: isLink ? trimmed : newContent,
+        preview: isLink ? trimmed : newContent,
+      });
+    });
     api.updateItemAnnotation.mockImplementation(async (_itemId, annotation) => {
       const trimmed = annotation.trim();
       return trimmed ? trimmed : null;
@@ -334,6 +357,37 @@ describe('App UI', () => {
     expect(screen.getByRole('button', { name: '删除 Alpha token' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '复制 图片记录' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '钉到桌面 图片记录' })).toBeInTheDocument();
+  });
+
+  it('renders link records with hints and opens them from the default browser path', async () => {
+    const link = linkItem();
+    api.getItems.mockResolvedValue([link]);
+
+    render(App);
+
+    const linkContent = await screen.findByRole('link', { name: /example.com\/docs/ });
+    const linkRecord = linkContent.closest('.item');
+    expect(within(linkRecord).getByText('链接')).toBeInTheDocument();
+    expect(
+      screen.getByText('Ctrl/Command+左键打开，Enter 直接打开。复制按钮会复制原始链接。')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '打开 https://example.com/docs?q=clipmaster' }))
+      .toBeInTheDocument();
+
+    await fireEvent.click(linkContent);
+    expect(api.openExternalUrl).not.toHaveBeenCalled();
+
+    await fireEvent.click(linkContent, { ctrlKey: true });
+    expect(api.openExternalUrl).toHaveBeenCalledWith(link.content);
+
+    await fireEvent.keyDown(linkContent, { key: 'Enter' });
+    expect(api.openExternalUrl).toHaveBeenLastCalledWith(link.content);
+
+    await fireEvent.click(screen.getByRole('button', { name: '打开 https://example.com/docs?q=clipmaster' }));
+    expect(api.openExternalUrl).toHaveBeenLastCalledWith(link.content);
+
+    await fireEvent.click(screen.getByRole('button', { name: '复制 https://example.com/docs?q=clipmaster' }));
+    expect(api.copyToClipboard).toHaveBeenCalledWith(link.content);
   });
 
   it('deletes ordinary records immediately without a confirmation dialog', async () => {
@@ -549,8 +603,8 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
-      expect(screen.getByLabelText('当前范围')).toHaveTextContent(`${todayDateKey()} · 0 条`);
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey(), 0);
+      expect(screen.getByLabelText('当前范围')).toHaveTextContent(`${todayDateKey()} · 已加载 0 条`);
     });
 
     await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
@@ -558,7 +612,7 @@ describe('App UI', () => {
     expect(search).toHaveValue('');
     await waitFor(() => {
       expect(api.getItems).toHaveBeenCalledWith(50, 0);
-      expect(screen.getByLabelText('当前范围')).toHaveTextContent('全部日期 · 0 条');
+      expect(screen.getByLabelText('当前范围')).toHaveTextContent('全部日期 · 已加载 0 条');
     });
   });
 
@@ -582,7 +636,8 @@ describe('App UI', () => {
         'alpha',
         null,
         50,
-        '2026-06-06'
+        '2026-06-06',
+        0
       );
     });
   });
@@ -606,7 +661,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey(), 0);
     });
 
     await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
@@ -621,6 +676,118 @@ describe('App UI', () => {
     await waitFor(() => {
       expect(screen.queryByText('Stale alpha result')).not.toBeInTheDocument();
       expect(screen.getByText('Fresh list')).toBeInTheDocument();
+    });
+  });
+
+  it('loads more records with backend pagination and appends without duplicates', async () => {
+    api.getItems
+      .mockResolvedValueOnce(Array.from({ length: 50 }, (_, index) =>
+        textItem({
+          id: `page_1_${index}`,
+          content: `Page 1 item ${index}`,
+          preview: `Page 1 item ${index}`,
+          timestamp: 2000 - index,
+        })
+      ))
+      .mockResolvedValueOnce([
+        textItem({
+          id: 'page_1_0',
+          content: 'Page 1 duplicate',
+          preview: 'Page 1 duplicate',
+          timestamp: 2000,
+        }),
+        textItem({
+          id: 'page_2_0',
+          content: 'Page 2 item',
+          preview: 'Page 2 item',
+          timestamp: 1000,
+        }),
+      ]);
+
+    render(App);
+
+    expect(await screen.findByText('Page 1 item 0')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '加载更多' })).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
+
+    await waitFor(() => {
+      expect(api.getItems).toHaveBeenLastCalledWith(50, 50);
+    });
+    expect(await screen.findByText('Page 2 item')).toBeInTheDocument();
+    expect(screen.getByLabelText('当前范围')).toHaveTextContent('全部日期 · 已加载 51 条');
+  });
+
+  it('loads more search results with an offset for the active search query', async () => {
+    api.searchItems
+      .mockResolvedValueOnce(Array.from({ length: 50 }, (_, index) =>
+        textItem({
+          id: `search_1_${index}`,
+          content: `Alpha page 1 item ${index}`,
+          preview: `Alpha page 1 item ${index}`,
+          timestamp: 2000 - index,
+        })
+      ))
+      .mockResolvedValueOnce([
+        textItem({
+          id: 'search_2_0',
+          content: 'Alpha page 2 item',
+          preview: 'Alpha page 2 item',
+          timestamp: 1000,
+        }),
+      ]);
+
+    render(App);
+
+    const search = await screen.findByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+
+    expect(await screen.findByText('Alpha page 1 item 0')).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
+
+    await waitFor(() => {
+      expect(api.searchItems).toHaveBeenLastCalledWith(
+        'alpha',
+        null,
+        50,
+        todayDateKey(),
+        50
+      );
+    });
+    expect(await screen.findByText('Alpha page 2 item')).toBeInTheDocument();
+  });
+
+  it('passes active sidebar filters to backend list and search calls', async () => {
+    render(App);
+
+    await waitFor(() => expect(api.getItems).toHaveBeenCalledWith(50, 0));
+
+    await fireEvent.click(screen.getByRole('button', { name: '收藏' }));
+    await waitFor(() => {
+      expect(api.getItems).toHaveBeenLastCalledWith(50, 0, { favoriteOnly: true });
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: '图片' }));
+    await waitFor(() => {
+      expect(api.getItems).toHaveBeenLastCalledWith(50, 0, { itemType: 'image' });
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: '链接' }));
+    await waitFor(() => {
+      expect(api.getItems).toHaveBeenLastCalledWith(50, 0, { itemType: 'link' });
+    });
+
+    const search = screen.getByRole('searchbox', { name: '搜索剪贴板内容' });
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+    await waitFor(() => {
+      expect(api.searchItems).toHaveBeenLastCalledWith(
+        'alpha',
+        null,
+        50,
+        todayDateKey(),
+        0,
+        { itemType: 'link' }
+      );
     });
   });
 
@@ -696,7 +863,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey(), 0);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
@@ -923,6 +1090,35 @@ describe('App UI', () => {
     expect(screen.getByText('来自右键菜单')).toBeInTheDocument();
   });
 
+  it('turns edited URL content into a link record in the current list', async () => {
+    api.getItems.mockResolvedValue([textItem()]);
+
+    render(App);
+
+    const content = await screen.findByText('Alpha token');
+    await fireEvent.contextMenu(content, { clientX: 120, clientY: 160 });
+    await fireEvent.click(screen.getByRole('menuitem', { name: '编辑原文' }));
+
+    const contentInput = screen.getByLabelText('编辑 Alpha token 的原文');
+    await fireEvent.input(contentInput, { target: { value: ' https://example.com/docs ' } });
+    await fireEvent.click(screen.getByRole('button', { name: '保存原文' }));
+
+    await waitFor(() => {
+      expect(api.updateItemContent).toHaveBeenCalledWith('text_1', ' https://example.com/docs ');
+    });
+    const linkContent = await screen.findByRole('link', { name: /example\.com\/docs/ });
+    expect(linkContent).toBeInTheDocument();
+    expect(within(linkContent.closest('.item')).getByText('链接')).toBeInTheDocument();
+
+    await fireEvent.contextMenu(linkContent, {
+      clientX: 140,
+      clientY: 180,
+    });
+    await fireEvent.click(screen.getByRole('menuitem', { name: '打开链接' }));
+
+    expect(api.openExternalUrl).toHaveBeenCalledWith('https://example.com/docs');
+  });
+
   it('shows an error toast when content edit fails', async () => {
     api.getItems.mockResolvedValue([textItem()]);
     api.updateItemContent.mockRejectedValueOnce('当日已存在相同内容');
@@ -1146,7 +1342,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey(), 0);
     });
 
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
@@ -1164,7 +1360,8 @@ describe('App UI', () => {
         'alpha',
         null,
         80,
-        todayDateKey()
+        todayDateKey(),
+        0
       );
     });
     expect(api.getItems).not.toHaveBeenCalled();
@@ -1534,7 +1731,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey());
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey(), 0);
     });
 
     await newItemHandler(

@@ -4,7 +4,7 @@
 
 # ClipMaster
 
-A local-first Windows clipboard manager for recording, searching, and reusing text, images, and screenshots.
+A local-first Windows clipboard manager for recording, searching, and reusing text, links, images, and screenshots.
 
 [简体中文](./README.md) · [Latest Release](https://github.com/s1oopX/clipmaster-tauri/releases/latest) · [Roadmap](./docs/ROADMAP.md) · [Security](./SECURITY.md)
 
@@ -18,13 +18,13 @@ A local-first Windows clipboard manager for recording, searching, and reusing te
 
 ## Overview
 
-ClipMaster is a local Windows desktop utility for clipboard history, image reuse, and screenshot workflows. It stores copied text, copied images, and captured screenshots on the local machine, then makes them searchable, reusable, pinnable, annotatable, and clearable.
+ClipMaster is a local Windows desktop utility for clipboard history, link reuse, image reuse, and screenshot workflows. It stores copied text, links, images, and captured screenshots on the local machine, then makes them searchable, reusable, pinnable, annotatable, and clearable.
 
 The project is not a cloud clipboard, account-based sync service, or telemetry product. Its goal is to provide a lightweight and controllable local clipboard workspace for personal workflows, development, documentation, support, and repeated image reuse.
 
 ## Project Status
 
-The current release line is `0.1.2`. The project already covers everyday clipboard history, image history, region screenshots, frozen-screen selection, basic annotation, pinned desktop images, system tray behavior, settings, cleanup policies, data migration, and Windows packaging.
+The current release line is `0.1.2`. The project already covers everyday clipboard history, link detection and opening, image history, region screenshots, frozen-screen selection, basic annotation, pinned desktop images, system tray behavior, settings, cleanup policies, data migration, and Windows packaging.
 
 Planned improvements include virtual scrolling, additional global shortcuts, OCR, scrolling screenshots, backup and restore, automatic updates, and code signing. See the [Roadmap](./docs/ROADMAP.md) for details.
 
@@ -44,13 +44,14 @@ Current builds are not code-signed yet, so Windows SmartScreen may show a warnin
 
 | Area | Capabilities |
 | --- | --- |
-| Clipboard history | Records text and image clipboard content and copies items back to the clipboard |
-| Search and filtering | Supports content search, type filters, date filters, and session history |
+| Clipboard history | Records text, links, and image clipboard content and copies items back to the clipboard |
+| Link workflow | Detects links, filters link records, and opens safe web links in the default browser |
+| Search and filtering | Supports content search, type filters, date filters, session history, and load-more paging |
 | Favorites and pins | Keeps important records easier to find |
 | Image workflow | Saves images, generates thumbnails, previews images, copies images, and pins images to the desktop |
 | Screenshot workflow | Region capture, frozen-screen selection, automatic clipboard copy, history saving, reselecting, rectangle/arrow/pen annotation |
 | Desktop image pinning | Opens images as always-on-top reference windows |
-| System tray | Closing the main window hides it to the tray, with restore and quit actions |
+| System tray | Closing the main window hides it to the tray, with restore and quit actions; if tray setup fails, the main window stays visible |
 | Settings | Supports screenshot hotkeys, capture delay, retention count, time zone, language, and optional autostart |
 | Cleanup | Supports count-based cleanup, age-based cleanup, image-file lifecycle cleanup, and full history clearing |
 | Migration | Includes legacy data directory migration and database schema migrations |

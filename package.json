@@ -13,7 +13,7 @@
     "tauri:build": "tauri build"
   },
   "keywords": ["clipboard", "tauri", "svelte"],
-  "author": "ClipMaster contributors",
+  "author": "s1oopX, Codex",
   "license": "MIT",
   "devDependencies": {
     "@lucide/svelte": "^1.17.0",

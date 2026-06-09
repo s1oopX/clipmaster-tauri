@@ -35,10 +35,11 @@ export const settingsViews = [
 export const filters = [
   { id: 'all', label: '全部记录' },
   { id: 'favorite', label: '收藏' },
+  { id: 'link', label: '链接' },
   { id: 'image', label: '图片' },
 ];
 
-export const appVersion = '0.1.1';
+export const appVersion = '0.1.2';
 export const githubProfileUrl = 'https://github.com/s1oopX';
 export const githubRepositoryUrl = 'https://github.com/s1oopX/clipmaster-tauri';
 export const githubIssuesUrl = `${githubRepositoryUrl}/issues`;
