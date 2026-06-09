@@ -29,11 +29,10 @@ export async function convertImagePath(relativePath) {
   if (!relativePath) return null;
 
   try {
-    const dataDir = await getAppDataDir();
-    const normalizedRelPath = relativePath.replace(/[\\/]+/g, '\\');
-    const fullPath = `${dataDir}\\${normalizedRelPath}`;
+    const asset = await invoke('resolve_image_asset', { imagePath: relativePath });
+    if (!asset?.absolute_path) return null;
 
-    return convertFileSrc(fullPath);
+    return convertFileSrc(asset.absolute_path);
   } catch (error) {
     console.error('Error converting image path:', error);
     return null;

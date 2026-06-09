@@ -37,12 +37,28 @@ struct FrozenScreenSnapshot {
     scale_factor: f32,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ImageAsset {
+    path: String,
+    absolute_path: String,
+}
+
 /// 获取应用数据目录路径
 #[tauri::command]
 pub async fn get_app_data_dir(app: AppHandle) -> Result<String, String> {
     app_data::resolve_app_data_dir(&app)
         .map(|p| p.to_string_lossy().to_string())
         .map_err(|e| e.to_string())
+}
+
+/// 解析图片记录路径，返回可被 Tauri asset protocol 加载的真实文件路径。
+#[tauri::command]
+pub async fn resolve_image_asset(
+    app: AppHandle,
+    image_path: String,
+) -> Result<Option<ImageAsset>, String> {
+    let app_data_dir = app_data::resolve_app_data_dir(&app).map_err(|e| e.to_string())?;
+    resolve_image_asset_in_dir(&app_data_dir, &image_path)
 }
 
 /// 复制文本到剪贴板
@@ -1063,6 +1079,68 @@ fn remove_app_data_file_in_dir(app_data_dir: &Path, relative_path: &str) -> Resu
     }
 }
 
+fn resolve_image_asset_in_dir(
+    app_data_dir: &Path,
+    image_path: &str,
+) -> Result<Option<ImageAsset>, String> {
+    let safe_path = validate_relative_image_path(image_path)?;
+    let absolute_path = app_data_dir.join(path_from_forward_slashes(&safe_path));
+
+    if absolute_path.is_file() {
+        return Ok(Some(ImageAsset {
+            path: safe_path,
+            absolute_path: absolute_path.to_string_lossy().to_string(),
+        }));
+    }
+
+    let file_name = Path::new(&safe_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "图片路径缺少文件名".to_string())?;
+    let images_dir = app_data_dir.join("images");
+    let Some(fallback_path) = find_image_file_by_name(&images_dir, file_name)? else {
+        return Ok(None);
+    };
+
+    let relative_path = fallback_path
+        .strip_prefix(app_data_dir)
+        .map_err(|_| "图片文件不在应用数据目录内".to_string())?
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    Ok(Some(ImageAsset {
+        path: relative_path,
+        absolute_path: fallback_path.to_string_lossy().to_string(),
+    }))
+}
+
+fn find_image_file_by_name(images_dir: &Path, file_name: &str) -> Result<Option<PathBuf>, String> {
+    if !images_dir.is_dir() {
+        return Ok(None);
+    }
+
+    let mut stack = vec![images_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = fs::read_dir(&dir).map_err(|e| format!("读取图片目录失败: {}", e))?;
+
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("读取图片目录失败: {}", e))?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+
+            if path.file_name().and_then(|name| name.to_str()) == Some(file_name) {
+                return Ok(Some(path));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 fn save_cropped_image(
     app: &AppHandle,
     image: &image::RgbaImage,
@@ -1202,7 +1280,7 @@ fn encode_query_value(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn temp_data_dir() -> PathBuf {
         std::env::temp_dir().join(format!("clipmaster-commands-{}", nanoid::nanoid!()))
@@ -1371,6 +1449,50 @@ mod tests {
             fs::read_to_string(data_dir.join("settings.json")).unwrap(),
             "settings"
         );
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn resolves_existing_image_asset_inside_app_data_images() {
+        let data_dir = temp_data_dir();
+        let image_dir = data_dir.join("images").join("2026-06-09");
+        fs::create_dir_all(&image_dir).unwrap();
+        fs::write(image_dir.join("capture.png"), "image").unwrap();
+
+        let asset = resolve_image_asset_in_dir(&data_dir, "images/2026-06-09/capture.png").unwrap();
+
+        let asset = asset.unwrap();
+        assert_eq!(asset.path, "images/2026-06-09/capture.png");
+        assert!(Path::new(&asset.absolute_path).is_file());
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn resolves_image_asset_by_filename_when_record_path_is_stale() {
+        let data_dir = temp_data_dir();
+        let old_image_dir = data_dir.join("images").join("2026-06");
+        fs::create_dir_all(&old_image_dir).unwrap();
+        fs::write(old_image_dir.join("capture.png"), "image").unwrap();
+
+        let asset = resolve_image_asset_in_dir(&data_dir, "images/2026-06-09/capture.png").unwrap();
+
+        let asset = asset.unwrap();
+        assert_eq!(asset.path, "images/2026-06/capture.png");
+        assert!(Path::new(&asset.absolute_path).is_file());
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn resolve_image_asset_returns_none_for_missing_files() {
+        let data_dir = temp_data_dir();
+        fs::create_dir_all(data_dir.join("images").join("2026-06-09")).unwrap();
+
+        let asset = resolve_image_asset_in_dir(&data_dir, "images/2026-06-09/missing.png").unwrap();
+
+        assert!(asset.is_none());
 
         let _ = fs::remove_dir_all(data_dir);
     }

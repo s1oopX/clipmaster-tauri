@@ -121,6 +121,7 @@ fn main() {
             commands::update_item_content,
             commands::update_item_annotation,
             commands::get_app_data_dir,
+            commands::resolve_image_asset,
             commands::copy_to_clipboard,
             commands::copy_image_to_clipboard,
             commands::open_external_url,

@@ -1,6 +1,6 @@
 {
   "name": "clipmaster-tauri",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "ClipMaster - 轻量级剪贴板管理工具（Tauri版本）",
   "type": "module",
   "scripts": {
