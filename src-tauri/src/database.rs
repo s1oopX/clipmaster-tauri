@@ -910,6 +910,7 @@ impl Database {
     }
 
     /// 搜索记录
+    #[allow(clippy::too_many_arguments)]
     pub fn search_items(
         &self,
         query: &str,

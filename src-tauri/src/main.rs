@@ -144,31 +144,34 @@ fn main() {
         });
 
     app.run(|app_handle, event| {
-        if let tauri::RunEvent::WindowEvent { label, event, .. } = event {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if label == "screenshot-selector" {
-                    if let Err(error) = commands::restore_main_window(app_handle) {
-                        eprintln!("Failed to restore main window after screenshot: {}", error);
-                    }
-                    return;
+        if let tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } = event
+        {
+            if label == "screenshot-selector" {
+                if let Err(error) = commands::restore_main_window(app_handle) {
+                    eprintln!("Failed to restore main window after screenshot: {}", error);
                 }
+                return;
+            }
 
-                if label != "main" {
-                    return;
-                }
+            if label != "main" {
+                return;
+            }
 
-                let tray_available = app_handle
-                    .try_state::<TrayAvailability>()
-                    .map(|state| state.available)
-                    .unwrap_or(false);
-                if !tray_available {
-                    return;
-                }
+            let tray_available = app_handle
+                .try_state::<TrayAvailability>()
+                .map(|state| state.available)
+                .unwrap_or(false);
+            if !tray_available {
+                return;
+            }
 
-                api.prevent_close();
-                if let Some(window) = app_handle.get_webview_window("main") {
-                    tray::hide_main_webview_window_to_tray(&window);
-                }
+            api.prevent_close();
+            if let Some(window) = app_handle.get_webview_window("main") {
+                tray::hide_main_webview_window_to_tray(&window);
             }
         }
     });
@@ -177,7 +180,7 @@ fn main() {
 fn startup_error<E: std::fmt::Display>(context: &str, error: E) -> Box<dyn std::error::Error> {
     let message = format!("{context}: {error}");
     eprintln!("{message}");
-    std::io::Error::new(std::io::ErrorKind::Other, message).into()
+    std::io::Error::other(message).into()
 }
 
 #[cfg(target_os = "windows")]

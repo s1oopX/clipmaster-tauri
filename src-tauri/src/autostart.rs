@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 #[cfg(target_os = "windows")]
@@ -33,7 +33,7 @@ pub fn is_autostart_enabled(_app: &AppHandle) -> Result<bool> {
 }
 
 #[cfg(target_os = "windows")]
-fn platform_enable_autostart(exe_path: &PathBuf) -> Result<()> {
+fn platform_enable_autostart(exe_path: &Path) -> Result<()> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let run_key = hkcu
         .open_subkey_with_flags(r"Software\Microsoft\Windows\CurrentVersion\Run", KEY_WRITE)

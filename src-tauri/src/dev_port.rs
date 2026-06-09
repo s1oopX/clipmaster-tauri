@@ -91,13 +91,7 @@ pub fn find_available_dev_server_port(preferred_port: i32) -> Option<i32> {
         }
     }
 
-    for port in MIN_DEV_SERVER_PORT..preferred_port {
-        if is_port_available(port) {
-            return Some(port);
-        }
-    }
-
-    None
+    (MIN_DEV_SERVER_PORT..preferred_port).find(|&port| is_port_available(port))
 }
 
 pub fn read_project_dev_server_port() -> i32 {

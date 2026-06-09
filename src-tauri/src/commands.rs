@@ -495,6 +495,7 @@ pub async fn clear_session(
 
 /// 搜索记录
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn search_items(
     db: State<'_, Database>,
     settings: State<'_, SettingsStore>,
@@ -667,6 +668,7 @@ pub async fn cleanup_screenshot_snapshot(
 
 /// 捕获选定区域的截图
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn capture_region_screenshot(
     app: AppHandle,
     db: State<'_, Database>,
