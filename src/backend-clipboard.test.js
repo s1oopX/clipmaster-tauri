@@ -17,8 +17,8 @@ describe('Backend clipboard service', () => {
     const readIndex = clipboardSource.indexOf('Self::get_clipboard_content(&mut clipboard)');
     const saveIndex = clipboardSource.indexOf('Self::save_clipboard_item(&app_handle, content, hash.clone()).await');
     const okIndex = clipboardSource.indexOf('Ok(()) =>');
-    const markIndex = clipboardSource.indexOf('Self::mark_clipboard_item_saved(');
-    const errIndex = clipboardSource.indexOf('Err(e) =>');
+    const markIndex = clipboardSource.indexOf('Self::mark_clipboard_item_saved(', okIndex);
+    const errIndex = clipboardSource.indexOf('Err(e) =>', okIndex);
 
     expect(skipIndex).toBeGreaterThan(-1);
     expect(readIndex).toBeGreaterThan(skipIndex);
@@ -29,5 +29,17 @@ describe('Backend clipboard service', () => {
     expect(clipboardSource).toContain('fn should_skip_sequence');
     expect(clipboardSource).toContain('fn mark_clipboard_item_saved');
     expect(clipboardSource).not.toContain('*last = Some(sequence);');
+  });
+
+  it('skips self writes from history copy without saving them as newer records', () => {
+    expect(clipboardSource).toContain('ClipboardWriteState');
+    expect(clipboardSource).toContain('fn should_skip_self_write');
+    expect(clipboardSource).toContain('state.consume_pending_hash(hash)');
+
+    const skipIndex = clipboardSource.indexOf('if Self::should_skip_self_write(&app_handle, &hash)');
+    const saveIndex = clipboardSource.indexOf('Self::save_clipboard_item(&app_handle, content, hash.clone()).await');
+
+    expect(skipIndex).toBeGreaterThan(-1);
+    expect(saveIndex).toBeGreaterThan(skipIndex);
   });
 });

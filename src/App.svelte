@@ -112,6 +112,7 @@
   let deleteCandidate = null;
   let deleteConfirmLoading = false;
   let thumbnailUrls = {};
+  let imagePreviewErrors = {};
   let viewingImageId = null;
   let availableDays = [];
   let selectedDay = '';
@@ -298,9 +299,7 @@
           sortItems();
           reconcileTransientItemState(items);
 
-          if (item.type === 'image' && item.thumbnail_path) {
-            thumbnailUrls[item.id] = await convertImagePath(item.thumbnail_path);
-          }
+          await ensureImagePreviewUrl(item);
 
           pruneImageUrls(items);
         }
@@ -406,16 +405,78 @@
 
   async function loadImageUrls() {
     for (const item of items) {
-      if (item.type === 'image' && item.thumbnail_path && !thumbnailUrls[item.id]) {
-        try {
-          thumbnailUrls[item.id] = await convertImagePath(item.thumbnail_path);
-        } catch (e) {
-          console.error('加载缩略图 URL 失败:', e);
-        }
+      if (item.type === 'image' && !thumbnailUrls[item.id]) {
+        await ensureImagePreviewUrl(item);
       }
     }
 
     thumbnailUrls = thumbnailUrls;
+    imagePreviewErrors = imagePreviewErrors;
+  }
+
+  async function ensureImagePreviewUrl(item) {
+    if (item.type !== 'image' || (!item.thumbnail_path && !item.image_path)) {
+      return;
+    }
+
+    const previewUrl = await resolveFirstImageUrl([item.thumbnail_path, item.image_path]);
+    if (previewUrl) {
+      thumbnailUrls[item.id] = previewUrl;
+      delete imagePreviewErrors[item.id];
+    } else {
+      delete thumbnailUrls[item.id];
+      imagePreviewErrors[item.id] = true;
+    }
+
+    thumbnailUrls = thumbnailUrls;
+    imagePreviewErrors = imagePreviewErrors;
+  }
+
+  async function resolveFirstImageUrl(paths) {
+    const seen = new Set();
+
+    for (const path of paths) {
+      if (!path || seen.has(path)) continue;
+      seen.add(path);
+
+      try {
+        const url = await convertImagePath(path);
+        if (url) return url;
+      } catch (e) {
+        console.error('加载图片预览 URL 失败:', e);
+      }
+    }
+
+    return null;
+  }
+
+  async function fallbackToOriginalPreview(item) {
+    if (!item?.image_path || thumbnailUrls[item.id] === imageUrls[item.id]) {
+      delete thumbnailUrls[item.id];
+      imagePreviewErrors[item.id] = true;
+      thumbnailUrls = thumbnailUrls;
+      imagePreviewErrors = imagePreviewErrors;
+      return;
+    }
+
+    try {
+      const originalUrl = imageUrls[item.id] || await resolveFirstImageUrl([item.image_path]);
+      if (!originalUrl) throw new Error('原图 URL 不可用');
+
+      imageUrls[item.id] = originalUrl;
+      thumbnailUrls[item.id] = originalUrl;
+      delete imagePreviewErrors[item.id];
+      imageUrls = imageUrls;
+      thumbnailUrls = thumbnailUrls;
+      imagePreviewErrors = imagePreviewErrors;
+    } catch (e) {
+      console.error('原图预览加载失败:', e);
+      delete thumbnailUrls[item.id];
+      imagePreviewErrors[item.id] = true;
+      thumbnailUrls = thumbnailUrls;
+      imagePreviewErrors = imagePreviewErrors;
+      showActionError('图片预览不可用');
+    }
   }
 
   function requiresDeleteConfirmation(item) {
@@ -1141,6 +1202,10 @@
     thumbnailUrls = Object.fromEntries(
       Object.entries(thumbnailUrls).filter(([itemId]) => liveIds.has(itemId))
     );
+
+    imagePreviewErrors = Object.fromEntries(
+      Object.entries(imagePreviewErrors).filter(([itemId]) => liveIds.has(itemId))
+    );
   }
 
   function reconcileTransientItemState(nextItems = items) {
@@ -1608,12 +1673,14 @@
                         alt="剪贴板图片缩略图"
                         loading="lazy"
                         decoding="async"
-                        on:error={(event) => {
+                        on:error={() => {
                           console.error('缩略图加载失败:', item.thumbnail_path);
-                          event.target.style.display = 'none';
+                          void fallbackToOriginalPreview(item);
                         }}
                       />
                     </div>
+                  {:else if imagePreviewErrors[item.id]}
+                    <div class="image-loading">图片预览不可用</div>
                   {:else}
                     <div class="image-loading">图片加载中</div>
                   {/if}

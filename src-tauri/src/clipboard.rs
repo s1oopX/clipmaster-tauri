@@ -1,9 +1,10 @@
 use anyhow::Result;
 use arboard::Clipboard;
 use parking_lot::Mutex;
+use std::collections::VecDeque;
 use std::fs;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::time::sleep;
 
@@ -17,6 +18,75 @@ use crate::settings::SettingsStore;
 pub struct ClipboardService {
     last_hash: Arc<Mutex<String>>,
     last_sequence: Arc<Mutex<Option<u32>>>,
+}
+
+#[derive(Clone, Default)]
+pub struct ClipboardWriteState {
+    pending_hashes: Arc<Mutex<VecDeque<PendingClipboardWrite>>>,
+}
+
+struct PendingClipboardWrite {
+    hash: String,
+    created_at: Instant,
+}
+
+impl ClipboardWriteState {
+    const MAX_PENDING_WRITES: usize = 16;
+    const PENDING_WRITE_TTL: Duration = Duration::from_secs(5);
+
+    pub fn suppress_next_hash(&self, hash: String) {
+        let mut pending = self.pending_hashes.lock();
+        Self::prune_expired(&mut pending);
+        pending.push_back(PendingClipboardWrite {
+            hash,
+            created_at: Instant::now(),
+        });
+
+        while pending.len() > Self::MAX_PENDING_WRITES {
+            pending.pop_front();
+        }
+    }
+
+    pub fn consume_pending_hash(&self, hash: &str) -> bool {
+        let mut pending = self.pending_hashes.lock();
+        Self::prune_expired(&mut pending);
+        let Some(position) = pending
+            .iter()
+            .position(|pending_write| pending_write.hash == hash)
+        else {
+            return false;
+        };
+
+        pending.remove(position);
+        true
+    }
+
+    pub fn forget_pending_hash(&self, hash: &str) {
+        let mut pending = self.pending_hashes.lock();
+        Self::prune_expired(&mut pending);
+        if let Some(position) = pending
+            .iter()
+            .position(|pending_write| pending_write.hash == hash)
+        {
+            pending.remove(position);
+        }
+    }
+
+    fn prune_expired(pending: &mut VecDeque<PendingClipboardWrite>) {
+        let now = Instant::now();
+        pending.retain(|pending_write| {
+            now.duration_since(pending_write.created_at) <= Self::PENDING_WRITE_TTL
+        });
+    }
+
+    #[cfg(test)]
+    fn suppress_expired_hash_for_test(&self, hash: String) {
+        let mut pending = self.pending_hashes.lock();
+        pending.push_back(PendingClipboardWrite {
+            hash,
+            created_at: Instant::now() - Self::PENDING_WRITE_TTL - Duration::from_millis(1),
+        });
+    }
 }
 
 impl ClipboardService {
@@ -60,6 +130,17 @@ impl ClipboardService {
                 // 尝试读取剪贴板内容
                 if let Ok(content) = Self::get_clipboard_content(&mut clipboard) {
                     let hash = Self::calculate_hash(&content);
+
+                    if Self::should_skip_self_write(&app_handle, &hash) {
+                        Self::mark_clipboard_item_saved(
+                            &last_hash,
+                            &last_sequence,
+                            &hash,
+                            clipboard_sequence,
+                        );
+                        sleep(Duration::from_millis(500)).await;
+                        continue;
+                    }
 
                     let hash_changed = {
                         let last = last_hash.lock();
@@ -112,6 +193,13 @@ impl ClipboardService {
         }
     }
 
+    fn should_skip_self_write(app_handle: &AppHandle, hash: &str) -> bool {
+        app_handle
+            .try_state::<ClipboardWriteState>()
+            .map(|state| state.consume_pending_hash(hash))
+            .unwrap_or(false)
+    }
+
     /// 获取剪贴板内容
     fn get_clipboard_content(clipboard: &mut Clipboard) -> Result<ClipboardContent> {
         // 优先检测图片
@@ -132,29 +220,9 @@ impl ClipboardService {
     /// 计算内容哈希
     fn calculate_hash(content: &ClipboardContent) -> String {
         match content {
-            ClipboardContent::Text(text) => {
-                if is_safe_web_url(text) {
-                    link_content_hash(text)
-                } else {
-                    format!("{:x}", md5::compute(text.as_bytes()))
-                }
-            }
+            ClipboardContent::Text(text) => calculate_text_clipboard_hash(text),
             ClipboardContent::Image(img) => {
-                // 使用图片的宽高和采样像素数据计算哈希
-                let mut hash_data = Vec::new();
-
-                // 添加宽高信息
-                hash_data.extend_from_slice(&img.width.to_le_bytes());
-                hash_data.extend_from_slice(&img.height.to_le_bytes());
-
-                // 采样策略：取部分像素点（每隔100个像素取一个）
-                // 避免处理整个图片数据，提升性能
-                let sample_step = 100.min(img.bytes.len() / 100).max(1);
-                for i in (0..img.bytes.len()).step_by(sample_step) {
-                    hash_data.push(img.bytes[i]);
-                }
-
-                format!("{:x}", md5::compute(&hash_data))
+                calculate_image_clipboard_hash(img.width, img.height, &img.bytes)
             }
         }
     }
@@ -281,6 +349,28 @@ impl ClipboardService {
     }
 }
 
+pub fn calculate_text_clipboard_hash(text: &str) -> String {
+    if is_safe_web_url(text) {
+        link_content_hash(text)
+    } else {
+        format!("{:x}", md5::compute(text.as_bytes()))
+    }
+}
+
+pub fn calculate_image_clipboard_hash(width: usize, height: usize, bytes: &[u8]) -> String {
+    let mut hash_data = Vec::new();
+
+    hash_data.extend_from_slice(&width.to_le_bytes());
+    hash_data.extend_from_slice(&height.to_le_bytes());
+
+    let sample_step = 100.min(bytes.len() / 100).max(1);
+    for i in (0..bytes.len()).step_by(sample_step) {
+        hash_data.push(bytes[i]);
+    }
+
+    format!("{:x}", md5::compute(&hash_data))
+}
+
 impl Default for ClipboardService {
     fn default() -> Self {
         Self::new()
@@ -325,5 +415,48 @@ mod tests {
             " http://docs.example.com/path?q=1#install "
         ));
         assert!(!is_safe_web_url("https://localhost"));
+    }
+
+    #[test]
+    fn pending_self_write_hash_is_consumed_once() {
+        let state = ClipboardWriteState::default();
+
+        state.suppress_next_hash("alpha".to_string());
+
+        assert!(state.consume_pending_hash("alpha"));
+        assert!(!state.consume_pending_hash("alpha"));
+    }
+
+    #[test]
+    fn pending_self_write_hashes_are_bounded() {
+        let state = ClipboardWriteState::default();
+
+        for index in 0..(ClipboardWriteState::MAX_PENDING_WRITES + 2) {
+            state.suppress_next_hash(format!("hash-{index}"));
+        }
+
+        assert!(!state.consume_pending_hash("hash-0"));
+        assert!(!state.consume_pending_hash("hash-1"));
+        assert!(state.consume_pending_hash("hash-2"));
+    }
+
+    #[test]
+    fn pending_self_write_hash_expires() {
+        let state = ClipboardWriteState::default();
+
+        state.suppress_expired_hash_for_test("alpha".to_string());
+
+        assert!(!state.consume_pending_hash("alpha"));
+    }
+
+    #[test]
+    fn image_clipboard_hash_includes_dimensions_and_pixels() {
+        let pixels = [0, 10, 20, 30, 40, 50, 60, 70];
+
+        let hash = calculate_image_clipboard_hash(1, 2, &pixels);
+
+        assert_eq!(hash, calculate_image_clipboard_hash(1, 2, &pixels));
+        assert_ne!(hash, calculate_image_clipboard_hash(2, 1, &pixels));
+        assert_ne!(hash, calculate_image_clipboard_hash(1, 2, &[0, 10, 21]));
     }
 }

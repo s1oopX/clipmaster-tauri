@@ -14,7 +14,7 @@ mod session;
 mod settings;
 mod tray;
 
-use clipboard::ClipboardService;
+use clipboard::{ClipboardService, ClipboardWriteState};
 use database::Database;
 use hotkey::HotkeyManager;
 use session::SessionManager;
@@ -68,6 +68,7 @@ fn main() {
             app.manage(settings_store);
             app.manage(db);
             app.manage(session_mgr);
+            app.manage(ClipboardWriteState::default());
 
             // 启动剪贴板监听服务
             let clipboard_service = ClipboardService::new();

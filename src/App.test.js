@@ -960,6 +960,67 @@ describe('App UI', () => {
     });
   });
 
+  it('falls back to the original image when thumbnail metadata is missing', async () => {
+    api.getItems.mockResolvedValue([imageItem({ thumbnail_path: null })]);
+
+    render(App);
+
+    const thumbnail = await screen.findByAltText('剪贴板图片缩略图');
+
+    expect(thumbnail).toHaveAttribute('src', 'asset://localhost/images/2026-06-06/image.png');
+    expect(api.convertImagePath).toHaveBeenCalledWith('images/2026-06-06/image.png');
+  });
+
+  it('falls back to the original image when the thumbnail file cannot load', async () => {
+    api.convertImagePath
+      .mockResolvedValueOnce('asset://localhost/images/2026-06-06/image_thumb.png')
+      .mockResolvedValueOnce('asset://localhost/images/2026-06-06/image.png');
+    api.getItems.mockResolvedValue([imageItem()]);
+
+    render(App);
+
+    const thumbnail = await screen.findByAltText('剪贴板图片缩略图');
+    await fireEvent.error(thumbnail);
+
+    await waitFor(() => {
+      expect(thumbnail).toHaveAttribute('src', 'asset://localhost/images/2026-06-06/image.png');
+    });
+    expect(api.convertImagePath).toHaveBeenCalledWith('images/2026-06-06/image.png');
+    expect(screen.queryByText('图片预览不可用')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the original image when thumbnail URL conversion returns empty', async () => {
+    api.convertImagePath
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce('asset://localhost/images/2026-06-06/image.png');
+    api.getItems.mockResolvedValue([imageItem()]);
+
+    render(App);
+
+    const thumbnail = await screen.findByAltText('剪贴板图片缩略图');
+
+    expect(thumbnail).toHaveAttribute('src', 'asset://localhost/images/2026-06-06/image.png');
+    expect(api.convertImagePath).toHaveBeenNthCalledWith(1, 'images/2026-06-06/image_thumb.png');
+    expect(api.convertImagePath).toHaveBeenNthCalledWith(2, 'images/2026-06-06/image.png');
+  });
+
+  it('shows a stable unavailable state when image preview loading fails completely', async () => {
+    api.convertImagePath
+      .mockResolvedValueOnce('asset://localhost/images/2026-06-06/image_thumb.png')
+      .mockRejectedValueOnce('原图不存在');
+    api.getItems.mockResolvedValue([imageItem()]);
+
+    render(App);
+
+    const thumbnail = await screen.findByAltText('剪贴板图片缩略图');
+    await fireEvent.error(thumbnail);
+
+    await waitFor(() => {
+      expect(screen.queryByAltText('剪贴板图片缩略图')).not.toBeInTheDocument();
+    });
+    expect(document.querySelector('.image-loading')).toHaveTextContent('图片预览不可用');
+  });
+
   it('shows a toast error when copying text fails', async () => {
     api.getItems.mockResolvedValue([textItem()]);
     api.copyToClipboard.mockRejectedValueOnce('剪贴板被占用');

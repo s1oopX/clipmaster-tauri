@@ -12,6 +12,9 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder
 use tokio::time::sleep;
 
 use crate::app_data;
+use crate::clipboard::{
+    calculate_image_clipboard_hash, calculate_text_clipboard_hash, ClipboardWriteState,
+};
 use crate::database::{date_key_now, Database};
 use crate::dev_port::{check_dev_server_port as check_port, PortCheckResult};
 use crate::link::normalize_web_url;
@@ -44,10 +47,24 @@ pub async fn get_app_data_dir(app: AppHandle) -> Result<String, String> {
 
 /// 复制文本到剪贴板
 #[tauri::command]
-pub async fn copy_to_clipboard(text: String) -> Result<(), String> {
+pub async fn copy_to_clipboard(app: AppHandle, text: String) -> Result<(), String> {
     use arboard::Clipboard;
-    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.set_text(text).map_err(|e| e.to_string())
+    let content_hash = calculate_text_clipboard_hash(&text);
+    mark_next_clipboard_write(&app, content_hash.clone());
+
+    let mut clipboard = match Clipboard::new().map_err(|e| e.to_string()) {
+        Ok(clipboard) => clipboard,
+        Err(error) => {
+            forget_next_clipboard_write(&app, &content_hash);
+            return Err(error);
+        }
+    };
+    if let Err(error) = clipboard.set_text(text).map_err(|e| e.to_string()) {
+        forget_next_clipboard_write(&app, &content_hash);
+        return Err(error);
+    }
+
+    Ok(())
 }
 
 /// 复制图片到剪贴板
@@ -67,14 +84,31 @@ pub async fn copy_image_to_clipboard(app: AppHandle, image_path: String) -> Resu
     let rgba_image = image::open(&absolute_path)
         .map_err(|e| format!("读取图片失败: {}", e))?
         .to_rgba8();
+    let content_hash = calculate_image_clipboard_hash(
+        rgba_image.width() as usize,
+        rgba_image.height() as usize,
+        rgba_image.as_raw(),
+    );
     let image_data = ImageData {
         width: rgba_image.width() as usize,
         height: rgba_image.height() as usize,
         bytes: Cow::Owned(rgba_image.into_raw()),
     };
 
-    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.set_image(image_data).map_err(|e| e.to_string())
+    mark_next_clipboard_write(&app, content_hash.clone());
+    let mut clipboard = match Clipboard::new().map_err(|e| e.to_string()) {
+        Ok(clipboard) => clipboard,
+        Err(error) => {
+            forget_next_clipboard_write(&app, &content_hash);
+            return Err(error);
+        }
+    };
+    if let Err(error) = clipboard.set_image(image_data).map_err(|e| e.to_string()) {
+        forget_next_clipboard_write(&app, &content_hash);
+        return Err(error);
+    }
+
+    Ok(())
 }
 
 /// 在系统默认浏览器打开允许的外部链接
@@ -712,9 +746,13 @@ fn save_screenshot_rgba_to_history(
     rgba_image: &image::RgbaImage,
     source_app: &str,
 ) -> Result<ClipboardItem, String> {
-    copy_rgba_image_to_clipboard(rgba_image)?;
+    let content_hash = calculate_image_clipboard_hash(
+        rgba_image.width() as usize,
+        rgba_image.height() as usize,
+        rgba_image.as_raw(),
+    );
+    copy_rgba_image_to_clipboard(app, rgba_image, &content_hash)?;
 
-    let content_hash = format!("{:x}", md5::compute(rgba_image.as_raw()));
     let time_zone = settings.get().time_zone;
 
     if let Some(saved_item) = db
@@ -754,7 +792,11 @@ fn save_screenshot_rgba_to_history(
     Ok(saved_item)
 }
 
-fn copy_rgba_image_to_clipboard(rgba_image: &image::RgbaImage) -> Result<(), String> {
+fn copy_rgba_image_to_clipboard(
+    app: &AppHandle,
+    rgba_image: &image::RgbaImage,
+    content_hash: &str,
+) -> Result<(), String> {
     use arboard::{Clipboard, ImageData};
 
     let image_data = ImageData {
@@ -763,10 +805,36 @@ fn copy_rgba_image_to_clipboard(rgba_image: &image::RgbaImage) -> Result<(), Str
         bytes: Cow::Owned(rgba_image.clone().into_raw()),
     };
 
-    let mut clipboard = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
-    clipboard
+    mark_next_clipboard_write(app, content_hash.to_string());
+    let mut clipboard = match Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))
+    {
+        Ok(clipboard) => clipboard,
+        Err(error) => {
+            forget_next_clipboard_write(app, content_hash);
+            return Err(error);
+        }
+    };
+    if let Err(error) = clipboard
         .set_image(image_data)
         .map_err(|e| format!("复制截图到剪贴板失败: {}", e))
+    {
+        forget_next_clipboard_write(app, content_hash);
+        return Err(error);
+    }
+
+    Ok(())
+}
+
+fn mark_next_clipboard_write(app: &AppHandle, content_hash: String) {
+    if let Some(state) = app.try_state::<ClipboardWriteState>() {
+        state.suppress_next_hash(content_hash);
+    }
+}
+
+fn forget_next_clipboard_write(app: &AppHandle, content_hash: &str) {
+    if let Some(state) = app.try_state::<ClipboardWriteState>() {
+        state.forget_pending_hash(content_hash);
+    }
 }
 
 fn capture_frozen_screen_snapshot(app: &AppHandle) -> Result<FrozenScreenSnapshot, String> {

@@ -23,7 +23,7 @@ describe('Screenshot selector window', () => {
     expect(commandsSource).toContain('capture_frozen_screen_snapshot(&app)?');
     expect(commandsSource).toContain('"screenshot.html?snapshotPath={}');
     expect(commandsSource).toContain('pub async fn save_screenshot_image');
-    expect(commandsSource).toContain('copy_rgba_image_to_clipboard(rgba_image)?');
+    expect(commandsSource).toContain('copy_rgba_image_to_clipboard(app, rgba_image, &content_hash)?');
     expect(screenshotHtml).toContain("invoke('save_screenshot_image'");
     expect(screenshotHtml).toContain('renderFinalDataUrl');
   });
