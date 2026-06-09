@@ -1,6 +1,6 @@
 [package]
 name = "clipmaster"
-version = "0.1.1"
+version = "0.1.2"
 description = "ClipMaster - 轻量级剪贴板管理工具"
 authors = ["ClipMaster contributors"]
 edition = "2021"

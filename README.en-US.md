@@ -24,7 +24,7 @@ The project is not a cloud clipboard, account-based sync service, or telemetry p
 
 ## Project Status
 
-The current release line is `0.1.1`. The project already covers everyday clipboard history, image history, region screenshots, frozen-screen selection, basic annotation, pinned desktop images, system tray behavior, settings, cleanup policies, data migration, and Windows packaging.
+The current release line is `0.1.2`. The project already covers everyday clipboard history, image history, region screenshots, frozen-screen selection, basic annotation, pinned desktop images, system tray behavior, settings, cleanup policies, data migration, and Windows packaging.
 
 Planned improvements include virtual scrolling, additional global shortcuts, OCR, scrolling screenshots, backup and restore, automatic updates, and code signing. See the [Roadmap](./docs/ROADMAP.md) for details.
 
@@ -34,8 +34,8 @@ Installers are published through [GitHub Releases](https://github.com/s1oopX/cli
 
 | File | Use case |
 | --- | --- |
-| `ClipMaster_0.1.1_x64-setup.exe` | Recommended installer for most Windows users |
-| `ClipMaster_0.1.1_x64_en-US.msi` | MSI package for traditional deployment or environments that require MSI |
+| `ClipMaster_0.1.2_x64-setup.exe` | Recommended installer for most Windows users |
+| `ClipMaster_0.1.2_x64_en-US.msi` | MSI package for traditional deployment or environments that require MSI |
 | `SHA256SUMS.txt` | Release artifact checksums |
 
 Current builds are not code-signed yet, so Windows SmartScreen may show a warning. Download installers only from this repository's Release page and verify them with the SHA256 file attached to the Release.
