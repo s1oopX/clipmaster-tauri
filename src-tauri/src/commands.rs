@@ -1,5 +1,8 @@
+use base64::{engine::general_purpose, Engine as _};
 use chrono::NaiveDate;
 use screenshots::Screen;
+use serde::Serialize;
+use std::borrow::Cow;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -21,6 +24,18 @@ const ALLOWED_EXTERNAL_URLS: [&str; 2] = [
     "https://github.com/s1oopX",
     "https://github.com/s1oopX/clipmaster-tauri/issues",
 ];
+
+#[derive(Debug, Clone, Serialize)]
+struct FrozenScreenSnapshot {
+    path: String,
+    screen_x: i32,
+    screen_y: i32,
+    screen_width: u32,
+    screen_height: u32,
+    pixel_width: u32,
+    pixel_height: u32,
+    scale_factor: f32,
+}
 
 /// 获取应用数据目录路径
 #[tauri::command]
@@ -544,17 +559,10 @@ pub async fn start_region_screenshot(
         sleep(Duration::from_millis(delay_ms)).await;
     }
 
-    // 1. 创建截图选择窗口。窗口自身只显示灰色底版，最终截图在用户确认后再抓取。
+    // 1. 创建截图选择窗口。启动时先冻结当前屏幕，后续选区和标注都基于静态图像合成。
     // 如果窗口已经存在，直接复用并置前，避免关闭后立即重建触发 Tauri label 冲突。
     if let Some(selection_window) = app.get_webview_window("screenshot-selector") {
-        if let Some(main_window) = app.get_webview_window("main") {
-            if let Err(error) = main_window.hide() {
-                return Err(format!("隐藏主窗口失败: {}", error));
-            }
-        }
-
         if let Err(error) = selection_window.show() {
-            let _ = restore_main_window(&app);
             return Err(format!("打开已有截图选择窗口失败: {}", error));
         }
 
@@ -565,43 +573,81 @@ pub async fn start_region_screenshot(
         return Ok(());
     }
 
-    let selection_window = WebviewWindowBuilder::new(
-        &app,
-        "screenshot-selector",
-        WebviewUrl::App("screenshot.html".into()),
-    )
-    .title("区域截图")
-    .fullscreen(true)
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .visible(false)
-    .build()
-    .map_err(|e| e.to_string())?;
+    let snapshot = capture_frozen_screen_snapshot(&app)?;
+    let url = WebviewUrl::App(
+        format!(
+            "screenshot.html?snapshotPath={}&screenX={}&screenY={}&screenWidth={}&screenHeight={}&pixelWidth={}&pixelHeight={}&scaleFactor={}",
+            encode_query_value(&snapshot.path),
+            snapshot.screen_x,
+            snapshot.screen_y,
+            snapshot.screen_width,
+            snapshot.screen_height,
+            snapshot.pixel_width,
+            snapshot.pixel_height,
+            snapshot.scale_factor,
+        )
+        .into(),
+    );
 
-    // 2. 先隐藏主窗口，再显示灰色底版，避免主窗口出现在用户要截取的内容里。
-    if let Some(main_window) = app.get_webview_window("main") {
-        if let Err(error) = main_window.hide() {
-            let _ = selection_window.close();
-            let _ = restore_main_window(&app);
-            return Err(format!("隐藏主窗口失败: {}", error));
-        }
-    }
+    let selection_window = WebviewWindowBuilder::new(&app, "screenshot-selector", url)
+        .title("区域截图")
+        .inner_size(snapshot.screen_width as f64, snapshot.screen_height as f64)
+        .position(snapshot.screen_x as f64, snapshot.screen_y as f64)
+        .decorations(false)
+        .transparent(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?;
 
     if let Err(error) = selection_window.show() {
         let _ = selection_window.close();
-        let _ = restore_main_window(&app);
         return Err(format!("打开截图选择窗口失败: {}", error));
     }
 
     if let Err(error) = selection_window.set_focus() {
         let _ = selection_window.close();
-        let _ = restore_main_window(&app);
         return Err(format!("聚焦截图选择窗口失败: {}", error));
     }
 
     Ok(())
+}
+
+/// 保存前端基于冻结屏幕合成的最终截图，并复制到系统剪贴板。
+#[tauri::command]
+pub async fn save_screenshot_image(
+    app: AppHandle,
+    db: State<'_, Database>,
+    session_mgr: State<'_, SessionManager>,
+    settings: State<'_, SettingsStore>,
+    image_data_url: String,
+    snapshot_path: Option<String>,
+) -> Result<ClipboardItem, String> {
+    let rgba_image = decode_png_data_url(&image_data_url)?;
+    let result = save_screenshot_rgba_to_history(
+        &app,
+        &db,
+        &session_mgr,
+        &settings,
+        &rgba_image,
+        "ClipMaster 区域截图",
+    )?;
+
+    if let Some(snapshot_path) = snapshot_path {
+        cleanup_screenshot_snapshot_file(&app, &snapshot_path)?;
+    }
+
+    Ok(result)
+}
+
+/// 清理冻结屏幕的临时快照文件。
+#[tauri::command]
+pub async fn cleanup_screenshot_snapshot(
+    app: AppHandle,
+    snapshot_path: String,
+) -> Result<(), String> {
+    cleanup_screenshot_snapshot_file(&app, &snapshot_path)
 }
 
 /// 捕获选定区域的截图
@@ -620,10 +666,9 @@ pub async fn capture_region_screenshot(
         return Err("截图区域无效".to_string());
     }
 
-    // 1. 前端会先隐藏选择窗口；这里再兜底等待一次，避免把灰色底版和工具条拍进结果。
+    // 旧 API 仍保留：前端新版会传入冻结图合成后的 PNG，此路径只作为兼容兜底。
     hide_selector_window_for_capture(&app).await?;
 
-    // 2. 用户在灰色底版上完成框选后，抓取真实屏幕区域。
     let screen = Screen::from_point(x, y).map_err(|e| format!("未找到选区所在屏幕: {}", e))?;
     let relative_x = x - screen.display_info.x;
     let relative_y = y - screen.display_info.y;
@@ -635,7 +680,26 @@ pub async fn capture_region_screenshot(
         image::RgbaImage::from_raw(captured_width, captured_height, captured_image.into_raw())
             .ok_or_else(|| "转换截图像素失败".to_string())?;
 
-    // 3. 计算 hash
+    save_screenshot_rgba_to_history(
+        &app,
+        &db,
+        &session_mgr,
+        &settings,
+        &rgba_image,
+        "ClipMaster 区域截图",
+    )
+}
+
+fn save_screenshot_rgba_to_history(
+    app: &AppHandle,
+    db: &Database,
+    session_mgr: &SessionManager,
+    settings: &SettingsStore,
+    rgba_image: &image::RgbaImage,
+    source_app: &str,
+) -> Result<ClipboardItem, String> {
+    copy_rgba_image_to_clipboard(rgba_image)?;
+
     let content_hash = format!("{:x}", md5::compute(rgba_image.as_raw()));
     let time_zone = settings.get().time_zone;
 
@@ -648,16 +712,13 @@ pub async fn capture_region_screenshot(
         return Ok(saved_item);
     }
 
-    // 4. 保存图片和缩略图
     let (image_path, thumbnail_path) =
-        save_cropped_image(&app, &rgba_image, &content_hash, &time_zone)?;
+        save_cropped_image(app, rgba_image, &content_hash, &time_zone)?;
 
-    // 5. 获取会话
     let session_id = session_mgr
         .get_current_session_id()
         .ok_or_else(|| "当前没有活动会话".to_string())?;
 
-    // 6. 创建记录
     let saved_item = db
         .insert_item(
             CreateClipboardItem {
@@ -665,7 +726,7 @@ pub async fn capture_region_screenshot(
                 content: None,
                 image_path: Some(image_path),
                 thumbnail_path: Some(thumbnail_path),
-                source_app: Some("ClipMaster 区域截图".to_string()),
+                source_app: Some(source_app.to_string()),
                 content_hash,
                 session_id,
             },
@@ -673,11 +734,135 @@ pub async fn capture_region_screenshot(
         )
         .map_err(|e| e.to_string())?;
 
-    // 7. 通知前端
     app.emit("clipboard:new-item", &saved_item)
         .map_err(|e| e.to_string())?;
 
     Ok(saved_item)
+}
+
+fn copy_rgba_image_to_clipboard(rgba_image: &image::RgbaImage) -> Result<(), String> {
+    use arboard::{Clipboard, ImageData};
+
+    let image_data = ImageData {
+        width: rgba_image.width() as usize,
+        height: rgba_image.height() as usize,
+        bytes: Cow::Owned(rgba_image.clone().into_raw()),
+    };
+
+    let mut clipboard = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
+    clipboard
+        .set_image(image_data)
+        .map_err(|e| format!("复制截图到剪贴板失败: {}", e))
+}
+
+fn capture_frozen_screen_snapshot(app: &AppHandle) -> Result<FrozenScreenSnapshot, String> {
+    let screen = select_capture_screen(app)?;
+    let captured_image = screen
+        .capture()
+        .map_err(|e| format!("冻结屏幕失败: {}", e))?;
+    let (pixel_width, pixel_height) = captured_image.dimensions();
+
+    let app_data_dir = app_data::resolve_app_data_dir(app).map_err(|e| e.to_string())?;
+    let cache_dir = app_data_dir.join("screenshot-cache");
+    fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+
+    let filename = format!(
+        "freeze_{}_{}.png",
+        chrono::Utc::now().timestamp_millis(),
+        nanoid::nanoid!(8)
+    );
+    let file_path = cache_dir.join(filename);
+    captured_image
+        .save(&file_path)
+        .map_err(|e| format!("保存冻结屏幕失败: {}", e))?;
+
+    Ok(FrozenScreenSnapshot {
+        path: file_path.to_string_lossy().to_string(),
+        screen_x: screen.display_info.x,
+        screen_y: screen.display_info.y,
+        screen_width: screen.display_info.width,
+        screen_height: screen.display_info.height,
+        pixel_width,
+        pixel_height,
+        scale_factor: screen.display_info.scale_factor,
+    })
+}
+
+fn select_capture_screen(app: &AppHandle) -> Result<Screen, String> {
+    if let Some((cursor_x, cursor_y)) = current_cursor_position() {
+        if let Ok(screen) = Screen::from_point(cursor_x, cursor_y) {
+            return Ok(screen);
+        }
+    }
+
+    if let Some(main_window) = app.get_webview_window("main") {
+        if let (Ok(position), Ok(size)) = (main_window.outer_position(), main_window.outer_size()) {
+            let center_x = position.x + (size.width / 2) as i32;
+            let center_y = position.y + (size.height / 2) as i32;
+            if let Ok(screen) = Screen::from_point(center_x, center_y) {
+                return Ok(screen);
+            }
+        }
+    }
+
+    let mut screens = Screen::all().map_err(|e| format!("获取屏幕信息失败: {}", e))?;
+    screens
+        .iter()
+        .find(|screen| screen.display_info.is_primary)
+        .copied()
+        .or_else(|| screens.pop())
+        .ok_or_else(|| "未找到可截图的屏幕".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn current_cursor_position() -> Option<(i32, i32)> {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+    let mut point = POINT { x: 0, y: 0 };
+    let ok = unsafe { GetCursorPos(&mut point) };
+    if ok == 0 {
+        None
+    } else {
+        Some((point.x, point.y))
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn current_cursor_position() -> Option<(i32, i32)> {
+    None
+}
+
+fn decode_png_data_url(image_data_url: &str) -> Result<image::RgbaImage, String> {
+    let payload = image_data_url
+        .trim()
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(|| "截图数据格式无效".to_string())?;
+    let bytes = general_purpose::STANDARD
+        .decode(payload)
+        .map_err(|e| format!("解析截图数据失败: {}", e))?;
+    image::load_from_memory(&bytes)
+        .map_err(|e| format!("读取截图数据失败: {}", e))
+        .map(|image| image.to_rgba8())
+}
+
+fn cleanup_screenshot_snapshot_file(app: &AppHandle, snapshot_path: &str) -> Result<(), String> {
+    let app_data_dir = app_data::resolve_app_data_dir(app).map_err(|e| e.to_string())?;
+    let cache_dir = app_data_dir.join("screenshot-cache");
+    let snapshot_path = PathBuf::from(snapshot_path);
+
+    if !snapshot_path.exists() {
+        return Ok(());
+    }
+
+    let cache_dir = fs::canonicalize(&cache_dir).map_err(|e| e.to_string())?;
+    let snapshot_path = fs::canonicalize(&snapshot_path).map_err(|e| e.to_string())?;
+
+    if !snapshot_path.starts_with(&cache_dir) {
+        return Err("冻结截图路径不合法".to_string());
+    }
+
+    fs::remove_file(&snapshot_path).map_err(|e| format!("清理冻结截图失败: {}", e))
 }
 
 async fn hide_selector_window_for_capture(app: &AppHandle) -> Result<(), String> {

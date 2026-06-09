@@ -24,9 +24,11 @@ parking_lot = "0.12"
 arboard = "3.4"
 image = "0.25"
 screenshots = "0.8.10"
+base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+windows-sys = { version = "0.48", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
 default = ["custom-protocol"]

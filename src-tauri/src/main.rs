@@ -110,6 +110,8 @@ fn main() {
             commands::clear_all_history,
             commands::start_region_screenshot,
             commands::capture_region_screenshot,
+            commands::save_screenshot_image,
+            commands::cleanup_screenshot_snapshot,
             commands::pin_image,
         ])
         .build(context)

@@ -6,209 +6,259 @@
     <title>区域截图</title>
     <style>
       * {
+        box-sizing: border-box;
         margin: 0;
         padding: 0;
-        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        user-select: none;
+        background: #05070c;
+        color: #f8fafc;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
       }
 
       body {
-        width: 100vw;
-        height: 100vh;
-        overflow: hidden;
         cursor: crosshair;
-        user-select: none;
-        background: transparent;
       }
 
       #canvas {
         position: absolute;
-        top: 0;
-        left: 0;
+        inset: 0;
         width: 100%;
         height: 100%;
-        background: transparent;
+        display: block;
+      }
+
+      #info,
+      #error,
+      #toolbar,
+      #sizeInfo {
+        position: absolute;
+        z-index: 10;
       }
 
       #info {
-        position: absolute;
         top: 10px;
         left: 50%;
         transform: translateX(-50%);
-        padding: 8px 16px;
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        border-radius: 4px;
-        font-size: 14px;
+        padding: 7px 12px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 6px;
+        background: rgba(15, 23, 42, 0.86);
+        color: #e2e8f0;
+        font-size: 12px;
         pointer-events: none;
-        z-index: 1000;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.26);
       }
 
       #error {
-        position: absolute;
-        top: 54px;
+        top: 52px;
         left: 50%;
-        transform: translateX(-50%);
-        max-width: min(520px, calc(100vw - 32px));
-        padding: 8px 12px;
-        background: rgba(185, 28, 28, 0.92);
-        color: white;
-        border-radius: 4px;
-        font-size: 13px;
         display: none;
-        z-index: 1001;
+        max-width: min(560px, calc(100vw - 32px));
+        transform: translateX(-50%);
+        padding: 8px 12px;
+        border-radius: 6px;
+        background: rgba(185, 28, 28, 0.94);
+        color: #fff;
+        font-size: 13px;
+        box-shadow: 0 18px 42px rgba(127, 29, 29, 0.28);
       }
 
       #toolbar {
-        position: absolute;
-        padding: 4px;
-        background: rgba(30, 30, 30, 0.95);
-        border-radius: 6px;
         display: none;
+        align-items: center;
         gap: 4px;
-        z-index: 1000;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        padding: 5px;
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.94);
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
       }
 
       #toolbar button {
-        padding: 8px 12px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 13px;
-        transition: all 0.2s;
-        display: flex;
+        display: inline-flex;
         align-items: center;
-        gap: 6px;
-      }
-
-      #toolbar button:hover {
-        background: rgba(255, 255, 255, 0.1);
-      }
-
-      #toolbar button svg {
-        width: 16px;
-        height: 16px;
-      }
-
-      #pinBtn {
+        justify-content: center;
+        min-height: 30px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 6px;
         background: transparent;
-        color: white;
+        color: #dbeafe;
+        font-size: 12px;
+        font-weight: 650;
+        cursor: pointer;
       }
 
-      #pinBtn:hover {
-        background: rgba(255, 255, 255, 0.15);
+      #toolbar button:hover,
+      #toolbar button.active {
+        background: rgba(56, 189, 248, 0.18);
+        color: #ffffff;
       }
 
-      #confirm {
-        background: #4caf50;
-        color: white;
+      #toolbar button.primary {
+        background: #22c55e;
+        color: #052e16;
       }
 
-      #confirm:hover {
-        background: #45a049;
+      #toolbar button.primary:hover {
+        background: #4ade80;
       }
 
-      #cancel {
-        background: transparent;
-        color: #e0e0e0;
-      }
-
-      #cancel:hover {
-        background: rgba(255, 255, 255, 0.1);
+      #toolbar button:disabled {
+        opacity: 0.48;
+        cursor: default;
       }
 
       .toolbar-divider {
         width: 1px;
-        height: 24px;
-        background: rgba(255, 255, 255, 0.2);
-        margin: 0 4px;
+        height: 22px;
+        margin: 0 3px;
+        background: rgba(148, 163, 184, 0.26);
       }
 
-      .size-info {
-        position: absolute;
+      #sizeInfo {
+        display: none;
         padding: 4px 8px;
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        border-radius: 3px;
+        border-radius: 4px;
+        background: rgba(15, 23, 42, 0.88);
+        color: #e2e8f0;
         font-size: 12px;
         pointer-events: none;
-        display: none;
-        z-index: 1000;
       }
     </style>
   </head>
   <body>
-    <div id="info">在灰色底版上拖动选择截图区域 | Enter 确定 | P 钉住 | ESC 取消</div>
+    <div id="info">拖动框选区域 | Enter / Ctrl+C 复制保存 | 方向键微调 | Esc 取消</div>
     <div id="error" role="alert" aria-live="assertive"></div>
     <canvas id="canvas"></canvas>
     <div id="toolbar">
-      <button id="pinBtn">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 17v5"></path>
-          <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path>
-        </svg>
-        钉住
-      </button>
+      <button id="selectTool" data-tool="select" class="active" aria-label="选择和调整选区">选择</button>
+      <button id="rectTool" data-tool="rect" aria-label="矩形标注">矩形</button>
+      <button id="arrowTool" data-tool="arrow" aria-label="箭头标注">箭头</button>
+      <button id="penTool" data-tool="pen" aria-label="画笔标注">画笔</button>
       <div class="toolbar-divider"></div>
-      <button id="confirm">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
-        确定
-      </button>
-      <button id="cancel">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-        取消
-      </button>
+      <button id="reselectBtn" aria-label="清空标注并重新框选">重新框选</button>
+      <button id="pinBtn" aria-label="保存并钉到桌面">钉住</button>
+      <button id="confirm" class="primary" aria-label="复制到剪贴板并保存历史">复制保存</button>
+      <button id="cancel" aria-label="取消截图">取消</button>
     </div>
-    <div id="sizeInfo" class="size-info"></div>
+    <div id="sizeInfo"></div>
 
     <script type="module">
-      import { invoke } from '@tauri-apps/api/core';
+      import { convertFileSrc, invoke } from '@tauri-apps/api/core';
       import { getCurrentWindow, Window } from '@tauri-apps/api/window';
+
+      const HANDLE_SIZE = 9;
+      const MIN_SELECTION_SIZE = 10;
+      const ANNOTATION_COLOR = '#ef4444';
 
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
       const toolbar = document.getElementById('toolbar');
       const errorBox = document.getElementById('error');
       const sizeInfo = document.getElementById('sizeInfo');
+      const info = document.getElementById('info');
       const confirmBtn = document.getElementById('confirm');
       const cancelBtn = document.getElementById('cancel');
       const pinBtn = document.getElementById('pinBtn');
+      const reselectBtn = document.getElementById('reselectBtn');
+      const toolButtons = [...document.querySelectorAll('[data-tool]')];
 
-      let isSelecting = false;
+      const params = new URLSearchParams(window.location.search);
+      const snapshot = {
+        path: params.get('snapshotPath') || '',
+        screenX: numberParam('screenX', 0),
+        screenY: numberParam('screenY', 0),
+        screenWidth: numberParam('screenWidth', window.innerWidth),
+        screenHeight: numberParam('screenHeight', window.innerHeight),
+        pixelWidth: numberParam('pixelWidth', window.innerWidth),
+        pixelHeight: numberParam('pixelHeight', window.innerHeight),
+        scaleFactor: numberParam('scaleFactor', 1),
+      };
+
+      const frozenImage = new Image();
+      let imageReady = false;
+      let activeTool = 'select';
       let isCapturing = false;
-      let startX = 0;
-      let startY = 0;
-      let currentX = 0;
-      let currentY = 0;
-      let startScreenX = 0;
-      let startScreenY = 0;
-      let currentScreenX = 0;
-      let currentScreenY = 0;
-      let selectionComplete = false;
+      let snapshotCleaned = false;
+      let selection = null;
+      let dragState = null;
+      let activeAnnotation = null;
+      let annotations = [];
 
-      function sleep(ms) {
-        return new Promise((resolve) => window.setTimeout(resolve, ms));
+      function numberParam(key, fallback) {
+        const parsed = Number(params.get(key));
+        return Number.isFinite(parsed) ? parsed : fallback;
       }
 
-      async function runWindowAction(action, label) {
-        try {
-          await action();
-          return true;
-        } catch (error) {
-          console.error(`${label}失败:`, error);
-          return false;
-        }
+      function pointFromEvent(event) {
+        return {
+          x: clamp(event.clientX, 0, canvas.width),
+          y: clamp(event.clientY, 0, canvas.height),
+        };
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function normalizeRect(rect) {
+        const x = Math.min(rect.x, rect.x + rect.width);
+        const y = Math.min(rect.y, rect.y + rect.height);
+        return {
+          x,
+          y,
+          width: Math.abs(rect.width),
+          height: Math.abs(rect.height),
+        };
+      }
+
+      function clampSelection(rect) {
+        const normalized = normalizeRect(rect);
+        const width = Math.min(normalized.width, canvas.width);
+        const height = Math.min(normalized.height, canvas.height);
+        return {
+          x: clamp(normalized.x, 0, canvas.width - width),
+          y: clamp(normalized.y, 0, canvas.height - height),
+          width,
+          height,
+        };
+      }
+
+      function clampPointToSelection(point) {
+        if (!selection) return point;
+        return {
+          x: clamp(point.x, selection.x, selection.x + selection.width),
+          y: clamp(point.y, selection.y, selection.y + selection.height),
+        };
+      }
+
+      function isUsableSelection(rect = selection) {
+        return rect && rect.width >= MIN_SELECTION_SIZE && rect.height >= MIN_SELECTION_SIZE;
       }
 
       function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        canvas.width = Math.max(1, Math.round(window.innerWidth));
+        canvas.height = Math.max(1, Math.round(window.innerHeight));
+        if (selection) {
+          selection = clampSelection(selection);
+        }
         drawCanvas();
+        positionToolbar();
       }
 
       function showError(message) {
@@ -217,14 +267,13 @@
       }
 
       function hideError() {
-        errorBox.style.display = 'none';
         errorBox.textContent = '';
+        errorBox.style.display = 'none';
       }
 
       async function restoreMainWindow() {
         try {
           const mainWindow = await Window.getByLabel('main');
-
           if (!mainWindow) {
             console.warn('未找到主窗口');
             return false;
@@ -239,238 +288,567 @@
         }
       }
 
-      function resetSelection() {
-        selectionComplete = false;
-        toolbar.style.display = 'none';
-        sizeInfo.style.display = 'none';
-        hideError();
+      async function runWindowAction(action, label) {
+        try {
+          await action();
+          return true;
+        } catch (error) {
+          console.error(`${label}失败:`, error);
+          return false;
+        }
       }
 
-      function getSelection() {
-        const clientX = Math.min(startX, currentX);
-        const clientY = Math.min(startY, currentY);
-        const clientWidth = Math.abs(currentX - startX);
-        const clientHeight = Math.abs(currentY - startY);
-        const screenX = Math.min(startScreenX, currentScreenX);
-        const screenY = Math.min(startScreenY, currentScreenY);
-        const screenWidth = Math.abs(currentScreenX - startScreenX);
-        const screenHeight = Math.abs(currentScreenY - startScreenY);
+      function setActiveTool(tool) {
+        activeTool = tool;
+        toolButtons.forEach((button) => {
+          button.classList.toggle('active', button.dataset.tool === tool);
+        });
+        canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+      }
 
-        return {
-          client: {
-            x: clientX,
-            y: clientY,
-            width: clientWidth,
-            height: clientHeight,
-          },
-          screen: {
-            x: screenX,
-            y: screenY,
-            width: screenWidth || clientWidth,
-            height: screenHeight || clientHeight,
-          },
+      function resetForReselect() {
+        selection = null;
+        annotations = [];
+        activeAnnotation = null;
+        dragState = null;
+        toolbar.style.display = 'none';
+        sizeInfo.style.display = 'none';
+        setActiveTool('select');
+        drawCanvas();
+      }
+
+      function getHandles(rect = selection) {
+        if (!rect) return [];
+        const cx = rect.x + rect.width / 2;
+        const cy = rect.y + rect.height / 2;
+        const right = rect.x + rect.width;
+        const bottom = rect.y + rect.height;
+
+        return [
+          ['nw', rect.x, rect.y],
+          ['n', cx, rect.y],
+          ['ne', right, rect.y],
+          ['e', right, cy],
+          ['se', right, bottom],
+          ['s', cx, bottom],
+          ['sw', rect.x, bottom],
+          ['w', rect.x, cy],
+        ];
+      }
+
+      function hitHandle(point) {
+        return getHandles().find(([, x, y]) => {
+          return Math.abs(point.x - x) <= HANDLE_SIZE && Math.abs(point.y - y) <= HANDLE_SIZE;
+        })?.[0] || null;
+      }
+
+      function pointInSelection(point) {
+        return Boolean(
+          selection &&
+            point.x >= selection.x &&
+            point.x <= selection.x + selection.width &&
+            point.y >= selection.y &&
+            point.y <= selection.y + selection.height
+        );
+      }
+
+      function selectionFromHandle(handle, startRect, point) {
+        const left = startRect.x;
+        const top = startRect.y;
+        const right = startRect.x + startRect.width;
+        const bottom = startRect.y + startRect.height;
+        const next = { x: left, y: top, width: startRect.width, height: startRect.height };
+
+        if (handle.includes('w')) {
+          next.x = point.x;
+          next.width = right - point.x;
+        }
+        if (handle.includes('e')) {
+          next.width = point.x - left;
+        }
+        if (handle.includes('n')) {
+          next.y = point.y;
+          next.height = bottom - point.y;
+        }
+        if (handle.includes('s')) {
+          next.height = point.y - top;
+        }
+
+        return clampSelection(next);
+      }
+
+      function moveSelection(startRect, deltaX, deltaY) {
+        selection = {
+          ...startRect,
+          x: clamp(startRect.x + deltaX, 0, canvas.width - startRect.width),
+          y: clamp(startRect.y + deltaY, 0, canvas.height - startRect.height),
         };
       }
 
-      // 绘制画布
+      function nudgeSelection(deltaX, deltaY, resize = false) {
+        if (!selection || isCapturing) return;
+
+        if (resize) {
+          selection = clampSelection({
+            ...selection,
+            width: Math.max(MIN_SELECTION_SIZE, selection.width + deltaX),
+            height: Math.max(MIN_SELECTION_SIZE, selection.height + deltaY),
+          });
+        } else {
+          moveSelection(selection, deltaX, deltaY);
+        }
+
+        drawCanvas();
+        positionToolbar();
+      }
+
       function drawCanvas() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 灰色底版只负责选区交互，真正截图会在确认后隐藏该窗口再抓取。
-        ctx.fillStyle = 'rgba(34, 39, 43, 0.58)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        if (isSelecting || selectionComplete) {
-          const { client } = getSelection();
-          const { x, y, width, height } = client;
-
-          // 清除选区内的灰色底版，露出真实桌面内容。
-          ctx.clearRect(x, y, width, height);
-
-          ctx.strokeStyle = '#38bdf8';
-          ctx.lineWidth = 3;
-          ctx.strokeRect(x, y, width, height);
-
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(x + 2, y + 2, Math.max(width - 4, 0), Math.max(height - 4, 0));
-
-          const cornerSize = 7;
-          ctx.fillStyle = '#38bdf8';
-          ctx.fillRect(x - cornerSize / 2, y - cornerSize / 2, cornerSize, cornerSize);
-          ctx.fillRect(x + width - cornerSize / 2, y - cornerSize / 2, cornerSize, cornerSize);
-          ctx.fillRect(x - cornerSize / 2, y + height - cornerSize / 2, cornerSize, cornerSize);
-          ctx.fillRect(x + width - cornerSize / 2, y + height - cornerSize / 2, cornerSize, cornerSize);
-
-          if (width > 0 && height > 0) {
-            sizeInfo.textContent = `${Math.round(width)} × ${Math.round(height)}`;
-            sizeInfo.style.display = 'block';
-            sizeInfo.style.left = `${Math.min(x + width + 10, window.innerWidth - 86)}px`;
-            sizeInfo.style.top = `${Math.max(8, y)}px`;
-          }
+        if (imageReady) {
+          ctx.drawImage(frozenImage, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.fillStyle = '#05070c';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
+
+        if (!selection) {
+          ctx.fillStyle = 'rgba(2, 6, 23, 0.28)';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          return;
+        }
+
+        drawOutsideOverlay(selection);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(selection.x, selection.y, selection.width, selection.height);
+        ctx.clip();
+        annotations.forEach((annotation) => drawAnnotation(ctx, annotation));
+        if (activeAnnotation) {
+          drawAnnotation(ctx, activeAnnotation);
+        }
+        ctx.restore();
+
+        drawSelectionFrame(selection);
+        drawSizeInfo();
       }
 
-      // 鼠标按下
-      canvas.addEventListener('mousedown', (e) => {
-        if (isCapturing) return;
+      function drawOutsideOverlay(rect) {
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.48)';
+        ctx.fillRect(0, 0, canvas.width, rect.y);
+        ctx.fillRect(0, rect.y + rect.height, canvas.width, canvas.height - rect.y - rect.height);
+        ctx.fillRect(0, rect.y, rect.x, rect.height);
+        ctx.fillRect(rect.x + rect.width, rect.y, canvas.width - rect.x - rect.width, rect.height);
+      }
 
-        if (selectionComplete) {
-          resetSelection();
+      function drawSelectionFrame(rect) {
+        ctx.save();
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.width, rect.height);
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(rect.x + 3.5, rect.y + 3.5, Math.max(0, rect.width - 6), Math.max(0, rect.height - 6));
+
+        for (const [, x, y] of getHandles(rect)) {
+          ctx.fillStyle = '#38bdf8';
+          ctx.fillRect(x - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+          ctx.strokeStyle = 'rgba(15, 23, 42, 0.88)';
+          ctx.strokeRect(x - HANDLE_SIZE / 2 + 0.5, y - HANDLE_SIZE / 2 + 0.5, HANDLE_SIZE - 1, HANDLE_SIZE - 1);
+        }
+        ctx.restore();
+      }
+
+      function drawSizeInfo() {
+        if (!isUsableSelection()) return;
+        const logicalWidth = Math.round(selection.width);
+        const logicalHeight = Math.round(selection.height);
+        const pixelWidth = Math.round(selection.width * pixelScaleX());
+        const pixelHeight = Math.round(selection.height * pixelScaleY());
+        sizeInfo.textContent = `${logicalWidth} × ${logicalHeight} / ${pixelWidth} × ${pixelHeight}`;
+        sizeInfo.style.display = 'block';
+        sizeInfo.style.left = `${Math.min(selection.x + selection.width + 10, canvas.width - 148)}px`;
+        sizeInfo.style.top = `${Math.max(8, selection.y)}px`;
+      }
+
+      function drawAnnotation(targetCtx, annotation, transform = identityTransform()) {
+        const lineWidth = Math.max(2, 3 * transform.avgScale);
+        targetCtx.save();
+        targetCtx.strokeStyle = ANNOTATION_COLOR;
+        targetCtx.fillStyle = ANNOTATION_COLOR;
+        targetCtx.lineWidth = lineWidth;
+        targetCtx.lineJoin = 'round';
+        targetCtx.lineCap = 'round';
+
+        if (annotation.type === 'rect') {
+          const rect = normalizeRect(annotation);
+          const x = tx(rect.x, transform);
+          const y = ty(rect.y, transform);
+          targetCtx.strokeRect(
+            x,
+            y,
+            rect.width * transform.scaleX,
+            rect.height * transform.scaleY
+          );
+        } else if (annotation.type === 'arrow') {
+          drawArrow(
+            targetCtx,
+            tx(annotation.x1, transform),
+            ty(annotation.y1, transform),
+            tx(annotation.x2, transform),
+            ty(annotation.y2, transform),
+            14 * transform.avgScale
+          );
+        } else if (annotation.type === 'pen' && annotation.points.length > 1) {
+          targetCtx.beginPath();
+          targetCtx.moveTo(tx(annotation.points[0].x, transform), ty(annotation.points[0].y, transform));
+          for (const point of annotation.points.slice(1)) {
+            targetCtx.lineTo(tx(point.x, transform), ty(point.y, transform));
+          }
+          targetCtx.stroke();
         }
 
-        isSelecting = true;
-        startX = e.clientX;
-        startY = e.clientY;
-        currentX = e.clientX;
-        currentY = e.clientY;
-        startScreenX = e.screenX;
-        startScreenY = e.screenY;
-        currentScreenX = e.screenX;
-        currentScreenY = e.screenY;
-        drawCanvas();
-      });
+        targetCtx.restore();
+      }
 
-      // 鼠标移动
-      canvas.addEventListener('mousemove', (e) => {
-        if (!isSelecting) return;
+      function drawArrow(targetCtx, x1, y1, x2, y2, headLength) {
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        targetCtx.beginPath();
+        targetCtx.moveTo(x1, y1);
+        targetCtx.lineTo(x2, y2);
+        targetCtx.stroke();
 
-        currentX = e.clientX;
-        currentY = e.clientY;
-        currentScreenX = e.screenX;
-        currentScreenY = e.screenY;
-        drawCanvas();
-      });
+        targetCtx.beginPath();
+        targetCtx.moveTo(x2, y2);
+        targetCtx.lineTo(
+          x2 - headLength * Math.cos(angle - Math.PI / 6),
+          y2 - headLength * Math.sin(angle - Math.PI / 6)
+        );
+        targetCtx.lineTo(
+          x2 - headLength * Math.cos(angle + Math.PI / 6),
+          y2 - headLength * Math.sin(angle + Math.PI / 6)
+        );
+        targetCtx.closePath();
+        targetCtx.fill();
+      }
 
-      // 鼠标释放
-      canvas.addEventListener('mouseup', (e) => {
-        if (!isSelecting) return;
+      function identityTransform() {
+        return {
+          offsetX: 0,
+          offsetY: 0,
+          scaleX: 1,
+          scaleY: 1,
+          avgScale: 1,
+        };
+      }
 
-        isSelecting = false;
-        currentX = e.clientX;
-        currentY = e.clientY;
-        currentScreenX = e.screenX;
-        currentScreenY = e.screenY;
+      function tx(value, transform) {
+        return (value - transform.offsetX) * transform.scaleX;
+      }
 
-        const { client } = getSelection();
+      function ty(value, transform) {
+        return (value - transform.offsetY) * transform.scaleY;
+      }
 
-        if (client.width > 10 && client.height > 10) {
-          selectionComplete = true;
-          showToolbar();
+      function pixelScaleX() {
+        return snapshot.pixelWidth / Math.max(1, canvas.width);
+      }
+
+      function pixelScaleY() {
+        return snapshot.pixelHeight / Math.max(1, canvas.height);
+      }
+
+      function renderFinalDataUrl() {
+        if (!isUsableSelection()) {
+          throw new Error('请先选择截图区域');
         }
 
-        drawCanvas();
-      });
+        const scaleX = pixelScaleX();
+        const scaleY = pixelScaleY();
+        const sourceX = Math.round(selection.x * scaleX);
+        const sourceY = Math.round(selection.y * scaleY);
+        const sourceWidth = Math.max(1, Math.round(selection.width * scaleX));
+        const sourceHeight = Math.max(1, Math.round(selection.height * scaleY));
+        const output = document.createElement('canvas');
+        output.width = sourceWidth;
+        output.height = sourceHeight;
+        const outputCtx = output.getContext('2d');
 
-      // 显示工具栏
-      function showToolbar() {
-        const { client } = getSelection();
-        const { x, y, width, height } = client;
+        outputCtx.drawImage(
+          frozenImage,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          0,
+          0,
+          sourceWidth,
+          sourceHeight
+        );
+
+        outputCtx.save();
+        outputCtx.beginPath();
+        outputCtx.rect(0, 0, sourceWidth, sourceHeight);
+        outputCtx.clip();
+        const transform = {
+          offsetX: selection.x,
+          offsetY: selection.y,
+          scaleX,
+          scaleY,
+          avgScale: (scaleX + scaleY) / 2,
+        };
+        annotations.forEach((annotation) => drawAnnotation(outputCtx, annotation, transform));
+        outputCtx.restore();
+
+        return output.toDataURL('image/png');
+      }
+
+      function positionToolbar() {
+        if (!isUsableSelection()) {
+          toolbar.style.display = 'none';
+          return;
+        }
 
         toolbar.style.display = 'flex';
-        const maxLeft = Math.max(8, window.innerWidth - toolbar.offsetWidth - 8);
-        const left = Math.min(Math.max(8, x + width - toolbar.offsetWidth), maxLeft);
-        let top = y + height + 10;
+        const maxLeft = Math.max(8, canvas.width - toolbar.offsetWidth - 8);
+        const left = clamp(selection.x + selection.width - toolbar.offsetWidth, 8, maxLeft);
+        let top = selection.y + selection.height + 10;
 
-        if (top + toolbar.offsetHeight > window.innerHeight) {
-          top = y - toolbar.offsetHeight - 10;
+        if (top + toolbar.offsetHeight > canvas.height) {
+          top = selection.y - toolbar.offsetHeight - 10;
         }
-        if (top < 8) {
-          top = 8;
-        }
-
         toolbar.style.left = `${left}px`;
-        toolbar.style.top = `${top}px`;
+        toolbar.style.top = `${clamp(top, 8, Math.max(8, canvas.height - toolbar.offsetHeight - 8))}px`;
       }
 
-      async function hideSelectorForCapture() {
-        const currentWin = getCurrentWindow();
-        toolbar.style.display = 'none';
-        sizeInfo.style.display = 'none';
-        document.getElementById('info').style.display = 'none';
+      function updateCursor(event) {
+        if (activeTool !== 'select' || !selection || dragState) return;
+        const point = pointFromEvent(event);
+        const handle = hitHandle(point);
+        const cursors = {
+          n: 'ns-resize',
+          s: 'ns-resize',
+          e: 'ew-resize',
+          w: 'ew-resize',
+          nw: 'nwse-resize',
+          se: 'nwse-resize',
+          ne: 'nesw-resize',
+          sw: 'nesw-resize',
+        };
+        canvas.style.cursor = handle ? cursors[handle] : pointInSelection(point) ? 'move' : 'crosshair';
+      }
+
+      function onMouseDown(event) {
+        if (isCapturing || !imageReady) return;
         hideError();
-        const hidden = await runWindowAction(() => currentWin.hide(), '隐藏截图窗口');
-        if (!hidden) {
-          throw new Error('隐藏截图窗口失败，请重试');
+        const point = pointFromEvent(event);
+
+        if (activeTool === 'select') {
+          const handle = hitHandle(point);
+          if (selection && handle) {
+            dragState = {
+              type: 'resize',
+              handle,
+              startPoint: point,
+              startSelection: { ...selection },
+            };
+          } else if (selection && pointInSelection(point)) {
+            dragState = {
+              type: 'move',
+              startPoint: point,
+              startSelection: { ...selection },
+            };
+          } else {
+            selection = { x: point.x, y: point.y, width: 0, height: 0 };
+            annotations = [];
+            dragState = {
+              type: 'create',
+              startPoint: point,
+            };
+          }
+          drawCanvas();
+          return;
         }
-        await sleep(160);
+
+        if (!selection || !pointInSelection(point)) return;
+        const clippedPoint = clampPointToSelection(point);
+
+        if (activeTool === 'rect') {
+          activeAnnotation = {
+            type: 'rect',
+            x: clippedPoint.x,
+            y: clippedPoint.y,
+            width: 0,
+            height: 0,
+          };
+          dragState = { type: 'annotation', startPoint: clippedPoint };
+        } else if (activeTool === 'arrow') {
+          activeAnnotation = {
+            type: 'arrow',
+            x1: clippedPoint.x,
+            y1: clippedPoint.y,
+            x2: clippedPoint.x,
+            y2: clippedPoint.y,
+          };
+          dragState = { type: 'annotation', startPoint: clippedPoint };
+        } else if (activeTool === 'pen') {
+          activeAnnotation = {
+            type: 'pen',
+            points: [clippedPoint],
+          };
+          dragState = { type: 'annotation', startPoint: clippedPoint };
+        }
       }
 
-      async function showSelectorAfterCaptureError() {
-        const currentWin = getCurrentWindow();
-        await runWindowAction(() => currentWin.show(), '重新显示截图窗口');
-        await runWindowAction(() => currentWin.setFocus(), '重新聚焦截图窗口');
-        document.getElementById('info').style.display = 'block';
+      function onMouseMove(event) {
+        if (!dragState) {
+          updateCursor(event);
+          return;
+        }
+
+        const point = pointFromEvent(event);
+
+        if (dragState.type === 'create') {
+          selection = clampSelection({
+            x: dragState.startPoint.x,
+            y: dragState.startPoint.y,
+            width: point.x - dragState.startPoint.x,
+            height: point.y - dragState.startPoint.y,
+          });
+        } else if (dragState.type === 'move') {
+          moveSelection(
+            dragState.startSelection,
+            point.x - dragState.startPoint.x,
+            point.y - dragState.startPoint.y
+          );
+        } else if (dragState.type === 'resize') {
+          selection = selectionFromHandle(
+            dragState.handle,
+            dragState.startSelection,
+            point
+          );
+        } else if (dragState.type === 'annotation' && activeAnnotation) {
+          const clippedPoint = clampPointToSelection(point);
+          if (activeAnnotation.type === 'rect') {
+            activeAnnotation.width = clippedPoint.x - dragState.startPoint.x;
+            activeAnnotation.height = clippedPoint.y - dragState.startPoint.y;
+          } else if (activeAnnotation.type === 'arrow') {
+            activeAnnotation.x2 = clippedPoint.x;
+            activeAnnotation.y2 = clippedPoint.y;
+          } else if (activeAnnotation.type === 'pen') {
+            activeAnnotation.points.push(clippedPoint);
+          }
+        }
+
         drawCanvas();
-        showToolbar();
+        positionToolbar();
       }
 
-      // 确认截图
-      async function confirmSelection() {
-        if (!selectionComplete || isCapturing) return;
+      function onMouseUp() {
+        if (!dragState) return;
+
+        if (dragState.type === 'create') {
+          if (!isUsableSelection()) {
+            selection = null;
+            toolbar.style.display = 'none';
+            sizeInfo.style.display = 'none';
+          }
+        } else if (dragState.type === 'annotation' && activeAnnotation) {
+          const shouldKeep =
+            activeAnnotation.type === 'pen'
+              ? activeAnnotation.points.length > 1
+              : activeAnnotation.type === 'rect'
+                ? Math.abs(activeAnnotation.width) > 3 && Math.abs(activeAnnotation.height) > 3
+                : Math.hypot(activeAnnotation.x2 - activeAnnotation.x1, activeAnnotation.y2 - activeAnnotation.y1) > 3;
+
+          if (shouldKeep) {
+            annotations.push(activeAnnotation);
+          }
+          activeAnnotation = null;
+        }
+
+        dragState = null;
+        drawCanvas();
+        positionToolbar();
+      }
+
+      async function saveSelection() {
+        if (isCapturing) return null;
+        if (!isUsableSelection()) {
+          showError('请先选择截图区域');
+          return null;
+        }
 
         isCapturing = true;
-        const { screen } = getSelection();
+        hideError();
+        setToolbarDisabled(true);
 
         try {
-          await hideSelectorForCapture();
-          await invoke('capture_region_screenshot', {
-            x: Math.round(screen.x),
-            y: Math.round(screen.y),
-            width: Math.round(screen.width),
-            height: Math.round(screen.height),
+          const imageDataUrl = renderFinalDataUrl();
+          const item = await invoke('save_screenshot_image', {
+            imageDataUrl,
+            snapshotPath: snapshot.path,
           });
-
-          await closeWindow();
+          snapshotCleaned = true;
+          return item;
         } catch (error) {
           console.error('截图失败:', error);
-          await showSelectorAfterCaptureError();
           showError('截图失败: ' + error);
           isCapturing = false;
+          setToolbarDisabled(false);
+          return null;
         }
       }
 
-      // 钉住截图
-      async function pinSelection() {
-        if (!selectionComplete || isCapturing) return;
+      async function confirmSelection() {
+        const item = await saveSelection();
+        if (item) {
+          await closeWindow(false);
+        }
+      }
 
-        isCapturing = true;
-        const { screen } = getSelection();
+      async function pinSelection() {
+        const item = await saveSelection();
+        if (!item) return;
 
         try {
-          await hideSelectorForCapture();
-          const result = await invoke('capture_region_screenshot', {
-            x: Math.round(screen.x),
-            y: Math.round(screen.y),
-            width: Math.round(screen.width),
-            height: Math.round(screen.height),
-          });
-
-          if (result && result.image_path) {
-            await invoke('pin_image', {
-              imagePath: result.image_path,
-            });
+          if (item.image_path) {
+            await invoke('pin_image', { imagePath: item.image_path });
           }
-
-          await closeWindow();
+          await closeWindow(false);
         } catch (error) {
           console.error('钉住截图失败:', error);
-          await showSelectorAfterCaptureError();
           showError('钉住截图失败: ' + error);
           isCapturing = false;
+          setToolbarDisabled(false);
         }
       }
 
-      // 取消截图
-      async function cancelSelection() {
-        await closeWindow();
+      function setToolbarDisabled(disabled) {
+        [...toolbar.querySelectorAll('button')].forEach((button) => {
+          button.disabled = disabled;
+        });
       }
 
-      // 关闭窗口
-      async function closeWindow() {
-        const currentWin = getCurrentWindow();
-        const restored = await restoreMainWindow();
+      async function cleanupSnapshot() {
+        if (!snapshot.path || snapshotCleaned) return;
+        snapshotCleaned = true;
+        try {
+          await invoke('cleanup_screenshot_snapshot', { snapshotPath: snapshot.path });
+        } catch (error) {
+          console.warn('清理冻结截图失败:', error);
+        }
+      }
 
+      async function closeWindow(shouldCleanup = true) {
+        const currentWin = getCurrentWindow();
+        if (shouldCleanup) {
+          await cleanupSnapshot();
+        }
+
+        const restored = await restoreMainWindow();
         if (!restored) {
           console.warn('主窗口恢复失败，继续关闭截图窗口');
         }
@@ -480,47 +858,73 @@
 
         const destroyed = await runWindowAction(() => currentWin.destroy(), '强制关闭截图窗口');
         if (!destroyed) {
-          await runWindowAction(() => currentWin.show(), '重新显示截图窗口');
-          document.getElementById('info').style.display = 'block';
-          drawCanvas();
-          if (selectionComplete) {
-            showToolbar();
-          }
           isCapturing = false;
+          setToolbarDisabled(false);
           showError('关闭截图窗口失败，请按 Alt+F4 退出');
         }
       }
 
-      // 按钮事件
-      confirmBtn.addEventListener('click', () => {
-        confirmSelection();
+      canvas.addEventListener('mousedown', onMouseDown);
+      canvas.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('resize', resizeCanvas);
+
+      confirmBtn.addEventListener('click', confirmSelection);
+      pinBtn.addEventListener('click', pinSelection);
+      cancelBtn.addEventListener('click', () => closeWindow(true));
+      reselectBtn.addEventListener('click', resetForReselect);
+
+      toolButtons.forEach((button) => {
+        button.addEventListener('click', () => setActiveTool(button.dataset.tool));
       });
 
-      cancelBtn.addEventListener('click', () => {
-        cancelSelection();
-      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeWindow(true);
+          return;
+        }
 
-      pinBtn.addEventListener('click', () => {
-        pinSelection();
-      });
-
-      // 键盘事件
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          cancelSelection();
-        } else if (e.key === 'Enter' && selectionComplete) {
-          e.preventDefault();
+        if ((event.key === 'Enter' || (event.ctrlKey && event.key.toLowerCase() === 'c')) && selection) {
+          event.preventDefault();
           confirmSelection();
-        } else if ((e.key === 'p' || e.key === 'P') && selectionComplete) {
-          e.preventDefault();
+          return;
+        }
+
+        if ((event.key === 'p' || event.key === 'P') && selection) {
+          event.preventDefault();
           pinSelection();
+          return;
+        }
+
+        const arrows = {
+          ArrowLeft: [-1, 0],
+          ArrowRight: [1, 0],
+          ArrowUp: [0, -1],
+          ArrowDown: [0, 1],
+        };
+        if (selection && arrows[event.key]) {
+          event.preventDefault();
+          const [deltaX, deltaY] = arrows[event.key];
+          nudgeSelection(deltaX, deltaY, event.shiftKey);
         }
       });
 
-      // 初始化
       resizeCanvas();
-      window.addEventListener('resize', resizeCanvas);
+
+      if (!snapshot.path) {
+        showError('冻结屏幕失败: 缺少快照路径');
+      } else {
+        frozenImage.onload = () => {
+          imageReady = true;
+          info.style.display = 'block';
+          drawCanvas();
+        };
+        frozenImage.onerror = () => {
+          showError('冻结屏幕加载失败，请重试');
+        };
+        frozenImage.src = convertFileSrc(snapshot.path);
+      }
     </script>
   </body>
 </html>
