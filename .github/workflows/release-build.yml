@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -28,7 +28,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.1
         with:
           workspaces: src-tauri
 
@@ -52,8 +52,7 @@ jobs:
           $lines | Set-Content -LiteralPath "$bundleDir\SHA256SUMS.txt" -Encoding ascii
 
       - name: Upload installers
-        # Pin upload-artifact main until a tagged Node 24 release is available.
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@v7
         with:
           name: clipmaster-windows-installers
           path: |
