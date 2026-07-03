@@ -44,6 +44,7 @@
       #info,
       #error,
       #toolbar,
+      #textInput,
       #sizeInfo {
         position: absolute;
         z-index: 10;
@@ -133,6 +134,21 @@
         background: rgba(148, 163, 184, 0.26);
       }
 
+      #textInput {
+        display: none;
+        width: min(220px, calc(100vw - 24px));
+        min-height: 30px;
+        padding: 5px 8px;
+        border: 1px solid rgba(56, 189, 248, 0.88);
+        border-radius: 6px;
+        outline: none;
+        background: rgba(15, 23, 42, 0.96);
+        color: #f8fafc;
+        font-size: 16px;
+        font-weight: 650;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.34);
+      }
+
       #sizeInfo {
         display: none;
         padding: 4px 8px;
@@ -153,8 +169,11 @@
       <button id="rectTool" data-tool="rect" aria-label="矩形标注">矩形</button>
       <button id="arrowTool" data-tool="arrow" aria-label="箭头标注">箭头</button>
       <button id="penTool" data-tool="pen" aria-label="画笔标注">画笔</button>
+      <button id="textTool" data-tool="text" aria-label="文字标注">文字</button>
+      <button id="stepTool" data-tool="step" aria-label="步骤编号">编号</button>
       <button id="blurTool" data-tool="blur" aria-label="模糊遮挡">模糊</button>
       <button id="pixelateTool" data-tool="pixelate" aria-label="马赛克遮挡">马赛克</button>
+      <button id="eraserTool" data-tool="eraser" aria-label="擦除标注">橡皮</button>
       <div class="toolbar-divider"></div>
       <button id="undoBtn" aria-label="撤销上一处标注" disabled>撤销</button>
       <button id="redoBtn" aria-label="重做上一处标注" disabled>重做</button>
@@ -164,6 +183,7 @@
       <button id="confirm" class="primary" aria-label="复制到剪贴板并保存历史">复制保存</button>
       <button id="cancel" aria-label="取消截图">取消</button>
     </div>
+    <input id="textInput" type="text" maxlength="80" aria-label="输入文字标注" />
     <div id="sizeInfo"></div>
 
     <script type="module">
@@ -175,6 +195,9 @@
       const ANNOTATION_COLOR = '#ef4444';
       const PRIVACY_MASK_MIN_SIZE = 6;
       const PIXELATE_BLOCK_SIZE = 10;
+      const TEXT_FONT_SIZE = 18;
+      const STEP_MARKER_RADIUS = 13;
+      const ERASER_HIT_RADIUS = 8;
 
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
@@ -188,6 +211,7 @@
       const reselectBtn = document.getElementById('reselectBtn');
       const undoBtn = document.getElementById('undoBtn');
       const redoBtn = document.getElementById('redoBtn');
+      const textInput = document.getElementById('textInput');
       const toolButtons = [...document.querySelectorAll('[data-tool]')];
 
       const params = new URLSearchParams(window.location.search);
@@ -211,7 +235,9 @@
       let selection = null;
       let dragState = null;
       let activeAnnotation = null;
+      let pendingTextAnnotation = null;
       let annotations = [];
+      let historyStack = [];
       let redoStack = [];
 
       function numberParam(key, fallback) {
@@ -273,6 +299,7 @@
         }
         drawCanvas();
         positionToolbar();
+        positionTextInput();
       }
 
       function showError(message) {
@@ -317,16 +344,21 @@
       }
 
       function setActiveTool(tool) {
+        if (tool !== 'text') {
+          commitTextInput();
+        }
         activeTool = tool;
         toolButtons.forEach((button) => {
           button.classList.toggle('active', button.dataset.tool === tool);
         });
-        canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+        canvas.style.cursor = tool === 'select' ? 'default' : tool === 'eraser' ? 'cell' : 'crosshair';
       }
 
       function resetForReselect() {
+        cancelTextInput();
         selection = null;
         annotations = [];
+        historyStack = [];
         redoStack = [];
         activeAnnotation = null;
         dragState = null;
@@ -338,29 +370,72 @@
       }
 
       function commitAnnotation(annotation) {
+        const index = annotations.length;
         annotations.push(annotation);
+        historyStack.push({ type: 'add', annotation, index });
         redoStack = [];
         updateHistoryButtons();
       }
 
+      function removeAnnotation(index) {
+        if (index < 0 || index >= annotations.length) return false;
+        const [annotation] = annotations.splice(index, 1);
+        historyStack.push({ type: 'remove', annotation, index });
+        redoStack = [];
+        updateHistoryButtons();
+        return true;
+      }
+
       function undoAnnotation() {
-        if (isCapturing || activeAnnotation || annotations.length === 0) return;
-        redoStack.push(annotations.pop());
+        if (isCapturing || activeAnnotation || pendingTextAnnotation || historyStack.length === 0) return;
+        const action = historyStack.pop();
+        revertHistoryAction(action);
+        redoStack.push(action);
         updateHistoryButtons();
         drawCanvas();
         positionToolbar();
       }
 
       function redoAnnotation() {
-        if (isCapturing || activeAnnotation || redoStack.length === 0) return;
-        annotations.push(redoStack.pop());
+        if (isCapturing || activeAnnotation || pendingTextAnnotation || redoStack.length === 0) return;
+        const action = redoStack.pop();
+        applyHistoryAction(action);
+        historyStack.push(action);
         updateHistoryButtons();
         drawCanvas();
         positionToolbar();
       }
 
+      function applyHistoryAction(action) {
+        if (action.type === 'add') {
+          annotations.splice(Math.min(action.index, annotations.length), 0, action.annotation);
+        } else if (action.type === 'remove') {
+          removeAnnotationByReference(action.annotation, action.index);
+        }
+      }
+
+      function revertHistoryAction(action) {
+        if (action.type === 'add') {
+          removeAnnotationByReference(action.annotation, action.index);
+        } else if (action.type === 'remove') {
+          annotations.splice(Math.min(action.index, annotations.length), 0, action.annotation);
+        }
+      }
+
+      function removeAnnotationByReference(annotation, fallbackIndex) {
+        if (annotations[fallbackIndex] === annotation) {
+          annotations.splice(fallbackIndex, 1);
+          return;
+        }
+
+        const index = annotations.indexOf(annotation);
+        if (index >= 0) {
+          annotations.splice(index, 1);
+        }
+      }
+
       function updateHistoryButtons() {
-        undoBtn.disabled = isCapturing || annotations.length === 0;
+        undoBtn.disabled = isCapturing || historyStack.length === 0;
         redoBtn.disabled = isCapturing || redoStack.length === 0;
       }
 
@@ -557,8 +632,49 @@
             targetCtx.lineTo(tx(point.x, transform), ty(point.y, transform));
           }
           targetCtx.stroke();
+        } else if (annotation.type === 'text') {
+          drawTextLabel(targetCtx, annotation, transform);
+        } else if (annotation.type === 'step') {
+          drawStepMarker(targetCtx, annotation, transform);
         }
 
+        targetCtx.restore();
+      }
+
+      function drawTextLabel(targetCtx, annotation, transform) {
+        const fontSize = Math.max(12, Math.round(TEXT_FONT_SIZE * transform.avgScale));
+        const x = tx(annotation.x, transform);
+        const y = ty(annotation.y, transform);
+
+        targetCtx.font = `750 ${fontSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
+        targetCtx.textBaseline = 'top';
+        targetCtx.lineJoin = 'round';
+        targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+        targetCtx.lineWidth = Math.max(3, Math.round(4 * transform.avgScale));
+        targetCtx.strokeText(annotation.text, x, y);
+        targetCtx.fillStyle = ANNOTATION_COLOR;
+        targetCtx.fillText(annotation.text, x, y);
+      }
+
+      function drawStepMarker(targetCtx, annotation, transform) {
+        const x = tx(annotation.x, transform);
+        const y = ty(annotation.y, transform);
+        const radius = Math.max(9, STEP_MARKER_RADIUS * transform.avgScale);
+
+        targetCtx.save();
+        targetCtx.beginPath();
+        targetCtx.arc(x, y, radius, 0, Math.PI * 2);
+        targetCtx.fillStyle = ANNOTATION_COLOR;
+        targetCtx.fill();
+        targetCtx.lineWidth = Math.max(2, 2 * transform.avgScale);
+        targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.96)';
+        targetCtx.stroke();
+
+        targetCtx.fillStyle = '#ffffff';
+        targetCtx.font = `800 ${Math.max(11, Math.round(14 * transform.avgScale))}px Inter, ui-sans-serif, system-ui, sans-serif`;
+        targetCtx.textAlign = 'center';
+        targetCtx.textBaseline = 'middle';
+        targetCtx.fillText(String(annotation.value), x, y + 0.5 * transform.avgScale);
         targetCtx.restore();
       }
 
@@ -702,6 +818,149 @@
         return snapshot.pixelHeight / Math.max(1, canvas.height);
       }
 
+      function beginTextAnnotation(point) {
+        commitTextInput();
+        pendingTextAnnotation = {
+          type: 'text',
+          x: point.x,
+          y: point.y,
+        };
+        textInput.value = '';
+        positionTextInput();
+        textInput.style.display = 'block';
+        textInput.focus();
+      }
+
+      function positionTextInput() {
+        if (!pendingTextAnnotation) return;
+        const inputWidth = Math.min(220, Math.max(120, canvas.width - 24));
+        textInput.style.width = `${inputWidth}px`;
+        textInput.style.left = `${clamp(pendingTextAnnotation.x, 8, canvas.width - inputWidth - 8)}px`;
+        textInput.style.top = `${clamp(pendingTextAnnotation.y - TEXT_FONT_SIZE - 12, 8, canvas.height - 38)}px`;
+      }
+
+      function commitTextInput() {
+        if (!pendingTextAnnotation) return;
+        const text = textInput.value.trim();
+        const annotation = pendingTextAnnotation;
+        pendingTextAnnotation = null;
+        textInput.value = '';
+        textInput.style.display = 'none';
+
+        if (text) {
+          commitAnnotation({ ...annotation, text });
+          drawCanvas();
+          positionToolbar();
+        }
+      }
+
+      function cancelTextInput() {
+        pendingTextAnnotation = null;
+        textInput.value = '';
+        textInput.style.display = 'none';
+      }
+
+      function nextStepNumber() {
+        return annotations
+          .filter((annotation) => annotation.type === 'step')
+          .reduce((maxValue, annotation) => Math.max(maxValue, Number(annotation.value) || 0), 0) + 1;
+      }
+
+      function eraseAnnotationAt(point) {
+        const index = findAnnotationIndexAtPoint(point);
+        if (index < 0) return false;
+        const removed = removeAnnotation(index);
+        if (removed) {
+          drawCanvas();
+          positionToolbar();
+        }
+        return removed;
+      }
+
+      function findAnnotationIndexAtPoint(point) {
+        for (let index = annotations.length - 1; index >= 0; index -= 1) {
+          if (hitTestAnnotation(annotations[index], point)) {
+            return index;
+          }
+        }
+        return -1;
+      }
+
+      function hitTestAnnotation(annotation, point) {
+        if (annotation.type === 'rect') {
+          return hitTestRectOutline(annotation, point);
+        }
+        if (annotation.type === 'blur' || annotation.type === 'pixelate') {
+          return pointInExpandedRect(point, normalizeRect(annotation), ERASER_HIT_RADIUS);
+        }
+        if (annotation.type === 'arrow') {
+          return distanceToSegment(point, { x: annotation.x1, y: annotation.y1 }, { x: annotation.x2, y: annotation.y2 }) <= ERASER_HIT_RADIUS;
+        }
+        if (annotation.type === 'pen') {
+          return annotation.points.some((current, index) => {
+            if (index === 0) return false;
+            return distanceToSegment(point, annotation.points[index - 1], current) <= ERASER_HIT_RADIUS;
+          });
+        }
+        if (annotation.type === 'text') {
+          return pointInExpandedRect(point, textAnnotationBounds(annotation), ERASER_HIT_RADIUS);
+        }
+        if (annotation.type === 'step') {
+          return Math.hypot(point.x - annotation.x, point.y - annotation.y) <= STEP_MARKER_RADIUS + ERASER_HIT_RADIUS;
+        }
+        return false;
+      }
+
+      function hitTestRectOutline(annotation, point) {
+        const rect = normalizeRect(annotation);
+        const outer = pointInExpandedRect(point, rect, ERASER_HIT_RADIUS);
+        const inner = pointInExpandedRect(point, {
+          x: rect.x + ERASER_HIT_RADIUS,
+          y: rect.y + ERASER_HIT_RADIUS,
+          width: Math.max(0, rect.width - ERASER_HIT_RADIUS * 2),
+          height: Math.max(0, rect.height - ERASER_HIT_RADIUS * 2),
+        }, 0);
+        return outer && !inner;
+      }
+
+      function pointInExpandedRect(point, rect, padding) {
+        return (
+          point.x >= rect.x - padding &&
+          point.x <= rect.x + rect.width + padding &&
+          point.y >= rect.y - padding &&
+          point.y <= rect.y + rect.height + padding
+        );
+      }
+
+      function textAnnotationBounds(annotation) {
+        ctx.save();
+        ctx.font = `750 ${TEXT_FONT_SIZE}px Inter, ui-sans-serif, system-ui, sans-serif`;
+        const width = Math.max(12, ctx.measureText(annotation.text).width);
+        ctx.restore();
+        return {
+          x: annotation.x,
+          y: annotation.y,
+          width,
+          height: TEXT_FONT_SIZE + 4,
+        };
+      }
+
+      function distanceToSegment(point, start, end) {
+        const deltaX = end.x - start.x;
+        const deltaY = end.y - start.y;
+        const lengthSquared = deltaX * deltaX + deltaY * deltaY;
+        if (lengthSquared === 0) {
+          return Math.hypot(point.x - start.x, point.y - start.y);
+        }
+
+        const t = clamp(
+          ((point.x - start.x) * deltaX + (point.y - start.y) * deltaY) / lengthSquared,
+          0,
+          1
+        );
+        return Math.hypot(point.x - (start.x + t * deltaX), point.y - (start.y + t * deltaY));
+      }
+
       function renderFinalDataUrl() {
         if (!isUsableSelection()) {
           throw new Error('请先选择截图区域');
@@ -788,6 +1047,7 @@
         const point = pointFromEvent(event);
 
         if (activeTool === 'select') {
+          commitTextInput();
           const handle = hitHandle(point);
           if (selection && handle) {
             dragState = {
@@ -805,7 +1065,9 @@
           } else {
             selection = { x: point.x, y: point.y, width: 0, height: 0 };
             annotations = [];
+            historyStack = [];
             redoStack = [];
+            cancelTextInput();
             updateHistoryButtons();
             dragState = {
               type: 'create',
@@ -843,6 +1105,17 @@
             points: [clippedPoint],
           };
           dragState = { type: 'annotation', startPoint: clippedPoint };
+        } else if (activeTool === 'text') {
+          beginTextAnnotation(clippedPoint);
+        } else if (activeTool === 'step') {
+          commitAnnotation({
+            type: 'step',
+            x: clippedPoint.x,
+            y: clippedPoint.y,
+            value: nextStepNumber(),
+          });
+          drawCanvas();
+          positionToolbar();
         } else if (activeTool === 'blur' || activeTool === 'pixelate') {
           activeAnnotation = {
             type: activeTool,
@@ -852,6 +1125,9 @@
             height: 0,
           };
           dragState = { type: 'annotation', startPoint: clippedPoint };
+        } else if (activeTool === 'eraser') {
+          eraseAnnotationAt(clippedPoint);
+          dragState = { type: 'erase' };
         }
       }
 
@@ -896,6 +1172,8 @@
           } else if (activeAnnotation.type === 'pen') {
             activeAnnotation.points.push(clippedPoint);
           }
+        } else if (dragState.type === 'erase' && selection && pointInSelection(point)) {
+          eraseAnnotationAt(clampPointToSelection(point));
         }
 
         drawCanvas();
@@ -932,6 +1210,7 @@
 
       async function saveSelection() {
         if (isCapturing) return null;
+        commitTextInput();
         if (!isUsableSelection()) {
           showError('请先选择截图区域');
           return null;
@@ -986,6 +1265,7 @@
         [...toolbar.querySelectorAll('button')].forEach((button) => {
           button.disabled = disabled;
         });
+        textInput.disabled = disabled;
         if (!disabled) {
           updateHistoryButtons();
         }
@@ -1034,12 +1314,34 @@
       reselectBtn.addEventListener('click', resetForReselect);
       undoBtn.addEventListener('click', undoAnnotation);
       redoBtn.addEventListener('click', redoAnnotation);
+      textInput.addEventListener('keydown', (event) => {
+        event.stopPropagation();
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commitTextInput();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancelTextInput();
+          drawCanvas();
+          positionToolbar();
+          canvas.focus();
+        }
+      });
+      textInput.addEventListener('blur', commitTextInput);
 
       toolButtons.forEach((button) => {
         button.addEventListener('click', () => setActiveTool(button.dataset.tool));
       });
 
       document.addEventListener('keydown', (event) => {
+        if (pendingTextAnnotation && event.key === 'Escape') {
+          event.preventDefault();
+          cancelTextInput();
+          drawCanvas();
+          positionToolbar();
+          return;
+        }
+
         if (event.key === 'Escape') {
           event.preventDefault();
           closeWindow(true);

@@ -45,8 +45,11 @@ describe('Screenshot selector window', () => {
     expect(screenshotHtml).toContain('id="rectTool"');
     expect(screenshotHtml).toContain('id="arrowTool"');
     expect(screenshotHtml).toContain('id="penTool"');
+    expect(screenshotHtml).toContain('id="textTool"');
+    expect(screenshotHtml).toContain('id="stepTool"');
     expect(screenshotHtml).toContain('id="blurTool"');
     expect(screenshotHtml).toContain('id="pixelateTool"');
+    expect(screenshotHtml).toContain('id="eraserTool"');
     expect(screenshotHtml).toContain('id="undoBtn"');
     expect(screenshotHtml).toContain('id="redoBtn"');
     expect(screenshotHtml).toContain('id="reselectBtn"');
@@ -56,6 +59,11 @@ describe('Screenshot selector window', () => {
     expect(screenshotHtml).toContain('function drawPrivacyMask');
     expect(screenshotHtml).toContain('function drawBlurredRegion');
     expect(screenshotHtml).toContain('function drawPixelatedRegion');
+    expect(screenshotHtml).toContain('function drawTextLabel');
+    expect(screenshotHtml).toContain('function drawStepMarker');
+    expect(screenshotHtml).toContain('function beginTextAnnotation');
+    expect(screenshotHtml).toContain('function eraseAnnotationAt');
+    expect(screenshotHtml).toContain('function hitTestAnnotation');
     expect(screenshotHtml).toContain('function undoAnnotation');
     expect(screenshotHtml).toContain('function redoAnnotation');
     expect(screenshotHtml).toContain("event.key.toLowerCase() === 'z'");
