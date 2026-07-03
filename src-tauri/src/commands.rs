@@ -4,7 +4,7 @@ use screenshots::Screen;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -17,19 +17,21 @@ use crate::clipboard::{
 };
 use crate::database::{date_key_now, Database};
 use crate::link::normalize_web_url;
-use crate::models::{
-    CleanupFileTarget, CleanupPlan, ClipboardDay, ClipboardItem, ClipboardType,
-    CreateClipboardItem, Session,
-};
+use crate::models::{ClipboardDay, ClipboardItem, ClipboardType, CreateClipboardItem, Session};
 use crate::session::SessionManager;
 use crate::settings::SettingsStore;
 
+pub mod cleanup_commands;
 pub mod image_assets;
 pub mod settings_commands;
 
-use image_assets::{
-    path_from_forward_slashes, remove_app_data_file_in_dir, validate_relative_image_path,
-};
+use cleanup_commands::{cleanup_file_target_best_effort, cleanup_item_files_best_effort};
+use image_assets::{path_from_forward_slashes, validate_relative_image_path};
+
+#[cfg(test)]
+use crate::models::CleanupFileTarget;
+#[cfg(test)]
+use cleanup_commands::cleanup_file_target_in_dir;
 
 #[cfg(test)]
 use image_assets::resolve_image_asset_in_dir;
@@ -139,47 +141,6 @@ pub async fn copy_image_to_clipboard(app: AppHandle, image_path: String) -> Resu
 pub fn open_external_url(url: String) -> Result<(), String> {
     let safe_url = validate_external_url(&url)?;
     open_url_with_system(&safe_url)
-}
-
-/// 预览自定义清理结果
-#[tauri::command]
-pub async fn preview_custom_cleanup(
-    db: State<'_, Database>,
-    max_items: i32,
-    keep_days: i32,
-) -> Result<CleanupPlan, String> {
-    let max_items = max_items.clamp(10, 5000);
-    let keep_days = keep_days.clamp(1, 3650);
-    db.cleanup_plan(max_items, keep_days)
-        .map_err(|e| e.to_string())
-}
-
-/// 执行自定义清理
-#[tauri::command]
-pub async fn run_custom_cleanup(
-    app: AppHandle,
-    db: State<'_, Database>,
-    max_items: i32,
-    keep_days: i32,
-) -> Result<CleanupPlan, String> {
-    let max_items = max_items.clamp(10, 5000);
-    let keep_days = keep_days.clamp(1, 3650);
-    run_cleanup(&app, &db, max_items, keep_days)
-}
-
-/// 清空全部剪贴板历史，包括收藏、置顶、标注记录和图片文件。
-#[tauri::command]
-pub async fn clear_all_history(
-    app: AppHandle,
-    db: State<'_, Database>,
-) -> Result<CleanupPlan, String> {
-    let (plan, file_targets) = db.clear_all_history().map_err(|e| e.to_string())?;
-
-    for target in &file_targets {
-        cleanup_file_target_best_effort(&app, target);
-    }
-
-    Ok(plan)
 }
 
 /// 将图片记录以置顶小窗打开
@@ -891,66 +852,6 @@ pub fn restore_main_window_after_screenshot(app: &AppHandle) -> Result<(), Strin
     }
 
     Ok(())
-}
-
-fn cleanup_item_files(app: &AppHandle, item: &ClipboardItem) -> Result<(), String> {
-    let Some(target) = CleanupFileTarget::from_item(item) else {
-        return Ok(());
-    };
-    cleanup_file_target(app, &target)
-}
-
-fn cleanup_file_target(app: &AppHandle, target: &CleanupFileTarget) -> Result<(), String> {
-    let app_data_dir = app_data::resolve_app_data_dir(app).map_err(|e| e.to_string())?;
-    cleanup_file_target_in_dir(&app_data_dir, target)
-}
-
-fn cleanup_file_target_in_dir(
-    app_data_dir: &Path,
-    target: &CleanupFileTarget,
-) -> Result<(), String> {
-    if let Some(path) = &target.image_path {
-        remove_app_data_file_in_dir(app_data_dir, path)?;
-    }
-
-    if let Some(path) = &target.thumbnail_path {
-        remove_app_data_file_in_dir(app_data_dir, path)?;
-    }
-
-    Ok(())
-}
-
-fn run_cleanup(
-    app: &AppHandle,
-    db: &Database,
-    max_items: i32,
-    keep_days: i32,
-) -> Result<CleanupPlan, String> {
-    let items = db
-        .get_cleanup_candidates(max_items, keep_days)
-        .map_err(|e| e.to_string())?;
-    let plan = CleanupPlan::from_items(items.clone());
-    let item_ids = items.iter().map(|item| item.id.clone()).collect::<Vec<_>>();
-
-    db.delete_items(&item_ids).map_err(|e| e.to_string())?;
-
-    for item in &items {
-        cleanup_item_files_best_effort(app, item);
-    }
-
-    Ok(plan)
-}
-
-fn cleanup_item_files_best_effort(app: &AppHandle, item: &ClipboardItem) {
-    if let Err(error) = cleanup_item_files(app, item) {
-        eprintln!("清理记录文件失败（{}）: {}", item.id, error);
-    }
-}
-
-fn cleanup_file_target_best_effort(app: &AppHandle, target: &CleanupFileTarget) {
-    if let Err(error) = cleanup_file_target(app, target) {
-        eprintln!("清理记录文件失败（{}）: {}", target.id, error);
-    }
 }
 
 fn save_cropped_image(
