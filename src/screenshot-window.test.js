@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const screenshotHtml = readFileSync('screenshot.html', 'utf8');
-const commandsSource = readFileSync('src-tauri/src/commands.rs', 'utf8');
+const screenshotCommandsSource = readFileSync(
+  'src-tauri/src/commands/screenshot_commands.rs',
+  'utf8'
+);
 const mainSource = readFileSync('src-tauri/src/main.rs', 'utf8');
 const capabilities = JSON.parse(
   readFileSync('src-tauri/capabilities/default.json', 'utf8')
@@ -21,22 +24,22 @@ describe('Screenshot selector window', () => {
   });
 
   it('captures a frozen screen before opening the selector and saves the final PNG', () => {
-    expect(commandsSource).toContain('prepare_main_window_for_screenshot(&app).await?');
-    expect(commandsSource).toContain('隐藏主窗口失败，无法安全截图');
-    expect(commandsSource).toContain('capture_frozen_screen_snapshot(&app)');
-    expect(commandsSource).toContain('restoreMainWindow={}');
-    expect(commandsSource).toContain('pub async fn save_screenshot_image');
-    expect(commandsSource).toContain('copy_rgba_image_to_clipboard(app, rgba_image, &content_hash)?');
+    expect(screenshotCommandsSource).toContain('prepare_main_window_for_screenshot(&app).await?');
+    expect(screenshotCommandsSource).toContain('隐藏主窗口失败，无法安全截图');
+    expect(screenshotCommandsSource).toContain('capture_frozen_screen_snapshot(&app)');
+    expect(screenshotCommandsSource).toContain('restoreMainWindow={}');
+    expect(screenshotCommandsSource).toContain('pub async fn save_screenshot_image');
+    expect(screenshotCommandsSource).toContain('copy_rgba_image_to_clipboard(app, rgba_image, &content_hash)?');
     expect(screenshotHtml).toContain("invoke('save_screenshot_image'");
     expect(screenshotHtml).toContain('renderFinalDataUrl');
   });
 
   it('restores the main window only when the screenshot start hid it', () => {
-    expect(commandsSource).toContain('pub struct ScreenshotWindowState');
-    expect(commandsSource).toContain('take_restore_main_window');
-    expect(commandsSource).toContain('restore_main_window_after_screenshot');
-    expect(mainSource).toContain('app.manage(commands::ScreenshotWindowState::default())');
-    expect(mainSource).toContain('commands::restore_main_window_after_screenshot(app_handle)');
+    expect(screenshotCommandsSource).toContain('pub struct ScreenshotWindowState');
+    expect(screenshotCommandsSource).toContain('take_restore_main_window');
+    expect(screenshotCommandsSource).toContain('restore_main_window_after_screenshot');
+    expect(mainSource).toContain('commands::screenshot_commands::ScreenshotWindowState::default()');
+    expect(mainSource).toContain('commands::screenshot_commands::restore_main_window_after_screenshot(app_handle)');
     expect(screenshotHtml).toContain("const shouldRestoreMainWindow = params.get('restoreMainWindow') !== '0'");
     expect(screenshotHtml).toContain('if (!shouldRestoreMainWindow)');
   });

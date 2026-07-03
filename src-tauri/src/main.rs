@@ -69,7 +69,7 @@ fn main() {
             app.manage(db);
             app.manage(session_mgr);
             app.manage(ClipboardWriteState::default());
-            app.manage(commands::ScreenshotWindowState::default());
+            app.manage(commands::screenshot_commands::ScreenshotWindowState::default());
 
             // 启动剪贴板监听服务
             let clipboard_service = ClipboardService::new();
@@ -133,10 +133,10 @@ fn main() {
             commands::cleanup_commands::preview_custom_cleanup,
             commands::cleanup_commands::run_custom_cleanup,
             commands::cleanup_commands::clear_all_history,
-            commands::start_region_screenshot,
-            commands::capture_region_screenshot,
-            commands::save_screenshot_image,
-            commands::cleanup_screenshot_snapshot,
+            commands::screenshot_commands::start_region_screenshot,
+            commands::screenshot_commands::capture_region_screenshot,
+            commands::screenshot_commands::save_screenshot_image,
+            commands::screenshot_commands::cleanup_screenshot_snapshot,
             commands::pin_image,
         ])
         .build(context)
@@ -155,7 +155,9 @@ fn main() {
         } = event
         {
             if label == "screenshot-selector" {
-                if let Err(error) = commands::restore_main_window_after_screenshot(app_handle) {
+                if let Err(error) =
+                    commands::screenshot_commands::restore_main_window_after_screenshot(app_handle)
+                {
                     eprintln!("Failed to restore main window after screenshot: {}", error);
                 }
                 return;
