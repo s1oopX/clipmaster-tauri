@@ -26,7 +26,7 @@ The project is not a cloud clipboard, account-based sync service, or telemetry p
 
 The current release line is `0.1.6`. The project already covers everyday clipboard history, link detection and opening, image history, region screenshots, frozen-screen selection, basic annotation, pinned desktop images, global hotkeys, system tray behavior, settings, cleanup policies, data migration, and Windows packaging.
 
-Planned improvements include virtual scrolling, OCR, scrolling screenshots, backup and restore, automatic updates, and code signing. See the [Roadmap](./docs/ROADMAP.md) for details.
+Future development will keep the product lightweight: screenshots stay focused on cropping and simple annotation. OCR, scrolling screenshots, cloud sync, automatic updates, complex team/account systems, and rich-text-editor-style annotation are out of scope. See the [Roadmap](./docs/ROADMAP.md) for details.
 
 ## Download and Installation
 
@@ -58,6 +58,10 @@ For the local release artifact layout, see [Release Artifacts](./docs/RELEASES.m
 | Settings | Supports main-window hotkeys, screenshot hotkeys, capture delay, retention count, time zone, language, and optional autostart |
 | Cleanup | Supports count-based cleanup, age-based cleanup, image-file lifecycle cleanup, and full history clearing |
 | Migration | Includes legacy data directory migration and database schema migrations |
+
+## Product Boundary
+
+ClipMaster will remain a local-first lightweight utility. Screenshot features are limited to cropping, basic shapes, arrows, pen marks, privacy masking, and undo/redo. It will not grow into an OCR tool, scrolling screenshot tool, cloud clipboard, auto-updating service, team collaboration product, account system, or rich annotation editor.
 
 ## Screenshot Workflow
 
