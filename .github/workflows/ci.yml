@@ -30,9 +30,15 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2.9.1
+        uses: actions/cache@v6
         with:
-          workspaces: src-tauri
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-stable-
 
       - name: Install frontend dependencies
         run: npm ci
