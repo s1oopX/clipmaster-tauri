@@ -52,7 +52,7 @@ jobs:
           $lines | Set-Content -LiteralPath "$bundleDir\SHA256SUMS.txt" -Encoding ascii
 
       - name: Upload installers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: clipmaster-windows-installers
           path: |
