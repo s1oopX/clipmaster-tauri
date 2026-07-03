@@ -24,9 +24,9 @@ The project is not a cloud clipboard, account-based sync service, or telemetry p
 
 ## Project Status
 
-The current release line is `0.1.5`. The project already covers everyday clipboard history, link detection and opening, image history, region screenshots, frozen-screen selection, basic annotation, pinned desktop images, system tray behavior, settings, cleanup policies, data migration, and Windows packaging.
+The current release line is `0.1.5`. The project already covers everyday clipboard history, link detection and opening, image history, region screenshots, frozen-screen selection, basic annotation, pinned desktop images, global hotkeys, system tray behavior, settings, cleanup policies, data migration, and Windows packaging.
 
-Planned improvements include virtual scrolling, additional global shortcuts, OCR, scrolling screenshots, backup and restore, automatic updates, and code signing. See the [Roadmap](./docs/ROADMAP.md) for details.
+Planned improvements include virtual scrolling, OCR, scrolling screenshots, backup and restore, automatic updates, and code signing. See the [Roadmap](./docs/ROADMAP.md) for details.
 
 ## Download and Installation
 
@@ -40,6 +40,8 @@ Installers are published through [GitHub Releases](https://github.com/s1oopX/cli
 
 Current builds are not code-signed yet, so Windows SmartScreen may show a warning. Download installers only from this repository's Release page and verify them with the SHA256 file attached to the Release.
 
+For the local release artifact layout, see [Release Artifacts](./docs/RELEASES.md).
+
 ## Features
 
 | Area | Capabilities |
@@ -49,10 +51,11 @@ Current builds are not code-signed yet, so Windows SmartScreen may show a warnin
 | Search and filtering | Supports content search, type filters, date filters, session history, and load-more paging |
 | Favorites and pins | Keeps important records easier to find |
 | Image workflow | Saves images, generates thumbnails, previews images, copies images, and pins images to the desktop |
-| Screenshot workflow | Region capture, frozen-screen selection, automatic clipboard copy, history saving, reselecting, rectangle/arrow/pen annotation |
+| Screenshot workflow | Region capture, frozen-screen selection, automatic clipboard copy, history saving, reselecting, rectangle/arrow/pen/blur/pixelate annotation, undo/redo |
 | Desktop image pinning | Opens images as always-on-top reference windows |
+| Global hotkeys | Shows/hides the main window, focuses search, and starts region screenshots |
 | System tray | Closing the main window hides it to the tray, with restore and quit actions; if tray setup fails, the main window stays visible |
-| Settings | Supports screenshot hotkeys, capture delay, retention count, time zone, language, and optional autostart |
+| Settings | Supports main-window hotkeys, screenshot hotkeys, capture delay, retention count, time zone, language, and optional autostart |
 | Cleanup | Supports count-based cleanup, age-based cleanup, image-file lifecycle cleanup, and full history clearing |
 | Migration | Includes legacy data directory migration and database schema migrations |
 
@@ -63,8 +66,9 @@ ClipMaster is designed for "capture and use immediately" screenshot workflows:
 - Starting a screenshot first captures the active screen and opens a frozen image for selection.
 - The selection can be moved, resized with eight handles, and nudged by 1 pixel with arrow keys.
 - Confirming a screenshot saves it to history and writes it to the system clipboard, so it can be pasted immediately with `Ctrl+V`.
-- Rectangle, arrow, and pen annotations are included in the final image.
+- Rectangle, arrow, pen, blur, and pixelate annotations are included in the final image, with undo/redo support.
 - Users can reselect the capture area or pin the result directly to the desktop.
+- Mature screenshot app comparison and scope decisions are documented in [Screenshot Feature Review](./docs/SCREENSHOT_REVIEW.md).
 
 ## Privacy and Data
 

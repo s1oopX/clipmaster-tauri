@@ -55,6 +55,7 @@ interface AppSettings {
   max_items: number;
   capture_delay_ms: number;
   screenshot_hotkey: string;
+  main_window_hotkey: string;
   time_zone: string;
   language: string;
   auto_cleanup_enabled: boolean;
@@ -268,15 +269,36 @@ invoke('get_app_data_dir') => Promise<string>
 
 ### `start_region_screenshot`
 
-打开区域截图选择窗口。
+打开区域截图选择窗口。后端会在冻结当前屏幕前隐藏可见的主窗口，并在截图结束时按启动前状态恢复主窗口。
 
 ```typescript
 invoke('start_region_screenshot') => Promise<void>
 ```
 
+### `save_screenshot_image`
+
+保存截图窗口基于冻结屏幕合成的最终 PNG，写入图片历史，并复制到系统剪贴板。
+
+```typescript
+invoke('save_screenshot_image', {
+  imageDataUrl: string,
+  snapshotPath?: string
+}) => Promise<ClipboardItem>
+```
+
+### `cleanup_screenshot_snapshot`
+
+取消截图或关闭截图窗口时清理冻结屏幕临时文件。
+
+```typescript
+invoke('cleanup_screenshot_snapshot', {
+  snapshotPath: string
+}) => Promise<void>
+```
+
 ### `capture_region_screenshot`
 
-根据截图窗口传入的区域捕获图片并写入历史记录。
+旧版兼容兜底接口：根据截图窗口传入的区域直接捕获图片并写入历史记录。当前截图窗口优先使用 `save_screenshot_image` 保存冻结图合成结果。
 
 ```typescript
 invoke('capture_region_screenshot', {
@@ -319,7 +341,7 @@ invoke('get_settings') => Promise<AppSettings>
 
 ### `save_settings`
 
-保存应用设置。保存时会校验截图快捷键、开发端口，并在时区变化时重建 `date_key`。
+保存应用设置。保存时会校验截图快捷键、主窗口快捷键和开发端口，并在时区变化时重建 `date_key`。
 
 ```typescript
 invoke('save_settings', {
@@ -376,6 +398,26 @@ invoke('clear_all_history') => Promise<CleanupPlan>
 ```
 
 ## 事件
+
+### `hotkey:screenshot`
+
+后端全局截图快捷键触发后发送，前端收到后打开区域截图窗口。
+
+```typescript
+listen('hotkey:screenshot', () => {
+  // start screenshot
+});
+```
+
+### `hotkey:focus-search`
+
+后端主窗口快捷键触发并显示主窗口后发送，前端收到后关闭设置弹窗并聚焦搜索框。
+
+```typescript
+listen('hotkey:focus-search', () => {
+  // focus search input
+});
+```
 
 ### `clipboard:new-item`
 

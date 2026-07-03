@@ -104,6 +104,23 @@ src-tauri\target\release\clipmaster.exe
   - `docs/API.md`
 - 数据库表结构变化已追加 `schema_migrations` 版本和旧库升级测试。
 
+## 发版文档同步
+
+每次发版或更新公开版本线后，同步检查这些文件，避免版本基线再次漂移：
+
+- `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml` / `src/lib/app-config.js`：应用版本号和界面展示版本一致。
+- `CHANGELOG.md`：新增或更新对应版本段，说明用户可见变化。
+- `docs/ROADMAP.md`：更新“当前基线”的复核日期、当前公开版本线和必要的核心能力清单。
+- `docs/RELEASES.md`：确认最新公开版本、历史本地产物目录和发布前复核命令。
+- `docs/NEXT_STEPS.md`：如果后续优先级变化，更新下一轮功能顺序。
+
+复核命令：
+
+```powershell
+Select-String -Path package.json,src-tauri/tauri.conf.json,src-tauri/Cargo.toml,src/lib/app-config.js -Pattern '"version"|version =|appVersion'
+Select-String -Path CHANGELOG.md,docs/ROADMAP.md,docs/RELEASES.md -Pattern '^## |Latest tagged version|当前公开版本线|当前基线'
+```
+
 ## 推荐提交粒度
 
 - 一个功能一个提交。

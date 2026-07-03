@@ -1192,6 +1192,62 @@ fn refresh_duplicate_for_date(
     Ok(Some(item))
 }
 
+fn migrate_month_image_path(
+    data_dir: &Path,
+    relative_path: Option<&str>,
+    date_key: &str,
+) -> Result<Option<String>> {
+    let Some(relative_path) = relative_path else {
+        return Ok(None);
+    };
+
+    let normalized = relative_path.replace('\\', "/");
+    let parts = normalized.split('/').collect::<Vec<_>>();
+    if parts.len() != 3 || parts[0] != "images" || !is_month_key(parts[1]) {
+        return Ok(Some(normalized));
+    }
+
+    let filename = parts[2];
+    let target_relative = format!("images/{}/{}", date_key, filename);
+    let source_path = data_dir.join(path_from_forward_slashes(&normalized));
+    let target_path = data_dir.join(path_from_forward_slashes(&target_relative));
+
+    if target_path.exists() {
+        return Ok(Some(target_relative));
+    }
+
+    if !source_path.exists() {
+        return Ok(Some(normalized));
+    }
+
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::copy(&source_path, &target_path)?;
+
+    if target_path.exists() {
+        Ok(Some(target_relative))
+    } else {
+        Ok(Some(normalized))
+    }
+}
+
+fn is_month_key(value: &str) -> bool {
+    value.len() == 7
+        && value.as_bytes()[4] == b'-'
+        && value[..4].chars().all(|c| c.is_ascii_digit())
+        && value[5..].chars().all(|c| c.is_ascii_digit())
+}
+
+fn path_from_forward_slashes(path: &str) -> PathBuf {
+    let mut path_buf = PathBuf::new();
+    for part in path.split('/') {
+        path_buf.push(part);
+    }
+    path_buf
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2014,60 +2070,4 @@ mod tests {
 
         let _ = fs::remove_dir_all(data_dir);
     }
-}
-
-fn migrate_month_image_path(
-    data_dir: &Path,
-    relative_path: Option<&str>,
-    date_key: &str,
-) -> Result<Option<String>> {
-    let Some(relative_path) = relative_path else {
-        return Ok(None);
-    };
-
-    let normalized = relative_path.replace('\\', "/");
-    let parts = normalized.split('/').collect::<Vec<_>>();
-    if parts.len() != 3 || parts[0] != "images" || !is_month_key(parts[1]) {
-        return Ok(Some(normalized));
-    }
-
-    let filename = parts[2];
-    let target_relative = format!("images/{}/{}", date_key, filename);
-    let source_path = data_dir.join(path_from_forward_slashes(&normalized));
-    let target_path = data_dir.join(path_from_forward_slashes(&target_relative));
-
-    if target_path.exists() {
-        return Ok(Some(target_relative));
-    }
-
-    if !source_path.exists() {
-        return Ok(Some(normalized));
-    }
-
-    if let Some(parent) = target_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    fs::copy(&source_path, &target_path)?;
-
-    if target_path.exists() {
-        Ok(Some(target_relative))
-    } else {
-        Ok(Some(normalized))
-    }
-}
-
-fn is_month_key(value: &str) -> bool {
-    value.len() == 7
-        && value.as_bytes()[4] == b'-'
-        && value[..4].chars().all(|c| c.is_ascii_digit())
-        && value[5..].chars().all(|c| c.is_ascii_digit())
-}
-
-fn path_from_forward_slashes(path: &str) -> PathBuf {
-    let mut path_buf = PathBuf::new();
-    for part in path.split('/') {
-        path_buf.push(part);
-    }
-    path_buf
 }

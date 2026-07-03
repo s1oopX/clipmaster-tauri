@@ -67,6 +67,7 @@
   let loading = false;
   let error = null;
   let searchQuery = '';
+  let searchInput = null;
   let isSearching = false;
   let activeFilter = 'all';
   let filteredItems = [];
@@ -96,13 +97,14 @@
   let appDataDir = '';
   let appDataDirError = '';
   let isRecordingHotkey = false;
+  let recordingHotkeyField = null;
   let hotkeyRecordingMessage = '';
   let recordingHotkeyTimeout = null;
   let pinMode = false;
   let pinImagePath = '';
   let pinImageUrl = '';
   let unlistenNewItem = null;
-  let unlistenHotkey = null;
+  let unlistenHotkeys = [];
   let editingId = null;
   let editContent = '';
   let annotationEditingId = null;
@@ -258,6 +260,17 @@
     closeImageViewer();
   }
 
+  function focusSearchFromHotkey() {
+    settingsOpen = false;
+    stopRecordingHotkey();
+    closeContextMenu();
+
+    setTimeout(() => {
+      searchInput?.focus();
+      searchInput?.select?.();
+    }, 0);
+  }
+
   onMount(async () => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -284,9 +297,14 @@
       document.addEventListener('keydown', handleDocumentKeyDown);
 
       // 监听快捷键事件
-      unlistenHotkey = await listen('hotkey:screenshot', async () => {
-        await startScreenshot();
-      });
+      unlistenHotkeys = [
+        await listen('hotkey:screenshot', async () => {
+          await startScreenshot();
+        }),
+        await listen('hotkey:focus-search', () => {
+          focusSearchFromHotkey();
+        }),
+      ];
 
       unlistenNewItem = await clipboardApi.onNewItem(async (item) => {
         await loadAvailableDays();
@@ -326,9 +344,9 @@
       unlistenNewItem();
     }
 
-    if (typeof unlistenHotkey === 'function') {
-      unlistenHotkey();
-    }
+    unlistenHotkeys.forEach((unlisten) => {
+      if (typeof unlisten === 'function') unlisten();
+    });
 
     if (copyTimer) clearTimeout(copyTimer);
     if (noticeTimer) clearTimeout(noticeTimer);
@@ -859,6 +877,8 @@
         defaultSettings.capture_delay_ms
       ),
       screenshot_hotkey: settingsDraft.screenshot_hotkey || defaultSettings.screenshot_hotkey,
+      main_window_hotkey:
+        settingsDraft.main_window_hotkey || defaultSettings.main_window_hotkey,
       time_zone: settingsDraft.time_zone || defaultSettings.time_zone,
       language: settingsDraft.language || defaultSettings.language,
       auto_cleanup_enabled: settingsDraft.auto_cleanup_enabled,
@@ -1078,8 +1098,9 @@
   }
 
   // 快捷键录制相关
-  function startRecordingHotkey() {
+  function startRecordingHotkey(field) {
     isRecordingHotkey = true;
+    recordingHotkeyField = field;
     hotkeyRecordingMessage = '';
 
     // 清除之前的超时
@@ -1095,6 +1116,7 @@
 
   function stopRecordingHotkey() {
     isRecordingHotkey = false;
+    recordingHotkeyField = null;
     hotkeyRecordingMessage = '';
     if (recordingHotkeyTimeout) {
       clearTimeout(recordingHotkeyTimeout);
@@ -1151,7 +1173,7 @@
     parts.push(key);
 
     const hotkey = parts.join('+');
-    updateSettingsDraft('screenshot_hotkey', hotkey);
+    updateSettingsDraft(recordingHotkeyField || 'screenshot_hotkey', hotkey);
     hotkeyRecordingMessage = '';
 
     // 停止录制
@@ -1447,6 +1469,7 @@
               type="search"
               aria-label="搜索剪贴板内容"
               placeholder="搜索内容"
+              bind:this={searchInput}
               bind:value={searchQuery}
               on:input={queueSearch}
             />
@@ -1863,7 +1886,7 @@
 
               <div class="settings-section-title inline-section-title">
                 <h3>快捷键</h3>
-                <p>截图入口</p>
+                <p>截图和主窗口入口</p>
               </div>
 
               <label class="field-row">
@@ -1873,10 +1896,24 @@
                   readonly
                   placeholder="点击后按下组合键"
                   value={settingsDraft.screenshot_hotkey}
-                  on:focus={startRecordingHotkey}
+                  on:focus={() => startRecordingHotkey('screenshot_hotkey')}
                   on:blur={stopRecordingHotkey}
                   on:keydown={handleHotkeyKeyDown}
-                  class:recording={isRecordingHotkey}
+                  class:recording={isRecordingHotkey && recordingHotkeyField === 'screenshot_hotkey'}
+                />
+              </label>
+
+              <label class="field-row">
+                <span>主窗口</span>
+                <input
+                  type="text"
+                  readonly
+                  placeholder="点击后按下组合键"
+                  value={settingsDraft.main_window_hotkey}
+                  on:focus={() => startRecordingHotkey('main_window_hotkey')}
+                  on:blur={stopRecordingHotkey}
+                  on:keydown={handleHotkeyKeyDown}
+                  class:recording={isRecordingHotkey && recordingHotkeyField === 'main_window_hotkey'}
                 />
               </label>
               <p class="hotkey-hint" aria-live="polite">

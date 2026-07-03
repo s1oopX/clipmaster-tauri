@@ -69,6 +69,7 @@ fn main() {
             app.manage(db);
             app.manage(session_mgr);
             app.manage(ClipboardWriteState::default());
+            app.manage(commands::ScreenshotWindowState::default());
 
             // 启动剪贴板监听服务
             let clipboard_service = ClipboardService::new();
@@ -154,7 +155,7 @@ fn main() {
         } = event
         {
             if label == "screenshot-selector" {
-                if let Err(error) = commands::restore_main_window(app_handle) {
+                if let Err(error) = commands::restore_main_window_after_screenshot(app_handle) {
                     eprintln!("Failed to restore main window after screenshot: {}", error);
                 }
                 return;

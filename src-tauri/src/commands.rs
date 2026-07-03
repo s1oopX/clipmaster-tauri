@@ -7,6 +7,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tokio::time::sleep;
@@ -35,6 +36,28 @@ struct FrozenScreenSnapshot {
     pixel_width: u32,
     pixel_height: u32,
     scale_factor: f32,
+}
+
+#[derive(Default)]
+pub struct ScreenshotWindowState {
+    restore_main_window: Mutex<bool>,
+}
+
+impl ScreenshotWindowState {
+    fn set_restore_main_window(&self, value: bool) {
+        if let Ok(mut restore_main_window) = self.restore_main_window.lock() {
+            *restore_main_window = value;
+        }
+    }
+
+    fn take_restore_main_window(&self) -> bool {
+        let Ok(mut restore_main_window) = self.restore_main_window.lock() else {
+            return false;
+        };
+        let value = *restore_main_window;
+        *restore_main_window = false;
+        value
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -151,15 +174,14 @@ pub async fn save_settings(
 ) -> Result<AppSettings, String> {
     let previous = store.get();
     let result = SettingsStore::normalize_candidate(settings).map_err(|e| e.to_string())?;
-    let hotkey_changed = previous.screenshot_hotkey != result.screenshot_hotkey;
+    let hotkey_changed = previous.screenshot_hotkey != result.screenshot_hotkey
+        || previous.main_window_hotkey != result.main_window_hotkey;
     let time_zone_changed = previous.time_zone != result.time_zone;
     let dev_server_port_changed = previous.dev_server_port != result.dev_server_port;
     let auto_start_changed = previous.auto_start_enabled != result.auto_start_enabled;
 
     if hotkey_changed {
-        if let Err(error) =
-            crate::hotkey::HotkeyManager::re_register_with_hotkey(&app, &result.screenshot_hotkey)
-        {
+        if let Err(error) = crate::hotkey::HotkeyManager::re_register_with_settings(&app, &result) {
             rollback_settings_hotkey(&app, &previous, hotkey_changed);
             return Err(error);
         }
@@ -257,7 +279,7 @@ fn rollback_settings_hotkey(
         return None;
     }
 
-    crate::hotkey::HotkeyManager::re_register_with_hotkey(app, &previous.screenshot_hotkey)
+    crate::hotkey::HotkeyManager::re_register_with_settings(app, previous)
         .err()
         .map(|error| format!("快捷键回滚失败: {}", error))
 }
@@ -618,11 +640,6 @@ pub async fn start_region_screenshot(
     app: AppHandle,
     settings: State<'_, SettingsStore>,
 ) -> Result<(), String> {
-    let delay_ms = settings.get().capture_delay_ms.max(0) as u64;
-    if delay_ms > 0 {
-        sleep(Duration::from_millis(delay_ms)).await;
-    }
-
     // 1. 创建截图选择窗口。启动时先冻结当前屏幕，后续选区和标注都基于静态图像合成。
     // 如果窗口已经存在，直接复用并置前，避免关闭后立即重建触发 Tauri label 冲突。
     if let Some(selection_window) = app.get_webview_window("screenshot-selector") {
@@ -637,10 +654,29 @@ pub async fn start_region_screenshot(
         return Ok(());
     }
 
-    let snapshot = capture_frozen_screen_snapshot(&app)?;
+    let should_restore_main_window = prepare_main_window_for_screenshot(&app).await?;
+    set_screenshot_restore_main_window(&app, should_restore_main_window);
+
+    let delay_ms = settings.get().capture_delay_ms.max(0) as u64;
+    let effective_delay_ms = if should_restore_main_window {
+        delay_ms.max(180)
+    } else {
+        delay_ms
+    };
+    if effective_delay_ms > 0 {
+        sleep(Duration::from_millis(effective_delay_ms)).await;
+    }
+
+    let snapshot = match capture_frozen_screen_snapshot(&app) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            restore_main_window_after_failed_screenshot_start(&app, should_restore_main_window);
+            return Err(error);
+        }
+    };
     let url = WebviewUrl::App(
         format!(
-            "screenshot.html?snapshotPath={}&screenX={}&screenY={}&screenWidth={}&screenHeight={}&pixelWidth={}&pixelHeight={}&scaleFactor={}",
+            "screenshot.html?snapshotPath={}&screenX={}&screenY={}&screenWidth={}&screenHeight={}&pixelWidth={}&pixelHeight={}&scaleFactor={}&restoreMainWindow={}",
             encode_query_value(&snapshot.path),
             snapshot.screen_x,
             snapshot.screen_y,
@@ -649,6 +685,7 @@ pub async fn start_region_screenshot(
             snapshot.pixel_width,
             snapshot.pixel_height,
             snapshot.scale_factor,
+            if should_restore_main_window { 1 } else { 0 },
         )
         .into(),
     );
@@ -663,14 +700,19 @@ pub async fn start_region_screenshot(
         .skip_taskbar(true)
         .visible(false)
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            restore_main_window_after_failed_screenshot_start(&app, should_restore_main_window);
+            e.to_string()
+        })?;
 
     if let Err(error) = selection_window.show() {
+        restore_main_window_after_failed_screenshot_start(&app, should_restore_main_window);
         let _ = selection_window.close();
         return Err(format!("打开截图选择窗口失败: {}", error));
     }
 
     if let Err(error) = selection_window.set_focus() {
+        restore_main_window_after_failed_screenshot_start(&app, should_restore_main_window);
         let _ = selection_window.close();
         return Err(format!("聚焦截图选择窗口失败: {}", error));
     }
@@ -913,6 +955,39 @@ fn select_capture_screen(app: &AppHandle) -> Result<Screen, String> {
         .ok_or_else(|| "未找到可截图的屏幕".to_string())
 }
 
+async fn prepare_main_window_for_screenshot(app: &AppHandle) -> Result<bool, String> {
+    let Some(main_window) = app.get_webview_window("main") else {
+        return Ok(false);
+    };
+
+    let was_visible = main_window
+        .is_visible()
+        .map_err(|e| format!("读取主窗口可见状态失败: {}", e))?;
+    if !was_visible {
+        return Ok(false);
+    }
+
+    main_window
+        .hide()
+        .map_err(|e| format!("隐藏主窗口失败，无法安全截图: {}", e))?;
+    Ok(true)
+}
+
+fn set_screenshot_restore_main_window(app: &AppHandle, should_restore: bool) {
+    if let Some(state) = app.try_state::<ScreenshotWindowState>() {
+        state.set_restore_main_window(should_restore);
+    }
+}
+
+fn restore_main_window_after_failed_screenshot_start(app: &AppHandle, should_restore: bool) {
+    set_screenshot_restore_main_window(app, false);
+    if should_restore {
+        if let Err(error) = restore_main_window(app) {
+            eprintln!("恢复主窗口失败: {}", error);
+        }
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn current_cursor_position() -> Option<(i32, i32)> {
     use windows_sys::Win32::Foundation::POINT;
@@ -1004,6 +1079,19 @@ pub fn restore_main_window(app: &AppHandle) -> Result<(), String> {
     if let Some(main_window) = app.get_webview_window("main") {
         main_window.show().map_err(|e| e.to_string())?;
         main_window.set_focus().map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+pub fn restore_main_window_after_screenshot(app: &AppHandle) -> Result<(), String> {
+    let should_restore = app
+        .try_state::<ScreenshotWindowState>()
+        .map(|state| state.take_restore_main_window())
+        .unwrap_or(true);
+
+    if should_restore {
+        restore_main_window(app)?;
     }
 
     Ok(())
@@ -1336,6 +1424,16 @@ mod tests {
             content_hash: "hash".to_string(),
             session_id: "session_1".to_string(),
         }
+    }
+
+    #[test]
+    fn screenshot_restore_state_is_consumed_once() {
+        let state = ScreenshotWindowState::default();
+
+        assert!(!state.take_restore_main_window());
+        state.set_restore_main_window(true);
+        assert!(state.take_restore_main_window());
+        assert!(!state.take_restore_main_window());
     }
 
     #[test]

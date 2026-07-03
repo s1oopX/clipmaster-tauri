@@ -186,6 +186,7 @@ describe('App UI', () => {
       max_items: 50,
       capture_delay_ms: 150,
       screenshot_hotkey: 'CommandOrControl+Shift+A',
+      main_window_hotkey: 'CommandOrControl+Shift+Space',
       time_zone: 'Asia/Shanghai',
       language: 'zh-CN',
       auto_cleanup_enabled: false,
@@ -296,22 +297,54 @@ describe('App UI', () => {
   });
 
   it('cleans up global event listeners when the app shell unmounts', async () => {
-    const unlistenHotkey = vi.fn();
+    const unlistenScreenshotHotkey = vi.fn();
+    const unlistenSearchHotkey = vi.fn();
     const unlistenNewItem = vi.fn();
-    api.listen.mockResolvedValueOnce(unlistenHotkey);
+    api.listen
+      .mockResolvedValueOnce(unlistenScreenshotHotkey)
+      .mockResolvedValueOnce(unlistenSearchHotkey);
     api.onNewItem.mockResolvedValueOnce(unlistenNewItem);
 
     const { unmount } = render(App);
 
     await waitFor(() => {
       expect(api.listen).toHaveBeenCalledWith('hotkey:screenshot', expect.any(Function));
+      expect(api.listen).toHaveBeenCalledWith('hotkey:focus-search', expect.any(Function));
       expect(api.onNewItem).toHaveBeenCalledTimes(1);
     });
 
     unmount();
 
-    expect(unlistenHotkey).toHaveBeenCalledTimes(1);
+    expect(unlistenScreenshotHotkey).toHaveBeenCalledTimes(1);
+    expect(unlistenSearchHotkey).toHaveBeenCalledTimes(1);
     expect(unlistenNewItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('focuses the search box when the main window hotkey event fires', async () => {
+    let focusSearchHandler;
+    api.listen.mockImplementation(async (event, handler) => {
+      if (event === 'hotkey:focus-search') {
+        focusSearchHandler = handler;
+      }
+      return vi.fn();
+    });
+
+    render(App);
+
+    const search = await screen.findByRole('searchbox', { name: '搜索剪贴板内容' });
+    await waitFor(() => expect(focusSearchHandler).toEqual(expect.any(Function)));
+    await fireEvent.input(search, { target: { value: 'alpha' } });
+    await fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
+
+    focusSearchHandler();
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '设置' })).not.toBeInTheDocument();
+      expect(search).toHaveFocus();
+    });
+    expect(search.selectionStart).toBe(0);
+    expect(search.selectionEnd).toBe('alpha'.length);
   });
 
   it('loads persisted history again when the app shell is mounted after a restart', async () => {
@@ -1341,6 +1374,7 @@ describe('App UI', () => {
         max_items: 120,
         capture_delay_ms: 0,
         screenshot_hotkey: 'CommandOrControl+Shift+A',
+        main_window_hotkey: 'CommandOrControl+Shift+Space',
         time_zone: 'America/New_York',
         language: 'en-US',
         auto_cleanup_enabled: false,
@@ -1481,8 +1515,10 @@ describe('App UI', () => {
     await waitFor(() => expect(api.getSettings).toHaveBeenCalledTimes(1));
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
 
-    const shortcut = screen.getByPlaceholderText('点击后按下组合键');
+    const shortcut = screen.getByLabelText('截图');
+    const mainWindowShortcut = screen.getByLabelText('主窗口');
     expect(shortcut).toHaveValue('CommandOrControl+Shift+A');
+    expect(mainWindowShortcut).toHaveValue('CommandOrControl+Shift+Space');
 
     await fireEvent.focus(shortcut);
     expect(shortcut).toHaveValue('CommandOrControl+Shift+A');
@@ -1505,6 +1541,15 @@ describe('App UI', () => {
 
     expect(shortcut).toHaveValue('CommandOrControl+Shift+K');
     expect(screen.getByText(/点击输入框后按下组合键自动录制/)).toBeInTheDocument();
+
+    await fireEvent.focus(mainWindowShortcut);
+    await fireEvent.keyDown(mainWindowShortcut, {
+      key: ' ',
+      ctrlKey: true,
+      altKey: true,
+    });
+
+    expect(mainWindowShortcut).toHaveValue('CommandOrControl+Alt+Space');
   });
 
   it('reports auto cleanup failures separately after settings are saved', async () => {
@@ -1664,6 +1709,7 @@ describe('App UI', () => {
       max_items: 1,
       capture_delay_ms: 150,
       screenshot_hotkey: 'CommandOrControl+Shift+A',
+      main_window_hotkey: 'CommandOrControl+Shift+Space',
       time_zone: 'Asia/Shanghai',
       language: 'zh-CN',
       auto_cleanup_enabled: false,
@@ -1705,6 +1751,7 @@ describe('App UI', () => {
       max_items: 1,
       capture_delay_ms: 150,
       screenshot_hotkey: 'CommandOrControl+Shift+A',
+      main_window_hotkey: 'CommandOrControl+Shift+Space',
       time_zone: 'Asia/Shanghai',
       language: 'zh-CN',
       auto_cleanup_enabled: false,

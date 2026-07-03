@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const commandsSource = readFileSync('src-tauri/src/commands.rs', 'utf8');
+const hotkeySource = readFileSync('src-tauri/src/hotkey.rs', 'utf8');
 
 describe('Backend settings commands', () => {
   it('applies fallible runtime settings before persisting the new settings', () => {
@@ -9,7 +10,7 @@ describe('Backend settings commands', () => {
       'let result = SettingsStore::normalize_candidate(settings)'
     );
     const hotkeyIndex = commandsSource.indexOf(
-      'HotkeyManager::re_register_with_hotkey(&app, &result.screenshot_hotkey)'
+      'HotkeyManager::re_register_with_settings(&app, &result)'
     );
     const devPortIndex = commandsSource.indexOf(
       'write_project_dev_server_port(result.dev_server_port)'
@@ -34,5 +35,10 @@ describe('Backend settings commands', () => {
     expect(saveSettingsSource).not.toContain('cleanup_by_settings');
     expect(saveSettingsSource).not.toContain('run_cleanup(');
     expect(saveSettingsSource).not.toContain('auto_cleanup_enabled');
+  });
+
+  it('handles global shortcut callbacks only on key press events', () => {
+    expect(hotkeySource).toContain('ShortcutState::Pressed');
+    expect(hotkeySource.match(/event\.state != ShortcutState::Pressed/g)).toHaveLength(2);
   });
 });

@@ -11,6 +11,9 @@ use crate::dev_port::{
 
 pub const DEFAULT_TIME_ZONE: &str = "Asia/Shanghai";
 pub const DEFAULT_LANGUAGE: &str = "zh-CN";
+pub const DEFAULT_SCREENSHOT_HOTKEY: &str = "CommandOrControl+Shift+A";
+pub const DEFAULT_MAIN_WINDOW_HOTKEY: &str = "CommandOrControl+Shift+Space";
+const FALLBACK_MAIN_WINDOW_HOTKEY: &str = "CommandOrControl+Alt+Space";
 
 const SUPPORTED_TIME_ZONES: &[&str] = &[
     "Asia/Shanghai",
@@ -30,6 +33,7 @@ pub struct AppSettings {
     pub max_items: i32,
     pub capture_delay_ms: i32,
     pub screenshot_hotkey: String,
+    pub main_window_hotkey: String,
     pub time_zone: String,
     pub language: String,
     pub auto_cleanup_enabled: bool,
@@ -46,7 +50,8 @@ impl Default for AppSettings {
             auto_start_enabled: false,
             max_items: 50,
             capture_delay_ms: 150,
-            screenshot_hotkey: "CommandOrControl+Shift+A".to_string(),
+            screenshot_hotkey: DEFAULT_SCREENSHOT_HOTKEY.to_string(),
+            main_window_hotkey: DEFAULT_MAIN_WINDOW_HOTKEY.to_string(),
             time_zone: DEFAULT_TIME_ZONE.to_string(),
             language: DEFAULT_LANGUAGE.to_string(),
             auto_cleanup_enabled: false,
@@ -99,13 +104,13 @@ impl SettingsStore {
     }
 
     pub fn normalize_candidate(settings: AppSettings) -> Result<AppSettings> {
-        validate_screenshot_hotkey(&settings.screenshot_hotkey).map_err(anyhow::Error::msg)?;
+        validate_settings_hotkeys(&settings).map_err(anyhow::Error::msg)?;
         validate_dev_server_port(settings.dev_server_port).map_err(anyhow::Error::msg)?;
         Ok(Self::normalize(settings))
     }
 
     pub fn save_normalized(&self, settings: AppSettings) -> Result<AppSettings> {
-        validate_screenshot_hotkey(&settings.screenshot_hotkey).map_err(anyhow::Error::msg)?;
+        validate_settings_hotkeys(&settings).map_err(anyhow::Error::msg)?;
         validate_dev_server_port(settings.dev_server_port).map_err(anyhow::Error::msg)?;
         let normalized = Self::normalize(settings);
         let raw = serde_json::to_string_pretty(&normalized)?;
@@ -115,13 +120,25 @@ impl SettingsStore {
     }
 
     fn normalize(settings: AppSettings) -> AppSettings {
+        let screenshot_hotkey = normalize_screenshot_hotkey(&settings.screenshot_hotkey);
+        let mut main_window_hotkey = normalize_main_window_hotkey(&settings.main_window_hotkey);
+
+        if hotkeys_match(&screenshot_hotkey, &main_window_hotkey) {
+            main_window_hotkey = if hotkeys_match(&screenshot_hotkey, DEFAULT_MAIN_WINDOW_HOTKEY) {
+                FALLBACK_MAIN_WINDOW_HOTKEY.to_string()
+            } else {
+                DEFAULT_MAIN_WINDOW_HOTKEY.to_string()
+            };
+        }
+
         AppSettings {
             clipboard_monitor_enabled: settings.clipboard_monitor_enabled,
             show_main_window_on_start: settings.show_main_window_on_start,
             auto_start_enabled: settings.auto_start_enabled,
             max_items: settings.max_items.clamp(10, 500),
             capture_delay_ms: settings.capture_delay_ms.clamp(0, 3000),
-            screenshot_hotkey: normalize_screenshot_hotkey(&settings.screenshot_hotkey),
+            screenshot_hotkey,
+            main_window_hotkey,
             time_zone: normalize_choice(
                 &settings.time_zone,
                 SUPPORTED_TIME_ZONES,
@@ -154,9 +171,28 @@ fn backup_corrupt_settings_file(path: &Path) -> Result<()> {
 }
 
 pub fn validate_screenshot_hotkey(value: &str) -> Result<(), String> {
+    validate_hotkey(value, "截图")
+}
+
+pub fn validate_main_window_hotkey(value: &str) -> Result<(), String> {
+    validate_hotkey(value, "主窗口")
+}
+
+pub fn validate_settings_hotkeys(settings: &AppSettings) -> Result<(), String> {
+    validate_screenshot_hotkey(&settings.screenshot_hotkey)?;
+    validate_main_window_hotkey(&settings.main_window_hotkey)?;
+
+    if hotkeys_match(&settings.screenshot_hotkey, &settings.main_window_hotkey) {
+        return Err("截图快捷键和主窗口快捷键不能相同，请重新录制快捷键".to_string());
+    }
+
+    Ok(())
+}
+
+fn validate_hotkey(value: &str, label: &str) -> Result<(), String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        return Err("截图快捷键不能为空，请重新录制快捷键".to_string());
+        return Err(format!("{label}快捷键不能为空，请重新录制快捷键"));
     }
 
     let parts: Vec<&str> = trimmed.split('+').map(str::trim).collect();
@@ -165,22 +201,42 @@ pub fn validate_screenshot_hotkey(value: &str) -> Result<(), String> {
             .iter()
             .any(|part| is_hotkey_modifier(part))
     {
-        return Err("截图快捷键需要包含 Ctrl、Alt 或 Shift 等修饰键".to_string());
+        return Err(format!("{label}快捷键需要包含 Ctrl、Alt 或 Shift 等修饰键"));
     }
 
     trimmed
         .parse::<Shortcut>()
         .map(|_| ())
-        .map_err(|_| "截图快捷键格式无效，请重新录制快捷键".to_string())
+        .map_err(|_| format!("{label}快捷键格式无效，请重新录制快捷键"))
 }
 
 fn normalize_screenshot_hotkey(value: &str) -> String {
+    normalize_hotkey(value, DEFAULT_SCREENSHOT_HOTKEY, validate_screenshot_hotkey)
+}
+
+fn normalize_main_window_hotkey(value: &str) -> String {
+    normalize_hotkey(
+        value,
+        DEFAULT_MAIN_WINDOW_HOTKEY,
+        validate_main_window_hotkey,
+    )
+}
+
+fn normalize_hotkey(
+    value: &str,
+    fallback: &str,
+    validator: fn(&str) -> Result<(), String>,
+) -> String {
     let trimmed = value.trim();
-    if validate_screenshot_hotkey(trimmed).is_ok() {
+    if validator(trimmed).is_ok() {
         trimmed.to_string()
     } else {
-        AppSettings::default().screenshot_hotkey
+        fallback.to_string()
     }
+}
+
+fn hotkeys_match(left: &str, right: &str) -> bool {
+    left.trim().eq_ignore_ascii_case(right.trim())
 }
 
 fn is_hotkey_modifier(value: &str) -> bool {
@@ -218,6 +274,7 @@ mod tests {
                 max_items: 900,
                 capture_delay_ms: -30,
                 screenshot_hotkey: "CommandOrControl+Alt+S".to_string(),
+                main_window_hotkey: "CommandOrControl+Alt+Space".to_string(),
                 time_zone: "America/New_York".to_string(),
                 language: "en-US".to_string(),
                 auto_cleanup_enabled: true,
@@ -235,6 +292,7 @@ mod tests {
         assert_eq!(saved.cleanup_keep_days, 1);
         assert_eq!(saved.dev_server_port, 6123);
         assert_eq!(saved.screenshot_hotkey, "CommandOrControl+Alt+S");
+        assert_eq!(saved.main_window_hotkey, "CommandOrControl+Alt+Space");
         assert!(saved.auto_start_enabled);
 
         let reloaded = SettingsStore::new(&data_dir).unwrap();
@@ -273,6 +331,7 @@ mod tests {
             max_items: 900,
             capture_delay_ms: -30,
             screenshot_hotkey: " CommandOrControl+Alt+S ".to_string(),
+            main_window_hotkey: " CommandOrControl+Alt+Space ".to_string(),
             time_zone: "America/New_York".to_string(),
             ..AppSettings::default()
         })
@@ -281,6 +340,7 @@ mod tests {
         assert_eq!(normalized.max_items, 500);
         assert_eq!(normalized.capture_delay_ms, 0);
         assert_eq!(normalized.screenshot_hotkey, "CommandOrControl+Alt+S");
+        assert_eq!(normalized.main_window_hotkey, "CommandOrControl+Alt+Space");
         assert_eq!(normalized.time_zone, "America/New_York");
         assert_eq!(store.get(), AppSettings::default());
 
@@ -308,6 +368,50 @@ mod tests {
             store.get().screenshot_hotkey,
             AppSettings::default().screenshot_hotkey
         );
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn rejects_invalid_main_window_hotkeys_on_save() {
+        let data_dir =
+            std::env::temp_dir().join(format!("clipmaster-settings-{}", nanoid::nanoid!()));
+        let store = SettingsStore::new(&data_dir).unwrap();
+
+        for hotkey in ["", "Space", "CommandOrControl+NotAKey"] {
+            let err = store
+                .save_normalized(AppSettings {
+                    main_window_hotkey: hotkey.to_string(),
+                    ..AppSettings::default()
+                })
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("主窗口快捷键"), "{hotkey}: {err}");
+        }
+
+        assert_eq!(
+            store.get().main_window_hotkey,
+            AppSettings::default().main_window_hotkey
+        );
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn rejects_duplicate_hotkeys_on_save() {
+        let data_dir =
+            std::env::temp_dir().join(format!("clipmaster-settings-{}", nanoid::nanoid!()));
+        let store = SettingsStore::new(&data_dir).unwrap();
+
+        let err = store
+            .save_normalized(AppSettings {
+                main_window_hotkey: AppSettings::default().screenshot_hotkey,
+                ..AppSettings::default()
+            })
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("不能相同"));
 
         let _ = fs::remove_dir_all(data_dir);
     }
@@ -344,7 +448,7 @@ mod tests {
         fs::create_dir_all(&data_dir).unwrap();
         fs::write(
             data_dir.join("settings.json"),
-            r#"{"screenshot_hotkey":"CommandOrControl+NotAKey"}"#,
+            r#"{"screenshot_hotkey":"CommandOrControl+NotAKey","main_window_hotkey":"CommandOrControl+NotAKey"}"#,
         )
         .unwrap();
 
@@ -353,6 +457,10 @@ mod tests {
         assert_eq!(
             store.get().screenshot_hotkey,
             AppSettings::default().screenshot_hotkey
+        );
+        assert_eq!(
+            store.get().main_window_hotkey,
+            AppSettings::default().main_window_hotkey
         );
 
         let _ = fs::remove_dir_all(data_dir);

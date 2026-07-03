@@ -80,7 +80,10 @@
       #toolbar {
         display: none;
         align-items: center;
+        flex-wrap: wrap;
+        justify-content: center;
         gap: 4px;
+        max-width: calc(100vw - 16px);
         padding: 5px;
         border: 1px solid rgba(148, 163, 184, 0.24);
         border-radius: 8px;
@@ -142,7 +145,7 @@
     </style>
   </head>
   <body>
-    <div id="info">拖动框选区域 | Enter / Ctrl+C 复制保存 | 方向键微调 | Esc 取消</div>
+    <div id="info">拖动框选区域 | Enter / Ctrl+C 复制保存 | Ctrl+Z 撤销 | Esc 取消</div>
     <div id="error" role="alert" aria-live="assertive"></div>
     <canvas id="canvas"></canvas>
     <div id="toolbar">
@@ -150,6 +153,11 @@
       <button id="rectTool" data-tool="rect" aria-label="矩形标注">矩形</button>
       <button id="arrowTool" data-tool="arrow" aria-label="箭头标注">箭头</button>
       <button id="penTool" data-tool="pen" aria-label="画笔标注">画笔</button>
+      <button id="blurTool" data-tool="blur" aria-label="模糊遮挡">模糊</button>
+      <button id="pixelateTool" data-tool="pixelate" aria-label="马赛克遮挡">马赛克</button>
+      <div class="toolbar-divider"></div>
+      <button id="undoBtn" aria-label="撤销上一处标注" disabled>撤销</button>
+      <button id="redoBtn" aria-label="重做上一处标注" disabled>重做</button>
       <div class="toolbar-divider"></div>
       <button id="reselectBtn" aria-label="清空标注并重新框选">重新框选</button>
       <button id="pinBtn" aria-label="保存并钉到桌面">钉住</button>
@@ -165,6 +173,8 @@
       const HANDLE_SIZE = 9;
       const MIN_SELECTION_SIZE = 10;
       const ANNOTATION_COLOR = '#ef4444';
+      const PRIVACY_MASK_MIN_SIZE = 6;
+      const PIXELATE_BLOCK_SIZE = 10;
 
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
@@ -176,6 +186,8 @@
       const cancelBtn = document.getElementById('cancel');
       const pinBtn = document.getElementById('pinBtn');
       const reselectBtn = document.getElementById('reselectBtn');
+      const undoBtn = document.getElementById('undoBtn');
+      const redoBtn = document.getElementById('redoBtn');
       const toolButtons = [...document.querySelectorAll('[data-tool]')];
 
       const params = new URLSearchParams(window.location.search);
@@ -189,6 +201,7 @@
         pixelHeight: numberParam('pixelHeight', window.innerHeight),
         scaleFactor: numberParam('scaleFactor', 1),
       };
+      const shouldRestoreMainWindow = params.get('restoreMainWindow') !== '0';
 
       const frozenImage = new Image();
       let imageReady = false;
@@ -199,6 +212,7 @@
       let dragState = null;
       let activeAnnotation = null;
       let annotations = [];
+      let redoStack = [];
 
       function numberParam(key, fallback) {
         const parsed = Number(params.get(key));
@@ -272,6 +286,10 @@
       }
 
       async function restoreMainWindow() {
+        if (!shouldRestoreMainWindow) {
+          return true;
+        }
+
         try {
           const mainWindow = await Window.getByLabel('main');
           if (!mainWindow) {
@@ -309,12 +327,41 @@
       function resetForReselect() {
         selection = null;
         annotations = [];
+        redoStack = [];
         activeAnnotation = null;
         dragState = null;
         toolbar.style.display = 'none';
         sizeInfo.style.display = 'none';
         setActiveTool('select');
+        updateHistoryButtons();
         drawCanvas();
+      }
+
+      function commitAnnotation(annotation) {
+        annotations.push(annotation);
+        redoStack = [];
+        updateHistoryButtons();
+      }
+
+      function undoAnnotation() {
+        if (isCapturing || activeAnnotation || annotations.length === 0) return;
+        redoStack.push(annotations.pop());
+        updateHistoryButtons();
+        drawCanvas();
+        positionToolbar();
+      }
+
+      function redoAnnotation() {
+        if (isCapturing || activeAnnotation || redoStack.length === 0) return;
+        annotations.push(redoStack.pop());
+        updateHistoryButtons();
+        drawCanvas();
+        positionToolbar();
+      }
+
+      function updateHistoryButtons() {
+        undoBtn.disabled = isCapturing || annotations.length === 0;
+        redoBtn.disabled = isCapturing || redoStack.length === 0;
       }
 
       function getHandles(rect = selection) {
@@ -482,7 +529,9 @@
         targetCtx.lineJoin = 'round';
         targetCtx.lineCap = 'round';
 
-        if (annotation.type === 'rect') {
+        if (annotation.type === 'blur' || annotation.type === 'pixelate') {
+          drawPrivacyMask(targetCtx, annotation, transform);
+        } else if (annotation.type === 'rect') {
           const rect = normalizeRect(annotation);
           const x = tx(rect.x, transform);
           const y = ty(rect.y, transform);
@@ -510,6 +559,99 @@
           targetCtx.stroke();
         }
 
+        targetCtx.restore();
+      }
+
+      function drawPrivacyMask(targetCtx, annotation, transform) {
+        const rect = normalizeRect(annotation);
+        const x = tx(rect.x, transform);
+        const y = ty(rect.y, transform);
+        const width = rect.width * transform.scaleX;
+        const height = rect.height * transform.scaleY;
+        if (width < 1 || height < 1) return;
+
+        targetCtx.save();
+        targetCtx.beginPath();
+        targetCtx.rect(x, y, width, height);
+        targetCtx.clip();
+
+        if (annotation.type === 'blur') {
+          drawBlurredRegion(targetCtx, x, y, width, height, transform.avgScale);
+        } else {
+          drawPixelatedRegion(targetCtx, x, y, width, height, transform.avgScale);
+        }
+
+        targetCtx.restore();
+      }
+
+      function drawBlurredRegion(targetCtx, x, y, width, height, scale) {
+        const padding = Math.max(4, Math.round(8 * scale));
+        const sourceX = Math.floor(clamp(x - padding, 0, targetCtx.canvas.width));
+        const sourceY = Math.floor(clamp(y - padding, 0, targetCtx.canvas.height));
+        const sourceWidth = Math.max(1, Math.min(targetCtx.canvas.width - sourceX, Math.ceil(width + padding * 2)));
+        const sourceHeight = Math.max(1, Math.min(targetCtx.canvas.height - sourceY, Math.ceil(height + padding * 2)));
+        const sample = document.createElement('canvas');
+        sample.width = sourceWidth;
+        sample.height = sourceHeight;
+        const sampleCtx = sample.getContext('2d');
+
+        sampleCtx.drawImage(
+          targetCtx.canvas,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          0,
+          0,
+          sourceWidth,
+          sourceHeight
+        );
+
+        targetCtx.save();
+        targetCtx.filter = `blur(${Math.max(4, 8 * scale)}px)`;
+        targetCtx.drawImage(sample, 0, 0, sourceWidth, sourceHeight, sourceX, sourceY, sourceWidth, sourceHeight);
+        targetCtx.restore();
+      }
+
+      function drawPixelatedRegion(targetCtx, x, y, width, height, scale) {
+        const sourceX = Math.floor(clamp(x, 0, targetCtx.canvas.width));
+        const sourceY = Math.floor(clamp(y, 0, targetCtx.canvas.height));
+        const sourceWidth = Math.max(1, Math.min(targetCtx.canvas.width - sourceX, Math.ceil(width)));
+        const sourceHeight = Math.max(1, Math.min(targetCtx.canvas.height - sourceY, Math.ceil(height)));
+        const blockSize = Math.max(4, Math.round(PIXELATE_BLOCK_SIZE * scale));
+        const smallWidth = Math.max(1, Math.ceil(sourceWidth / blockSize));
+        const smallHeight = Math.max(1, Math.ceil(sourceHeight / blockSize));
+        const sample = document.createElement('canvas');
+        sample.width = smallWidth;
+        sample.height = smallHeight;
+        const sampleCtx = sample.getContext('2d');
+
+        sampleCtx.imageSmoothingEnabled = true;
+        sampleCtx.drawImage(
+          targetCtx.canvas,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          0,
+          0,
+          smallWidth,
+          smallHeight
+        );
+
+        targetCtx.save();
+        targetCtx.imageSmoothingEnabled = false;
+        targetCtx.drawImage(
+          sample,
+          0,
+          0,
+          smallWidth,
+          smallHeight,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight
+        );
         targetCtx.restore();
       }
 
@@ -663,6 +805,8 @@
           } else {
             selection = { x: point.x, y: point.y, width: 0, height: 0 };
             annotations = [];
+            redoStack = [];
+            updateHistoryButtons();
             dragState = {
               type: 'create',
               startPoint: point,
@@ -697,6 +841,15 @@
           activeAnnotation = {
             type: 'pen',
             points: [clippedPoint],
+          };
+          dragState = { type: 'annotation', startPoint: clippedPoint };
+        } else if (activeTool === 'blur' || activeTool === 'pixelate') {
+          activeAnnotation = {
+            type: activeTool,
+            x: clippedPoint.x,
+            y: clippedPoint.y,
+            width: 0,
+            height: 0,
           };
           dragState = { type: 'annotation', startPoint: clippedPoint };
         }
@@ -734,6 +887,9 @@
           if (activeAnnotation.type === 'rect') {
             activeAnnotation.width = clippedPoint.x - dragState.startPoint.x;
             activeAnnotation.height = clippedPoint.y - dragState.startPoint.y;
+          } else if (activeAnnotation.type === 'blur' || activeAnnotation.type === 'pixelate') {
+            activeAnnotation.width = clippedPoint.x - dragState.startPoint.x;
+            activeAnnotation.height = clippedPoint.y - dragState.startPoint.y;
           } else if (activeAnnotation.type === 'arrow') {
             activeAnnotation.x2 = clippedPoint.x;
             activeAnnotation.y2 = clippedPoint.y;
@@ -759,12 +915,12 @@
           const shouldKeep =
             activeAnnotation.type === 'pen'
               ? activeAnnotation.points.length > 1
-              : activeAnnotation.type === 'rect'
-                ? Math.abs(activeAnnotation.width) > 3 && Math.abs(activeAnnotation.height) > 3
+              : activeAnnotation.type === 'rect' || activeAnnotation.type === 'blur' || activeAnnotation.type === 'pixelate'
+                ? Math.abs(activeAnnotation.width) >= PRIVACY_MASK_MIN_SIZE && Math.abs(activeAnnotation.height) >= PRIVACY_MASK_MIN_SIZE
                 : Math.hypot(activeAnnotation.x2 - activeAnnotation.x1, activeAnnotation.y2 - activeAnnotation.y1) > 3;
 
           if (shouldKeep) {
-            annotations.push(activeAnnotation);
+            commitAnnotation(activeAnnotation);
           }
           activeAnnotation = null;
         }
@@ -830,6 +986,9 @@
         [...toolbar.querySelectorAll('button')].forEach((button) => {
           button.disabled = disabled;
         });
+        if (!disabled) {
+          updateHistoryButtons();
+        }
       }
 
       async function cleanupSnapshot() {
@@ -873,6 +1032,8 @@
       pinBtn.addEventListener('click', pinSelection);
       cancelBtn.addEventListener('click', () => closeWindow(true));
       reselectBtn.addEventListener('click', resetForReselect);
+      undoBtn.addEventListener('click', undoAnnotation);
+      redoBtn.addEventListener('click', redoAnnotation);
 
       toolButtons.forEach((button) => {
         button.addEventListener('click', () => setActiveTool(button.dataset.tool));
@@ -882,6 +1043,22 @@
         if (event.key === 'Escape') {
           event.preventDefault();
           closeWindow(true);
+          return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+          event.preventDefault();
+          if (event.shiftKey) {
+            redoAnnotation();
+          } else {
+            undoAnnotation();
+          }
+          return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+          event.preventDefault();
+          redoAnnotation();
           return;
         }
 
