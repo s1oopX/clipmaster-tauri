@@ -52,7 +52,8 @@ jobs:
           $lines | Set-Content -LiteralPath "$bundleDir\SHA256SUMS.txt" -Encoding ascii
 
       - name: Upload installers
-        uses: actions/upload-artifact@v5
+        # Pin upload-artifact main until a tagged Node 24 release is available.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: clipmaster-windows-installers
           path: |
