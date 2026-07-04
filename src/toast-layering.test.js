@@ -1,7 +1,15 @@
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const appStyles = readFileSync('src/app.css', 'utf8');
+function readCssWithImports(path) {
+  const css = readFileSync(path, 'utf8');
+  return css.replace(/@import\s+['"]([^'"]+)['"];/g, (_match, importPath) =>
+    readCssWithImports(join(dirname(path), importPath))
+  );
+}
+
+const appStyles = readCssWithImports('src/app.css');
 
 function cssBlock(selector) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

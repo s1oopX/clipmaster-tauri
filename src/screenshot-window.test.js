@@ -1,7 +1,25 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const screenshotHtml = readFileSync('screenshot.html', 'utf8');
+const screenshotHtml = [
+  readFileSync('screenshot.html', 'utf8'),
+  readFileSync('src/screenshot/screenshot.css', 'utf8'),
+  readFileSync('src/screenshot/annotation-history.js', 'utf8'),
+  readFileSync('src/screenshot/annotation-utils.js', 'utf8'),
+  readFileSync('src/screenshot/capture-actions.js', 'utf8'),
+  readFileSync('src/screenshot/constants.js', 'utf8'),
+  readFileSync('src/screenshot/cursor.js', 'utf8'),
+  readFileSync('src/screenshot/events.js', 'utf8'),
+  readFileSync('src/screenshot/final-renderer.js', 'utf8'),
+  readFileSync('src/screenshot/geometry.js', 'utf8'),
+  readFileSync('src/screenshot/hit-testing.js', 'utf8'),
+  readFileSync('src/screenshot/renderer.js', 'utf8'),
+  readFileSync('src/screenshot/selection-view.js', 'utf8'),
+  readFileSync('src/screenshot/snapshot-params.js', 'utf8'),
+  readFileSync('src/screenshot/text-editor.js', 'utf8'),
+  readFileSync('src/screenshot/window-lifecycle.js', 'utf8'),
+  readFileSync('src/screenshot/screenshot.js', 'utf8'),
+].join('\n');
 const screenshotCommandsSource = readFileSync(
   'src-tauri/src/commands/screenshot_commands.rs',
   'utf8'
@@ -40,7 +58,7 @@ describe('Screenshot selector window', () => {
     expect(screenshotCommandsSource).toContain('restore_main_window_after_screenshot');
     expect(mainSource).toContain('commands::screenshot_commands::ScreenshotWindowState::default()');
     expect(mainSource).toContain('commands::screenshot_commands::restore_main_window_after_screenshot(app_handle)');
-    expect(screenshotHtml).toContain("const shouldRestoreMainWindow = params.get('restoreMainWindow') !== '0'");
+    expect(screenshotHtml).toContain("shouldRestoreMainWindow: params.get('restoreMainWindow') !== '0'");
     expect(screenshotHtml).toContain('if (!shouldRestoreMainWindow)');
   });
 

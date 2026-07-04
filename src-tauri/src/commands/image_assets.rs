@@ -158,7 +158,7 @@ pub(super) fn validate_relative_image_path(image_path: &str) -> Result<String, S
         return Err("图片路径必须位于 images 日期目录".to_string());
     }
 
-    super::validate_date_key(parts[1])?;
+    super::history_commands::validate_date_key(parts[1])?;
 
     Ok(parts.join("/"))
 }

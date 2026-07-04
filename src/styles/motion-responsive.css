@@ -1,0 +1,69 @@
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 460px) {
+  .sidebar {
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 44px;
+  }
+
+  .filter-label-full {
+    display: none;
+  }
+
+  .filter-label-short {
+    display: inline;
+  }
+
+  .quick-actions {
+    grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
+  }
+
+  .tool-button {
+    padding-inline: 4px;
+  }
+
+  .toolbar-secondary {
+    grid-template-columns: 104px minmax(0, 1fr);
+  }
+
+  .search-field {
+    grid-column: auto;
+  }
+
+  .date-shortcuts {
+    display: none;
+  }
+
+  .settings-panel {
+    width: 100vw;
+    border-left: 0;
+  }
+
+  .settings-workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    display: flex;
+    gap: 6px;
+    padding: 9px 10px;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .settings-nav button {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .settings-field-grid,
+  .about-links {
+    grid-template-columns: 1fr;
+  }
+}

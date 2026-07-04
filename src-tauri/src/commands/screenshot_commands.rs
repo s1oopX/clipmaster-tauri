@@ -16,7 +16,8 @@ use crate::models::{ClipboardItem, ClipboardType, CreateClipboardItem};
 use crate::session::SessionManager;
 use crate::settings::SettingsStore;
 
-use super::{encode_query_value, forget_next_clipboard_write, mark_next_clipboard_write};
+use super::clipboard_commands::{forget_next_clipboard_write, mark_next_clipboard_write};
+use super::window_commands::encode_query_value;
 
 #[derive(Debug, Clone, Serialize)]
 struct FrozenScreenSnapshot {

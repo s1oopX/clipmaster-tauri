@@ -1,0 +1,240 @@
+/* Settings and dialogs */
+.settings-backdrop,
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 30, 34, 0.32);
+}
+
+.settings-backdrop {
+  z-index: 20;
+}
+
+.confirm-backdrop {
+  z-index: 30;
+  border: 0;
+}
+
+.settings-panel {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 21;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(620px, 96vw);
+  height: 100vh;
+  color: var(--ink);
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: -18px 0 42px rgba(20, 30, 34, 0.16);
+}
+
+.settings-header,
+.settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.settings-header h2 {
+  color: var(--ink);
+  font-size: 1.06rem;
+  font-weight: 720;
+}
+
+.settings-header button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+}
+
+.settings-workspace {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-nav {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px 9px;
+  overflow: auto;
+  background: #f7f9fa;
+  border-right: 1px solid var(--line-soft);
+}
+
+.settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 9px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-align: left;
+}
+
+.settings-nav button:hover,
+.settings-nav button.active {
+  color: var(--accent);
+  background: #ffffff;
+  border-color: var(--accent-line);
+}
+
+.settings-content {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+}
+
+.settings-section,
+.settings-view,
+.advanced-settings {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.settings-section-title {
+  display: grid;
+  gap: 3px;
+}
+
+.settings-section-title h3 {
+  color: #415457;
+  font-size: 0.75rem;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.settings-section-title p,
+.hotkey-hint,
+.cleanup-hint,
+.port-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.inline-section-title {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.switch-row,
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.switch-row span {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.switch-row input[type='checkbox'] {
+  position: relative;
+  grid-column: 2;
+  grid-row: 1;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  appearance: none;
+  background: #d7e1e3;
+  border: 1px solid #c6d4d7;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.switch-row input[type='checkbox']::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  content: '';
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+  transition: transform 160ms ease;
+}
+
+.switch-row input[type='checkbox']:checked {
+  background: var(--accent);
+  border-color: #0c5f59;
+}
+
+.switch-row input[type='checkbox']:checked::after {
+  transform: translateX(16px);
+}
+
+.field-row input,
+.field-row select {
+  width: 118px;
+  min-height: 31px;
+  padding: 0 8px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.field-row select {
+  width: min(220px, 58vw);
+}
+
+.field-row input[type='text'] {
+  width: min(286px, 58vw);
+}
+
+.field-row input.recording {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.settings-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 0;
+}
+
+.ghost-button,
+.primary-button,
+.danger-button {
+  min-height: 33px;
+  padding: 0 12px;
+  font-weight: 650;
+}
+
+.danger-button {
+  color: #ffffff;
+  background: var(--danger);
+  border-color: #97182c;
+}
+
+.danger-button:hover {
+  background: #97182c;
+}

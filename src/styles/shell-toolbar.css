@@ -1,0 +1,367 @@
+/* Main shell */
+.app-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.sidebar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px;
+  color: var(--ink);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.brand-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #ffffff;
+  background: #172124;
+  border-radius: 7px;
+}
+
+h1 {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 720;
+  line-height: 1.05;
+}
+
+.brand p {
+  display: none;
+}
+
+.filter-nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+  min-width: 0;
+  padding: 2px;
+  background: #eef2f3;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+}
+
+.filter-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 5px;
+  color: #536367;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 640;
+  white-space: nowrap;
+}
+
+.filter-button span,
+.filter-label-full,
+.filter-label-short {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-label-short {
+  display: none;
+}
+
+.filter-button:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.filter-button.active {
+  color: var(--accent);
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.workspace {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  padding: 7px 8px 8px;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'title'
+    'primary'
+    'secondary';
+  gap: 5px;
+  align-items: stretch;
+}
+
+.toolbar-title {
+  grid-area: title;
+  min-width: 0;
+}
+
+.toolbar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.toolbar-heading h2 {
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-size: 0.94rem;
+  font-weight: 720;
+  line-height: 1.1;
+}
+
+.toolbar-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 248px;
+  min-height: 20px;
+  padding: 0 6px;
+  overflow: hidden;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  font-size: 0.68rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  background: var(--success);
+  border-radius: 999px;
+}
+
+.toolbar-tools {
+  display: contents;
+}
+
+.toolbar-primary {
+  grid-area: primary;
+  display: block;
+  min-width: 0;
+}
+
+.toolbar-secondary {
+  grid-area: secondary;
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tool-button,
+.icon-tool,
+.day-field,
+.search-field,
+.date-shortcuts button,
+.ghost-button,
+.primary-button,
+.danger-button,
+.settings-header button,
+.edit-actions button,
+.item-actions button {
+  min-height: 28px;
+  color: #38494d;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.tool-button,
+.icon-tool,
+.ghost-button,
+.primary-button,
+.danger-button,
+.settings-header button,
+.edit-actions button,
+.item-actions button,
+.date-shortcuts button,
+.clear-date,
+.clear-search {
+  cursor: pointer;
+}
+
+.tool-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 0.76rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.monitor-toggle span,
+.quick-actions .tool-button:nth-child(3) span {
+  display: none;
+}
+
+.tool-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icon-tool {
+  display: grid;
+  width: auto;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.tool-button:hover,
+.icon-tool:hover,
+.ghost-button:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.tool-button:disabled,
+.primary-button:disabled,
+.danger-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.tool-button:disabled svg,
+.loading-head svg {
+  animation: spin 900ms linear infinite;
+}
+
+.day-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.day-field input {
+  width: 100%;
+  min-width: 0;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  cursor: pointer;
+}
+
+.clear-date,
+.clear-search {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+}
+
+.clear-date:hover,
+.clear-search:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.date-shortcuts {
+  display: none;
+}
+
+.date-shortcuts button {
+  min-height: 26px;
+  padding: 0 7px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.date-shortcuts button:hover,
+.date-shortcuts button.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.search-field input {
+  width: 100%;
+  min-width: 0;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.search-field input::placeholder {
+  color: var(--faint);
+}
