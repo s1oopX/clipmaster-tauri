@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "pin",
+  "description": "Pinned image window permissions",
+  "windows": ["pin-*"],
+  "permissions": [
+    "core:window:allow-close",
+    "core:window:allow-set-size",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging"
+  ]
+}

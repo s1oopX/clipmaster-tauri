@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "screenshot",
+  "description": "Screenshot selector window permissions",
+  "windows": ["screenshot-selector"],
+  "permissions": [
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-get-all-windows",
+    "core:window:allow-set-focus",
+    "core:window:allow-show"
+  ]
+}

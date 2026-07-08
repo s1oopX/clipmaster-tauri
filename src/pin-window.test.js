@@ -2,60 +2,68 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const pinHtml = readFileSync('pin.html', 'utf8');
-const capabilities = JSON.parse(
-  readFileSync('src-tauri/capabilities/default.json', 'utf8')
-);
+const pinStyles = readFileSync('src/styles/pin-window.css', 'utf8');
+const pinScript = readFileSync('src/pin-window.js', 'utf8');
+const pinSource = [pinHtml, pinStyles, pinScript].join('\n');
+const pinCapability = JSON.parse(readFileSync('src-tauri/capabilities/pin.json', 'utf8'));
 
 describe('Pinned image window', () => {
+  it('loads pinned-window behavior from external files for strict CSP', () => {
+    expect(pinHtml).toContain('<link rel="stylesheet" href="/src/styles/pin-window.css" />');
+    expect(pinHtml).toContain('<script type="module" src="/src/pin-window.js"></script>');
+    expect(pinHtml).not.toContain('<style>');
+    expect(pinHtml).not.toContain('<script type="module">\n');
+  });
+
   it('keeps the pinned image movable, resizable, and softly rounded', () => {
-    expect(pinHtml).toContain('startDragging()');
-    expect(pinHtml).toContain('startResizeDragging(handle.dataset.direction)');
-    expect(pinHtml.match(/class="resize-handle"/g)).toHaveLength(4);
-    expect(pinHtml).toContain('data-direction="NorthWest"');
-    expect(pinHtml).toContain('data-direction="NorthEast"');
-    expect(pinHtml).toContain('data-direction="SouthWest"');
-    expect(pinHtml).toContain('data-direction="SouthEast"');
-    expect(pinHtml).toContain('new LogicalSize(width, height)');
-    expect(pinHtml).toContain('border-radius: 12px');
-    expect(pinHtml).toContain('overflow: hidden');
-    expect(pinHtml).toContain('runWindowAction');
-    expect(pinHtml).toContain('aria-label="关闭贴图"');
-    expect(pinHtml).not.toContain('title="关闭"');
+    expect(pinSource).toContain('startDragging()');
+    expect(pinSource).toContain('startResizeDragging(handle.dataset.direction)');
+    expect(pinSource.match(/class="resize-handle"/g)).toHaveLength(4);
+    expect(pinSource).toContain('data-direction="NorthWest"');
+    expect(pinSource).toContain('data-direction="NorthEast"');
+    expect(pinSource).toContain('data-direction="SouthWest"');
+    expect(pinSource).toContain('data-direction="SouthEast"');
+    expect(pinSource).toContain('new LogicalSize(width, height)');
+    expect(pinSource).toContain('border-radius: 12px');
+    expect(pinSource).toContain('overflow: hidden');
+    expect(pinSource).toContain('runWindowAction');
+    expect(pinSource).toContain('aria-label="关闭贴图"');
+    expect(pinSource).not.toContain('title="关闭"');
   });
 
   it('keeps the pinned window fitted to the image while zooming', () => {
-    expect(pinHtml).toContain('width: 100%');
-    expect(pinHtml).toContain('height: 100%');
-    expect(pinHtml).toContain('object-fit: fill');
-    expect(pinHtml).toContain('const MAX_PIN_WIDTH = 720');
-    expect(pinHtml).toContain('const MAX_PIN_HEIGHT = 520');
-    expect(pinHtml).toContain('function fitImageWindowSize');
-    expect(pinHtml).toContain('function resizePinnedWindow(delta)');
-    expect(pinHtml).toContain('window.innerWidth * delta');
-    expect(pinHtml).toContain('window.innerHeight * delta');
-    expect(pinHtml).toContain('new LogicalSize(nextWidth, nextHeight)');
-    expect(pinHtml).not.toContain('transform: scale');
-    expect(pinHtml).not.toContain('imageScale');
-    expect(pinHtml).not.toContain('--image-scale');
-    expect(pinHtml).not.toContain('PhysicalSize');
-    expect(pinHtml).not.toContain('currentWin.innerSize()');
-    expect(pinHtml).toContain("'同步缩放贴图窗口'");
+    expect(pinSource).toContain('width: 100%');
+    expect(pinSource).toContain('height: 100%');
+    expect(pinSource).toContain('object-fit: fill');
+    expect(pinSource).toContain('const MAX_PIN_WIDTH = 720');
+    expect(pinSource).toContain('const MAX_PIN_HEIGHT = 520');
+    expect(pinSource).toContain('function fitImageWindowSize');
+    expect(pinSource).toContain('async function resizePinnedWindow(delta)');
+    expect(pinSource).toContain('window.innerWidth * delta');
+    expect(pinSource).toContain('window.innerHeight * delta');
+    expect(pinSource).toContain('new LogicalSize(nextWidth, nextHeight)');
+    expect(pinSource).not.toContain('transform: scale');
+    expect(pinSource).not.toContain('imageScale');
+    expect(pinSource).not.toContain('--image-scale');
+    expect(pinSource).not.toContain('PhysicalSize');
+    expect(pinSource).not.toContain('currentWin.innerSize()');
+    expect(pinSource).toContain("'同步缩放贴图窗口'");
   });
 
   it('does not include ctrl-left image panning', () => {
-    expect(pinHtml).not.toContain('imageOffsetX');
-    expect(pinHtml).not.toContain('imageOffsetY');
-    expect(pinHtml).not.toContain('function startImagePan');
-    expect(pinHtml).not.toContain('setPointerCapture');
-    expect(pinHtml).not.toContain("'--image-offset-x'");
-    expect(pinHtml).not.toContain("'--image-offset-y'");
-    expect(pinHtml).not.toContain('if (e.ctrlKey) {\n          e.preventDefault();\n          startImagePan(e);');
-    expect(pinHtml).toContain("currentWin.startDragging(), '移动贴图'");
+    expect(pinSource).not.toContain('imageOffsetX');
+    expect(pinSource).not.toContain('imageOffsetY');
+    expect(pinSource).not.toContain('function startImagePan');
+    expect(pinSource).not.toContain('setPointerCapture');
+    expect(pinSource).not.toContain("'--image-offset-x'");
+    expect(pinSource).not.toContain("'--image-offset-y'");
+    expect(pinSource).not.toContain('startImagePan(event)');
+    expect(pinSource).toContain("currentWin.startDragging(), '移动贴图'");
   });
 
   it('grants the window APIs required by the pinned image interactions', () => {
-    expect(capabilities.windows).toContain('pin-*');
-    expect(capabilities.permissions).toEqual(
+    expect(pinCapability.windows).toEqual(['pin-*']);
+    expect(pinCapability.permissions).toEqual(
       expect.arrayContaining([
         'core:window:allow-close',
         'core:window:allow-set-size',
@@ -63,5 +71,7 @@ describe('Pinned image window', () => {
         'core:window:allow-start-resize-dragging',
       ])
     );
+    expect(pinCapability.permissions).not.toContain('core:event:allow-listen');
+    expect(pinCapability.permissions).not.toContain('core:window:allow-destroy');
   });
 });

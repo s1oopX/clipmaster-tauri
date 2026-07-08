@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const appSource = readFileSync('src/App.svelte', 'utf8');
-const pinHtml = readFileSync('pin.html', 'utf8');
+const pinSource = [
+  readFileSync('pin.html', 'utf8'),
+  readFileSync('src/styles/pin-window.css', 'utf8'),
+  readFileSync('src/pin-window.js', 'utf8'),
+].join('\n');
 const screenshotHtml = [
   readFileSync('screenshot.html', 'utf8'),
   readFileSync('src/screenshot/screenshot.css', 'utf8'),
@@ -24,7 +28,7 @@ const screenshotHtml = [
 
 describe('Native tooltips', () => {
   it('does not use title attributes for app controls or utility windows', () => {
-    for (const source of [appSource, pinHtml, screenshotHtml]) {
+    for (const source of [appSource, pinSource, screenshotHtml]) {
       expect(source).not.toMatch(/\stitle=/);
     }
   });

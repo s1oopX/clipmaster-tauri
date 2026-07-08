@@ -25,8 +25,8 @@ const screenshotCommandsSource = readFileSync(
   'utf8'
 );
 const mainSource = readFileSync('src-tauri/src/main.rs', 'utf8');
-const capabilities = JSON.parse(
-  readFileSync('src-tauri/capabilities/default.json', 'utf8')
+const screenshotCapability = JSON.parse(
+  readFileSync('src-tauri/capabilities/screenshot.json', 'utf8')
 );
 
 describe('Screenshot selector window', () => {
@@ -93,15 +93,17 @@ describe('Screenshot selector window', () => {
   });
 
   it('grants the window APIs required by screenshot capture recovery', () => {
-    expect(capabilities.windows).toContain('screenshot-selector');
-    expect(capabilities.permissions).toEqual(
+    expect(screenshotCapability.windows).toEqual(['screenshot-selector']);
+    expect(screenshotCapability.permissions).toEqual(
       expect.arrayContaining([
         'core:window:allow-close',
         'core:window:allow-destroy',
-        'core:window:allow-hide',
+        'core:window:allow-get-all-windows',
         'core:window:allow-set-focus',
         'core:window:allow-show',
       ])
     );
+    expect(screenshotCapability.permissions).not.toContain('core:event:allow-listen');
+    expect(screenshotCapability.permissions).not.toContain('core:window:allow-start-dragging');
   });
 });

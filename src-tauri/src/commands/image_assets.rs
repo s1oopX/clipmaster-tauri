@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose, Engine as _};
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,7 +9,6 @@ use crate::app_data;
 pub struct ImageAsset {
     pub(super) path: String,
     pub(super) absolute_path: String,
-    pub(super) data_url: Option<String>,
 }
 
 /// 获取应用数据目录路径
@@ -56,7 +54,6 @@ pub(super) fn resolve_image_asset_in_dir(
         return Ok(Some(ImageAsset {
             path: safe_path,
             absolute_path: absolute_path.to_string_lossy().to_string(),
-            data_url: image_file_data_url(&absolute_path),
         }));
     }
 
@@ -78,34 +75,7 @@ pub(super) fn resolve_image_asset_in_dir(
     Ok(Some(ImageAsset {
         path: relative_path,
         absolute_path: fallback_path.to_string_lossy().to_string(),
-        data_url: image_file_data_url(&fallback_path),
     }))
-}
-
-fn image_file_data_url(path: &Path) -> Option<String> {
-    let mime_type = match path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("bmp") => "image/bmp",
-        Some("ico") => "image/x-icon",
-        Some("tif") | Some("tiff") => "image/tiff",
-        Some("avif") => "image/avif",
-        _ => return None,
-    };
-
-    let bytes = fs::read(path).ok()?;
-    Some(format!(
-        "data:{};base64,{}",
-        mime_type,
-        general_purpose::STANDARD.encode(bytes)
-    ))
 }
 
 fn find_image_file_by_name(images_dir: &Path, file_name: &str) -> Result<Option<PathBuf>, String> {

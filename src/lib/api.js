@@ -30,10 +30,10 @@ export async function convertImagePath(relativePath) {
 
   try {
     const asset = await invoke('resolve_image_asset', { imagePath: relativePath });
+    if (asset?.absolute_path) return convertFileSrc(asset.absolute_path);
     if (asset?.data_url) return asset.data_url;
-    if (!asset?.absolute_path) return null;
 
-    return convertFileSrc(asset.absolute_path);
+    return null;
   } catch (error) {
     console.error('Error converting image path:', error);
     return null;

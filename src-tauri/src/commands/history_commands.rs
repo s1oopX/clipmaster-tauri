@@ -437,11 +437,6 @@ mod tests {
         let asset = asset.unwrap();
         assert_eq!(asset.path, "images/2026-06-09/capture.png");
         assert!(Path::new(&asset.absolute_path).is_file());
-        assert!(asset
-            .data_url
-            .as_deref()
-            .map(|url| url.starts_with("data:image/png;base64,"))
-            .unwrap_or(false));
 
         let _ = fs::remove_dir_all(data_dir);
     }
@@ -458,11 +453,6 @@ mod tests {
         let asset = asset.unwrap();
         assert_eq!(asset.path, "images/2026-06/capture.png");
         assert!(Path::new(&asset.absolute_path).is_file());
-        assert!(asset
-            .data_url
-            .as_deref()
-            .map(|url| url.starts_with("data:image/png;base64,"))
-            .unwrap_or(false));
 
         let _ = fs::remove_dir_all(data_dir);
     }

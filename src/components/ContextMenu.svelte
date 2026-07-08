@@ -9,6 +9,17 @@
   export let onEditContent = () => {};
   export let onOpenLink = () => {};
   export let runContextAction = (action) => action();
+
+  function positionContextMenu(node, menu) {
+    function update(nextMenu) {
+      node.style.left = `${nextMenu.x}px`;
+      node.style.top = `${nextMenu.y}px`;
+    }
+
+    update(menu);
+
+    return { update };
+  }
 </script>
 
 {#if contextMenu.open && activeContextItem}
@@ -16,7 +27,7 @@
     class="context-menu"
     role="menu"
     tabindex="-1"
-    style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`}
+    use:positionContextMenu={contextMenu}
   >
     <button
       type="button"
