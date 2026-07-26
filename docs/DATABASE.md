@@ -147,9 +147,25 @@ WHERE content_hash = ?1 AND timestamp > ?2;
 
 普通文本 hash 使用完整文本；链接 hash 使用 `link:` 前缀加规范化 URL，避免和普通文本 hash 混淆。图片 hash 使用宽高和采样字节。
 
+## 全文搜索
+
+第 7 版迁移建立 trigram 分词的 FTS5 外容表加速子串搜索（含中文）：
+
+```sql
+CREATE VIRTUAL TABLE clipboard_items_fts USING fts5(
+  content, preview, annotation,
+  content='clipboard_items',
+  content_rowid='rowid',
+  tokenize='trigram'
+);
+```
+
+- `AFTER INSERT` / `AFTER DELETE` / `AFTER UPDATE OF content, preview, annotation` 三个触发器保持索引与主表同步，收藏/置顶等状态更新不会触碰索引。
+- 查询 ≥ 3 个字符时走 `MATCH "<子串>"`（trigram 短语即子串匹配，大小写不敏感）；不足 3 个字符回退 `LIKE`，语义一致。
+- 外容表按 rowid 关联主表。当前代码没有 `VACUUM`；若未来引入，需要在其后执行 `INSERT INTO clipboard_items_fts(clipboard_items_fts) VALUES('rebuild')`。
+
 ## 当前限制
 
-- 搜索使用 `LIKE`，大量文本时需要升级 FTS5。
 - 没有周期后台清理任务；当前清理由设置保存或手动按钮触发。
 - 没有孤儿图片扫描。
 

@@ -15,10 +15,12 @@
 
 ```text
 src/
-  App.svelte          当前主控 UI，保留数据流、列表和设置流程
+  App.svelte          主窗口装配：数据流编排与组件组合
   app.css             全局样式和应用布局样式
-  components/         低耦合 UI 组件：侧边栏、弹层、toast、贴图壳
+  components/         12 个 UI 组件：历史面板、设置、侧边栏、弹层、toast、贴图壳
+  screenshot/         截图窗口模块：选区、标注、渲染、命中检测、文字编辑
   main.js             Svelte 入口
+  pin-window.js       贴图窗口入口
   lib/api.js          Tauri command 和事件封装
   lib/app-config.js   默认设置、筛选项和固定链接
   lib/clipboard-ui.js 剪贴板 UI 纯工具函数
@@ -27,8 +29,9 @@ src-tauri/src/
   app_data.rs         应用数据目录解析、测试覆盖和旧目录迁移
   main.rs             Tauri 启动、状态注入、command 注册
   clipboard.rs        剪贴板轮询、去重、图片保存、事件推送
-  commands.rs         前端可调用的 Tauri commands
-  database.rs         SQLite 初始化和 CRUD
+  commands/           按域拆分的 Tauri commands：clipboard / history / screenshot / image / window / settings
+  database/           SQLite 模块：schema / migrations（含 FTS5）/ items / sessions / cleanup / tests
+  hotkey.rs           全局快捷键注册与校验
   tray.rs             系统托盘、主窗口显示/隐藏、退出前 session 收尾
   models.rs           序列化模型
   session.rs          当前会话内存状态
@@ -67,38 +70,14 @@ flowchart TD
 - 删除记录、清空会话和自定义清理时同步清理图片文件。
 - 主窗口关闭时隐藏到托盘，托盘退出时结束当前 session。
 
-## 需要重构的地方
+## 模块化现状
 
-`App.svelte` 已经完成第一轮瘦身：样式、配置常量、贴图壳、toast、删除确认、图片查看器、侧边栏和右键菜单已经拆出。后续建议继续拆：
-
-```text
-src/components/
-  SearchBar.svelte
-  ClipboardList.svelte
-  ClipboardItem.svelte
-  SettingsPanel.svelte
-
-src/stores/
-  clipboardStore.js
-  sessionStore.js
-  settingsStore.js
-```
-
-后端后续可拆成更清晰的服务边界：
-
-```text
-clipboard.rs     只负责读取系统剪贴板
-image_store.rs   图片保存、删除、路径转换
-database.rs      数据访问
-cleanup.rs       自动清理
-tray.rs          后续增加更多托盘菜单和状态提示
-hotkey.rs        全局快捷键
-```
+前端与后端的第一、二轮拆分均已完成：历史面板、设置面板、侧边栏、右键菜单、弹层、toast、贴图壳等拆为独立组件，截图窗口独立成 `src/screenshot/` 模块群；后端 commands 与 database 均已按域拆分为子模块并约束单文件规模。后续如引入全局状态管理（stores），以真实的数据流痛点为准，不预先抽象。
 
 ## 风险点
 
 - 剪贴板轮询每 500ms 执行一次，需要观察长期资源占用。
 - 后续 schema 变更必须持续登记到 `schema_migrations`。
 - 图片文件已随记录删除清理，但还没有孤儿文件扫描。
-- 当前搜索使用 `LIKE`，数据变多后可能变慢。
+- 搜索已走 trigram FTS5 索引；不足 3 字符的查询仍回退 LIKE 扫描，超大数据量下可评估最短查询长度限制。
 - 进程被系统强杀时无法执行 session 收尾，只能依赖下次启动修正历史状态。

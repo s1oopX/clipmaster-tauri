@@ -7,7 +7,7 @@ use crate::models::{ClipboardDay, ClipboardItem, ClipboardType, CreateClipboardI
 
 use super::utils::{date_key_from_timestamp, preview_from_content};
 use super::{
-    clipboard_item_from_row, like_literal_pattern, refresh_duplicate_for_date,
+    clipboard_item_from_row, fts_phrase_query, like_literal_pattern, refresh_duplicate_for_date,
     refresh_session_item_count, session_exists, Database, CLIPBOARD_ITEM_COLUMNS,
 };
 
@@ -416,14 +416,29 @@ impl Database {
         item_type: Option<&str>,
         favorite_only: bool,
     ) -> Result<Vec<ClipboardItem>> {
-        let Some(search_pattern) = like_literal_pattern(query) else {
+        let Some(like_pattern) = like_literal_pattern(query) else {
             return Ok(Vec::new());
         };
+        // ≥3 字符走 trigram FTS5 索引；更短的查询回退 LIKE（语义一致：大小写不敏感的子串匹配）
+        let (fts_phrase, use_fts) = match fts_phrase_query(query) {
+            Some(phrase) => (phrase, true),
+            None => (String::new(), false),
+        };
+        let search_param = if use_fts { &fts_phrase } else { &like_pattern };
 
         let conn = self.conn.lock().unwrap();
 
         // 根据是否有 session_id 分别执行不同的查询
         let items = if let Some(sid) = session_id {
+            let match_clause = if use_fts {
+                "rowid IN (SELECT rowid FROM clipboard_items_fts WHERE clipboard_items_fts MATCH ?3)"
+            } else {
+                "(
+                       content LIKE ?3 ESCAPE '\\'
+                       OR preview LIKE ?3 ESCAPE '\\'
+                       OR annotation LIKE ?3 ESCAPE '\\'
+                   )"
+            };
             let sql = format!(
                 "SELECT {}
                  FROM clipboard_items
@@ -431,14 +446,10 @@ impl Database {
                    AND session_id = ?2
                    AND (?6 IS NULL OR type = ?6)
                    AND (?7 = 0 OR is_favorite = 1)
-                   AND (
-                       content LIKE ?3 ESCAPE '\\'
-                       OR preview LIKE ?3 ESCAPE '\\'
-                       OR annotation LIKE ?3 ESCAPE '\\'
-                   )
+                   AND {}
                  ORDER BY timestamp DESC
                  LIMIT ?4 OFFSET ?5",
-                CLIPBOARD_ITEM_COLUMNS
+                CLIPBOARD_ITEM_COLUMNS, match_clause
             );
             let mut stmt = conn.prepare(&sql)?;
 
@@ -446,7 +457,7 @@ impl Database {
                 params![
                     date_key,
                     sid,
-                    &search_pattern,
+                    search_param,
                     limit,
                     offset,
                     item_type,
@@ -457,27 +468,32 @@ impl Database {
 
             rows.collect::<Result<Vec<_>, _>>()?
         } else {
+            let match_clause = if use_fts {
+                "rowid IN (SELECT rowid FROM clipboard_items_fts WHERE clipboard_items_fts MATCH ?2)"
+            } else {
+                "(
+                       content LIKE ?2 ESCAPE '\\'
+                       OR preview LIKE ?2 ESCAPE '\\'
+                       OR annotation LIKE ?2 ESCAPE '\\'
+                   )"
+            };
             let sql = format!(
                 "SELECT {}
                  FROM clipboard_items
                  WHERE date_key = ?1
                    AND (?5 IS NULL OR type = ?5)
                    AND (?6 = 0 OR is_favorite = 1)
-                   AND (
-                       content LIKE ?2 ESCAPE '\\'
-                       OR preview LIKE ?2 ESCAPE '\\'
-                       OR annotation LIKE ?2 ESCAPE '\\'
-                   )
+                   AND {}
                  ORDER BY timestamp DESC
                  LIMIT ?3 OFFSET ?4",
-                CLIPBOARD_ITEM_COLUMNS
+                CLIPBOARD_ITEM_COLUMNS, match_clause
             );
             let mut stmt = conn.prepare(&sql)?;
 
             let rows = stmt.query_map(
                 params![
                     date_key,
-                    &search_pattern,
+                    search_param,
                     limit,
                     offset,
                     item_type,

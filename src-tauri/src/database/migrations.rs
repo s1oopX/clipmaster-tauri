@@ -34,6 +34,73 @@ pub(super) fn run(conn: &Connection, data_dir: &Path) -> Result<()> {
         "migrate_text_urls_to_links",
         migrate_text_urls_to_links,
     )?;
+    run_migration(conn, 7, "add_fts5_trigram_search", add_fts5_trigram_search)?;
+    Ok(())
+}
+
+/// 建立 trigram 分词的 FTS5 外容表加速子串搜索（含 CJK），并用触发器与主表保持同步。
+/// 外容表按 rowid 关联主表；当前代码没有 VACUUM，若未来引入需在其后执行
+/// `INSERT INTO clipboard_items_fts(clipboard_items_fts) VALUES('rebuild')`。
+fn add_fts5_trigram_search(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS clipboard_items_fts USING fts5(
+             content,
+             preview,
+             annotation,
+             content='clipboard_items',
+             content_rowid='rowid',
+             tokenize='trigram'
+         );
+         INSERT INTO clipboard_items_fts(rowid, content, preview, annotation)
+             SELECT rowid,
+                    coalesce(content, ''),
+                    coalesce(preview, ''),
+                    coalesce(annotation, '')
+             FROM clipboard_items;
+         CREATE TRIGGER IF NOT EXISTS clipboard_items_fts_ai
+         AFTER INSERT ON clipboard_items BEGIN
+             INSERT INTO clipboard_items_fts(rowid, content, preview, annotation)
+             VALUES (
+                 new.rowid,
+                 coalesce(new.content, ''),
+                 coalesce(new.preview, ''),
+                 coalesce(new.annotation, '')
+             );
+         END;
+         CREATE TRIGGER IF NOT EXISTS clipboard_items_fts_ad
+         AFTER DELETE ON clipboard_items BEGIN
+             INSERT INTO clipboard_items_fts(
+                 clipboard_items_fts, rowid, content, preview, annotation
+             )
+             VALUES (
+                 'delete',
+                 old.rowid,
+                 coalesce(old.content, ''),
+                 coalesce(old.preview, ''),
+                 coalesce(old.annotation, '')
+             );
+         END;
+         CREATE TRIGGER IF NOT EXISTS clipboard_items_fts_au
+         AFTER UPDATE OF content, preview, annotation ON clipboard_items BEGIN
+             INSERT INTO clipboard_items_fts(
+                 clipboard_items_fts, rowid, content, preview, annotation
+             )
+             VALUES (
+                 'delete',
+                 old.rowid,
+                 coalesce(old.content, ''),
+                 coalesce(old.preview, ''),
+                 coalesce(old.annotation, '')
+             );
+             INSERT INTO clipboard_items_fts(rowid, content, preview, annotation)
+             VALUES (
+                 new.rowid,
+                 coalesce(new.content, ''),
+                 coalesce(new.preview, ''),
+                 coalesce(new.annotation, '')
+             );
+         END;",
+    )?;
     Ok(())
 }
 

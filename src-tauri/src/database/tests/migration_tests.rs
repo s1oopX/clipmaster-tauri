@@ -22,7 +22,7 @@ fn date_keys_follow_configured_time_zone() {
 fn records_schema_migrations_for_new_database() {
     let (db, data_dir) = temp_database();
 
-    assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5, 6]);
+    assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5, 6, 7]);
 
     let _ = fs::remove_dir_all(data_dir);
 }
@@ -49,7 +49,7 @@ fn migrates_legacy_database_schema_and_image_paths() {
         assert!(column_exists(&conn, "clipboard_items", "date_key").unwrap());
         assert!(column_exists(&conn, "clipboard_items", "annotation").unwrap());
     }
-    assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5, 6]);
+    assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5, 6, 7]);
 
     let item = db.get_item("legacy_image").unwrap().unwrap();
     assert_eq!(item.date_key, "2026-06-06");
@@ -145,7 +145,7 @@ fn migrates_single_url_text_records_to_link_type() {
         item.content_hash,
         link_content_hash("https://example.com/docs")
     );
-    assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5, 6]);
+    assert_eq!(migration_versions(&db), vec![1, 2, 3, 4, 5, 6, 7]);
 
     let _ = fs::remove_dir_all(data_dir);
 }
@@ -175,6 +175,54 @@ fn rebuilds_existing_date_keys_for_selected_time_zone() {
 
     let items = db.get_items_filtered(10, 0, None, false).unwrap();
     assert_eq!(items[0].date_key, "2026-06-05");
+
+    let _ = fs::remove_dir_all(data_dir);
+}
+
+#[test]
+fn backfills_fts_index_for_legacy_rows() {
+    let data_dir =
+        std::env::temp_dir().join(format!("clipmaster-fts-migration-{}", nanoid::nanoid!()));
+    let timestamp = Utc
+        .with_ymd_and_hms(2026, 6, 9, 12, 0, 0)
+        .single()
+        .unwrap()
+        .timestamp_millis();
+    create_legacy_database(&data_dir, timestamp);
+    {
+        let conn = Connection::open(data_dir.join("clipboard.db")).unwrap();
+        conn.execute(
+            "INSERT INTO clipboard_items (
+                    id, type, content, image_path, preview, timestamp, source_app,
+                    is_favorite, is_pinned, content_hash, session_id
+                 )
+                 VALUES (
+                    'legacy_text', 'text', '旧库中的语义滑块记录', NULL, '旧库中的语义滑块记录',
+                    ?1, NULL, 0, 0, 'legacy_text_hash', 'session_1'
+                 )",
+            params![timestamp],
+        )
+        .unwrap();
+    }
+
+    let db = Database::new(data_dir.clone()).unwrap();
+    assert!(migration_versions(&db).contains(&7));
+
+    let date_key = {
+        let conn = db.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT date_key FROM clipboard_items WHERE id = 'legacy_text'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap()
+    };
+
+    let results = db
+        .search_items("语义滑块", None, &date_key, 10, 0, None, false)
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, "legacy_text");
 
     let _ = fs::remove_dir_all(data_dir);
 }

@@ -63,6 +63,17 @@ impl Database {
     }
 }
 
+/// 为 trigram FTS5 构造子串匹配短语。trigram 索引要求至少 3 个字符才能命中，
+/// 更短的查询返回 None，由调用方回退到 LIKE 扫描。
+fn fts_phrase_query(query: &str) -> Option<String> {
+    let trimmed = query.trim();
+    if trimmed.chars().count() < 3 {
+        return None;
+    }
+
+    Some(format!("\"{}\"", trimmed.replace('"', "\"\"")))
+}
+
 fn like_literal_pattern(query: &str) -> Option<String> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
