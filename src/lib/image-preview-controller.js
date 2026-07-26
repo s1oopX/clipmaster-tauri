@@ -28,32 +28,42 @@ export function createImagePreviewController({
     return null;
   }
 
-  async function ensureImagePreviewUrl(item) {
-    if (item.type !== 'image' || (!item.thumbnail_path && !item.image_path)) {
-      return;
-    }
-
+  // 状态写入统一走「写入时基于最新状态合并」，避免并发加载各持旧快照互相覆盖
+  function commitPreviewResult(itemId, previewUrl) {
     const thumbnailUrls = { ...getThumbnailUrls() };
     const imagePreviewErrors = { ...getImagePreviewErrors() };
-    const previewUrl = await resolveFirstImageUrl([item.thumbnail_path, item.image_path]);
+
     if (previewUrl) {
-      thumbnailUrls[item.id] = previewUrl;
-      delete imagePreviewErrors[item.id];
+      thumbnailUrls[itemId] = previewUrl;
+      delete imagePreviewErrors[itemId];
     } else {
-      delete thumbnailUrls[item.id];
-      imagePreviewErrors[item.id] = true;
+      delete thumbnailUrls[itemId];
+      imagePreviewErrors[itemId] = true;
     }
 
     setThumbnailUrls(thumbnailUrls);
     setImagePreviewErrors(imagePreviewErrors);
   }
 
-  async function loadImageUrls() {
-    for (const item of getItems()) {
-      if (item.type === 'image' && !getThumbnailUrls()[item.id]) {
-        await ensureImagePreviewUrl(item);
-      }
+  async function ensureImagePreviewUrl(item) {
+    if (item.type !== 'image' || (!item.thumbnail_path && !item.image_path)) {
+      return;
     }
+
+    const previewUrl = await resolveFirstImageUrl([item.thumbnail_path, item.image_path]);
+    commitPreviewResult(item.id, previewUrl);
+  }
+
+  async function loadImageUrls() {
+    // 已失败的条目不重复请求（负缓存）；fallbackToOriginalPreview 仍可显式重试
+    const pendingItems = getItems().filter(
+      (item) =>
+        item.type === 'image'
+        && !getThumbnailUrls()[item.id]
+        && !getImagePreviewErrors()[item.id]
+    );
+
+    await Promise.all(pendingItems.map((item) => ensureImagePreviewUrl(item)));
   }
 
   function pruneImageUrls(nextItems = getItems()) {
@@ -73,45 +83,38 @@ export function createImagePreviewController({
   }
 
   async function fallbackToOriginalPreview(item) {
-    const thumbnailUrls = { ...getThumbnailUrls() };
-    const imagePreviewErrors = { ...getImagePreviewErrors() };
-    const imageUrls = { ...getImageUrls() };
+    if (!item?.id) return;
 
-    if (!item?.image_path || thumbnailUrls[item.id] === imageUrls[item.id]) {
-      delete thumbnailUrls[item.id];
-      imagePreviewErrors[item.id] = true;
-      setThumbnailUrls(thumbnailUrls);
-      setImagePreviewErrors(imagePreviewErrors);
+    if (!item.image_path || getThumbnailUrls()[item.id] === getImageUrls()[item.id]) {
+      commitPreviewResult(item.id, null);
       return;
     }
 
     try {
-      const originalUrl = imageUrls[item.id] || await resolveFirstImageUrl([item.image_path]);
+      const originalUrl =
+        getImageUrls()[item.id] || (await resolveFirstImageUrl([item.image_path]));
       if (!originalUrl) throw new Error('原图 URL 不可用');
 
-      imageUrls[item.id] = originalUrl;
-      thumbnailUrls[item.id] = originalUrl;
-      delete imagePreviewErrors[item.id];
-      setImageUrls(imageUrls);
-      setThumbnailUrls(thumbnailUrls);
-      setImagePreviewErrors(imagePreviewErrors);
+      setImageUrls({ ...getImageUrls(), [item.id]: originalUrl });
+      commitPreviewResult(item.id, originalUrl);
     } catch (e) {
       console.error('原图预览加载失败:', e);
-      delete thumbnailUrls[item.id];
-      imagePreviewErrors[item.id] = true;
-      setThumbnailUrls(thumbnailUrls);
-      setImagePreviewErrors(imagePreviewErrors);
+      commitPreviewResult(item.id, null);
       showActionError('图片预览不可用');
     }
   }
 
   async function viewFullImage(itemId) {
     const item = getItems().find((entry) => entry.id === itemId);
-    const imageUrls = { ...getImageUrls() };
-    if (item?.image_path && !imageUrls[itemId]) {
+    if (item?.image_path && !getImageUrls()[itemId]) {
       try {
-        imageUrls[itemId] = await convertImagePath(item.image_path);
-        setImageUrls(imageUrls);
+        const originalUrl = await convertImagePath(item.image_path);
+        if (!originalUrl) {
+          // 解析成功但文件缺失：不打开空白查看器
+          showActionError('原图不可用，文件可能已被删除');
+          return;
+        }
+        setImageUrls({ ...getImageUrls(), [itemId]: originalUrl });
       } catch (e) {
         console.error('加载原图 URL 失败:', e);
         showActionError('加载原图失败: ' + e);

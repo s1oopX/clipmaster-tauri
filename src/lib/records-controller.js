@@ -3,7 +3,6 @@ import {
   mergeItems,
   pageSize as configuredPageSize,
 } from './app-helpers.js';
-import { todayDateKey } from './clipboard-ui.js';
 
 export function createRecordsController({
   clipboardApi,
@@ -40,7 +39,8 @@ export function createRecordsController({
   }
 
   function activeSearchDateKey() {
-    return getSelectedDay() || todayDateKey(getAppSettings().time_zone);
+    // 未选日期时返回 null = 搜索全部历史（后端 FTS 支撑跨天检索）
+    return getSelectedDay() || null;
   }
 
   function activeFilterQuery() {

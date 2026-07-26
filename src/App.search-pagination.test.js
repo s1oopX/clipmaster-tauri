@@ -6,7 +6,6 @@ import {
   imageItem,
   linkItem,
   textItem,
-  todayDateKey,
 } from './test/app-test-utils.js';
 import App from './App.svelte';
 describe('App UI', () => {
@@ -17,8 +16,8 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey(), 0);
-      expect(screen.getByLabelText('当前范围')).toHaveTextContent(`${todayDateKey()} · 已加载 0 条`);
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, null, 0);
+      expect(screen.getByLabelText('当前范围')).toHaveTextContent('全部日期 · 已加载 0 条');
     });
 
     await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
@@ -75,7 +74,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey(), 0);
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, null, 0);
     });
 
     await fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
@@ -164,7 +163,7 @@ describe('App UI', () => {
         'alpha',
         null,
         50,
-        todayDateKey(),
+        null,
         50
       );
     });
@@ -198,7 +197,7 @@ describe('App UI', () => {
         'alpha',
         null,
         50,
-        todayDateKey(),
+        null,
         0,
         { itemType: 'link' }
       );
@@ -279,7 +278,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey(), 0);
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, null, 0);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });

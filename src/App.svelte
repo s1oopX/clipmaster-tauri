@@ -24,7 +24,6 @@
   import {
     isActivationKey,
     itemMatchesSearchQuery,
-    todayDateKey,
     itemLabel,
   } from './lib/clipboard-ui.js';
   import { createContextMenuController } from './lib/context-menu-controller.js';
@@ -214,17 +213,12 @@
 
   $: filteredItems = items;
 
-  $: recordsScope = selectedDay
-    || (searchQuery.trim() ? todayDateKey(appSettings.time_zone) : '全部日期');
+  $: recordsScope = selectedDay || '全部日期';
 
   function itemMatchesLiveScope(item) {
     const query = searchQuery.trim();
 
     if (selectedDay && item.date_key !== selectedDay) {
-      return false;
-    }
-
-    if (query && item.date_key !== recordsController.activeSearchDateKey()) {
       return false;
     }
 

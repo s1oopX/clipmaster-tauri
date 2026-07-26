@@ -62,7 +62,6 @@ export function createItemEditController({
       updateVisibleItem(itemId, (item) => ({
         ...item,
         annotation: savedAnnotation,
-        is_favorite: savedAnnotation ? true : item.is_favorite,
       }));
 
       setAnnotationEditingId(null);

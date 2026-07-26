@@ -6,7 +6,6 @@ import {
   imageItem,
   linkItem,
   textItem,
-  todayDateKey,
 } from './test/app-test-utils.js';
 import App from './App.svelte';
 describe('App UI', () => {
@@ -146,7 +145,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey(), 0);
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, null, 0);
     });
 
     await fireEvent.click(screen.getByRole('button', { name: '设置' }));
@@ -164,7 +163,7 @@ describe('App UI', () => {
         'alpha',
         null,
         80,
-        todayDateKey(),
+        null,
         0
       );
     });

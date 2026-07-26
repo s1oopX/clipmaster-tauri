@@ -16,7 +16,8 @@ describe('Backend clipboard service', () => {
     const skipIndex = clipboardSource.indexOf('Self::should_skip_sequence(&last_sequence, clipboard_sequence)');
     const readIndex = clipboardSource.indexOf('Self::get_clipboard_content(&mut clipboard)');
     const saveIndex = clipboardSource.indexOf('Self::save_clipboard_item(&app_handle, content, hash.clone()).await');
-    const okIndex = clipboardSource.indexOf('Ok(()) =>');
+    // 从 save 调用之后开始找，避免命中监督循环里的 Ok(()) => break
+    const okIndex = clipboardSource.indexOf('Ok(()) =>', saveIndex);
     const markIndex = clipboardSource.indexOf('Self::mark_clipboard_item_saved(', okIndex);
     const errIndex = clipboardSource.indexOf('Err(e) =>', okIndex);
 

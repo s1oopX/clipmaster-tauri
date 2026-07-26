@@ -6,7 +6,6 @@ import {
   imageItem,
   linkItem,
   textItem,
-  todayDateKey,
 } from './test/app-test-utils.js';
 import App from './App.svelte';
 describe('App UI', () => {
@@ -169,7 +168,7 @@ describe('App UI', () => {
     await fireEvent.input(search, { target: { value: 'alpha' } });
 
     await waitFor(() => {
-      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, todayDateKey(), 0);
+      expect(api.searchItems).toHaveBeenCalledWith('alpha', null, 50, null, 0);
     });
 
     await newItemHandler(
@@ -193,7 +192,8 @@ describe('App UI', () => {
     );
 
     expect(screen.getByText('Alpha token')).toBeInTheDocument();
-    expect(screen.queryByText('Alpha from another day')).not.toBeInTheDocument();
+    // 搜索现在覆盖全部日期：其他日期的匹配项应实时加入结果
+    expect(screen.getByText('Alpha from another day')).toBeInTheDocument();
   });
 
 });
