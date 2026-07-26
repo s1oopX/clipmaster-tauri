@@ -41,6 +41,16 @@ fn main() {
                 eprintln!("Failed to migrate legacy app data directory: {}", error);
             }
 
+            // 静态 asset scope 只覆盖默认 $APPDATA；当 CLIPMASTER_APP_DATA_DIR
+            // 把数据目录指向别处时，需要在运行时把实际目录加入 scope，
+            // 否则图片与冻结截图会被 asset 协议 403。
+            let asset_scope = app.asset_protocol_scope();
+            for sub_dir in ["images", "screenshot-cache"] {
+                if let Err(error) = asset_scope.allow_directory(app_data_dir.join(sub_dir), true) {
+                    eprintln!("扩展 asset scope 失败（{}）: {}", sub_dir, error);
+                }
+            }
+
             // 初始化设置
             let settings_store = SettingsStore::new(&app_data_dir)
                 .map_err(|error| startup_error("初始化设置失败，请检查应用数据目录权限", error))?;
