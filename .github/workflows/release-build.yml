@@ -117,3 +117,37 @@ jobs:
           name: clipmaster-windows-installers-signed
           path: signed/**
           if-no-files-found: error
+
+  # tag 推送时把 CI 构建产物挂到 GitHub Release：已存在则覆盖资产，
+  # 不存在则创建草稿供人工复核后发布。保证发布资产可追溯到 CI 构建，
+  # 不再依赖本地机器构建的安装包。
+  publish-release:
+    name: Attach CI artifacts to GitHub Release
+    needs: windows
+    if: github.ref_type == 'tag'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download installers artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: clipmaster-windows-installers
+          path: dist-release
+
+      - name: Create draft release or update assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $files = Get-ChildItem dist-release -Recurse -File | ForEach-Object { $_.FullName }
+          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:TAG --repo $env:GITHUB_REPOSITORY --draft --verify-tag `
+              --title "ClipMaster $($env:TAG.TrimStart('v'))" `
+              --notes "CI 构建产物。发布前请根据 CHANGELOG 补充说明并核对 SHA256SUMS.txt。" @files
+          } else {
+            gh release upload $env:TAG --repo $env:GITHUB_REPOSITORY --clobber @files
+          }

@@ -1,5 +1,16 @@
 # Release Artifacts
 
+## Publishing Flow (CI-first)
+
+自 v0.1.7 之后，发布资产以 CI 构建为准：
+
+1. 版本号同步 + CHANGELOG 定版，提交并推送 `v*` tag。
+2. `Release Build` 工作流构建安装包与 `SHA256SUMS.txt`，并自动挂载到该 tag 的 GitHub Release（不存在则创建**草稿**）。
+3. 人工核对草稿的资产与校验和，补充 Release 说明后发布。
+4. 本地 `release/vX.Y.Z/` 目录仅作为对照留档，不再作为发布来源。
+
+配置了 SignPath 凭据时，`sign-installers` job 产出已签名产物（见 `SIGNING.md`），发布前用已签名版本替换草稿资产。
+
 ## Current Public Baseline
 
 - Latest tagged version: `v0.1.7`
