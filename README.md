@@ -27,13 +27,24 @@ ClipMaster 是一款面向 Windows 桌面的本地剪贴板与截图工具，采
 2. **安全默认** — 严格 CSP（全局禁用 `unsafe-inline`）、按窗口隔离的最小权限 Capability、白名单化的 asset 协议文件访问、后端相对路径校验，四层防线独立生效。
 3. **克制的功能边界** — 只做剪贴板历史与「截完即用」的轻量截图，不做 OCR、滚动截图、富文本标注平台（见[产品边界](#产品边界)）。
 
+## 界面预览
+
+<p align="center">
+  <img src="./docs/assets/screenshot-main.png" width="390" alt="主窗口：剪贴板历史、图片缩略图与链接识别" />
+  <img src="./docs/assets/screenshot-settings.png" width="390" alt="设置面板：常规 / 日期语言 / 高级 / 关于" />
+</p>
+<p align="center">
+  <img src="./docs/assets/screenshot-pin.png" width="620" alt="桌面贴图：无边框置顶小窗" />
+</p>
+<p align="center"><sub>主窗口（历史 / 搜索 / 图片预览） · 设置面板 · 桌面贴图窗口</sub></p>
+
 ## 核心特性
 
 | 模块 | 能力 |
 | --- | --- |
 | 剪贴板历史 | 500ms 轮询捕获文本 / 链接 / 图片，内容哈希去重（5 分钟时间窗），事件推送实时上屏 |
 | 链接工作流 | URL 自动识别为独立 `link` 类型，规范化去重，一键在系统默认浏览器打开 |
-| 搜索与筛选 | 内容搜索、类型 / 日期 / 会话筛选、收藏与置顶、后端分页加载 |
+| 搜索与筛选 | FTS5 trigram 全文索引（中文子串可命中），类型 / 日期 / 会话筛选、收藏与置顶、后端分页加载 |
 | 图片工作流 | PNG 原图 + 缩略图双份落盘，按日分目录，预览 / 复制 / 桌面贴图 |
 | 区域截图 | 冻结屏幕快照后框选：拖动、8 控制点缩放、方向键 1px 微调，确认后自动写剪贴板并入历史 |
 | 截图标注 | 矩形 / 箭头 / 画笔 / 文字 / 步骤编号 / 模糊 / 马赛克 / 橡皮擦，全链路撤销 / 重做，标注合成进最终输出 |
@@ -41,7 +52,7 @@ ClipMaster 是一款面向 Windows 桌面的本地剪贴板与截图工具，采
 | 全局快捷键 | 呼出 / 隐藏主窗口并聚焦搜索、启动区域截图；双快捷键录制与冲突校验 |
 | 系统托盘 | 关窗即驻留托盘；托盘不可用时自动保持主窗口可见兜底 |
 | 数据治理 | 按条数 / 天数 / 图片生命周期清理，收藏与置顶受保护；一键清空全部历史 |
-| 数据迁移 | 版本化 schema migration（当前 6 版）与旧数据目录自动迁移 |
+| 数据迁移 | 版本化 schema migration（当前 7 版）与旧数据目录自动迁移 |
 
 ## 系统架构
 
@@ -100,10 +111,10 @@ flowchart LR
 
 ## 数据与存储
 
-- **引擎**：SQLite（WAL 模式）via `rusqlite`，`sessions` 与 `clipboard_items` 两表，6 个查询索引覆盖时间线、类型、会话、置顶收藏与哈希查重路径。
+- **引擎**：SQLite（WAL 模式）via `rusqlite`，`sessions` 与 `clipboard_items` 两表，6 个查询索引覆盖时间线、类型、会话、置顶收藏与哈希查重路径，另有 trigram FTS5 外容表加速全文搜索。
 - **去重**：写入前按 `content_hash` 在 5 分钟窗口内查重——文本取全文哈希，链接取 `link:` 前缀 + 规范化 URL，图片取尺寸 + 采样字节，避免类型间哈希碰撞。
 - **图片**：仅存 PNG 文件与相对路径，按 `images/<YYYY-MM-DD>/` 分日归档，原图与 `_thumb` 缩略图成对管理，删除记录时 best-effort 同步清理文件。
-- **迁移**：`schema_migrations` 版本表驱动升级（当前 6 版，含旧单 URL 文本 → `link` 类型的数据迁移）；旧标识符数据目录在启动时自动搬迁且不覆盖新数据。
+- **迁移**：`schema_migrations` 版本表驱动升级（当前 7 版，含旧单 URL 文本 → `link` 类型迁移和 FTS 索引回填）；旧标识符数据目录在启动时自动搬迁且不覆盖新数据。
 - **清理**：按最大条数、保留天数、图片生命周期三维度执行，置顶与收藏条目不参与自动清理。
 
 完整 schema 与索引定义见 [Database](./docs/DATABASE.md)。
@@ -127,7 +138,7 @@ flowchart LR
 | 门禁 | 范围 | 现状 |
 | --- | --- | --- |
 | `npm test`（Vitest + Testing Library） | 16 个测试文件、87 个用例：UI 交互、分页、设置、安全配置、窗口生命周期 | CI 强制 |
-| `cargo test` | 57 个 Rust 单元测试：数据库 CRUD、迁移、会话清理、路径校验、设置 | CI 强制 |
+| `cargo test` | 62 个 Rust 单元测试：数据库 CRUD、迁移、FTS 同步、会话清理、路径校验、设置 | CI 强制 |
 | `cargo clippy --all-targets -- -D warnings` | 全 target 零警告 | CI 强制 |
 | `cargo fmt --check` | Rust 格式 | CI 强制 |
 | 安全配置测试 | CSP / asset scope 断言锁定，防止安全边界静默回退 | CI 强制 |
@@ -144,7 +155,7 @@ flowchart LR
 | `ClipMaster_x64_en-US.msi` | MSI 安装包，适合传统部署与企业环境 |
 | `SHA256SUMS.txt` | 发布文件校验清单 |
 
-当前构建尚未代码签名，Windows SmartScreen 可能提示。请仅从本仓库 Release 页面下载，并用附带的 SHA256 清单校验安装包完整性。发布产物结构见 [Release Artifacts](./docs/RELEASES.md)。
+当前构建尚未代码签名，Windows SmartScreen 可能提示。请仅从本仓库 Release 页面下载，并用附带的 SHA256 清单校验安装包完整性。发布产物结构见 [Release Artifacts](./docs/RELEASES.md)，签名方案与接入进度见 [Signing](./docs/SIGNING.md)。
 
 ## 本地开发
 
@@ -191,7 +202,7 @@ ClipMaster 将长期保持为本地优先的轻量工具。以下能力**明确�
 
 ## 文档
 
-[架构说明](./docs/ARCHITECTURE.md) · [API 文档](./docs/API.md) · [数据库说明](./docs/DATABASE.md) · [开发工作流](./docs/WORKFLOW.md) · [隐私与数据](./docs/PRIVACY.md) · [FAQ](./docs/FAQ.md) · [排障指南](./docs/TROUBLESHOOTING.md) · [路线图](./docs/ROADMAP.md) · [变更记录](./CHANGELOG.md)
+[架构说明](./docs/ARCHITECTURE.md) · [API 文档](./docs/API.md) · [数据库说明](./docs/DATABASE.md) · [开发工作流](./docs/WORKFLOW.md) · [隐私与数据](./docs/PRIVACY.md) · [FAQ](./docs/FAQ.md) · [排障指南](./docs/TROUBLESHOOTING.md) · [代码签名](./docs/SIGNING.md) · [路线图](./docs/ROADMAP.md) · [变更记录](./CHANGELOG.md)
 
 ## 贡献
 

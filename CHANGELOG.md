@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- 搜索升级为 SQLite FTS5 trigram 全文索引（迁移 v7）：中文/英文子串检索走索引，≥3 字符查询用 `MATCH`，更短查询自动回退 `LIKE`，语义与旧版一致；触发器保持索引与主表同步，旧库自动回填。
+
+### Fixes
+
+- 通过 `CLIPMASTER_APP_DATA_DIR` 覆盖数据目录时，启动时把实际数据目录的 `images/` 与 `screenshot-cache/` 动态加入 asset 协议 scope，自定义目录下图片预览与冻结截图不再 403。
+
+### Docs
+
+- 中英 README 新增界面预览截图（主窗口 / 设置面板 / 桌面贴图），素材为演示数据。
+- 新增 `docs/SIGNING.md`：代码签名供应商对比（SignPath Foundation 首选）与接入步骤；Release Build 工作流内置可选 SignPath 签名 job，凭据未配置时自动跳过。
+- 刷新 `docs/ARCHITECTURE.md` 模块化现状与 `docs/DATABASE.md` 全文搜索章节。
+
 ## 0.1.7
 
 ### Features

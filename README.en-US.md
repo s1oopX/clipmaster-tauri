@@ -27,13 +27,24 @@ Three principles drive the design:
 2. **Secure by default** — a strict CSP (no `unsafe-inline` anywhere), least-privilege capabilities isolated per window, an allowlisted asset protocol for file access, and backend path validation form four independent layers of defense.
 3. **Deliberately bounded scope** — clipboard history plus a lightweight capture-and-use screenshot flow; no OCR, scrolling capture, or rich-text annotation platform (see [Product Boundaries](#product-boundaries)).
 
+## Screenshots
+
+<p align="center">
+  <img src="./docs/assets/screenshot-main.png" width="390" alt="Main window: clipboard history with image thumbnails and link detection" />
+  <img src="./docs/assets/screenshot-settings.png" width="390" alt="Settings panel: general / locale / advanced / about" />
+</p>
+<p align="center">
+  <img src="./docs/assets/screenshot-pin.png" width="620" alt="Desktop pinning: borderless always-on-top window" />
+</p>
+<p align="center"><sub>Main window (history / search / image preview) · Settings panel · Pinned image window</sub></p>
+
 ## Features
 
 | Module | Capabilities |
 | --- | --- |
 | Clipboard history | 500ms polling capture of text / links / images, content-hash dedup within a 5-minute window, event-driven UI updates |
 | Link workflow | URLs recognized as a dedicated `link` type, normalized dedup, one-click open in the system default browser |
-| Search & filter | Content search, type / date / session filters, favorites and pinning, backend pagination |
+| Search & filter | FTS5 trigram full-text index (CJK substring capable), type / date / session filters, favorites and pinning, backend pagination |
 | Image workflow | PNG original + thumbnail pairs archived per day; preview, copy back, pin to desktop |
 | Region screenshot | Frozen-screen selection: drag, 8-handle resize, 1px arrow-key nudge; auto-copies to clipboard and saves to history |
 | Annotation | Rectangle / arrow / pen / text / step badges / blur / mosaic / eraser with full undo–redo; annotations composite into the final output |
@@ -41,7 +52,7 @@ Three principles drive the design:
 | Global hotkeys | Toggle main window with search focus, launch region capture; dual-hotkey recording with conflict validation |
 | System tray | Close-to-tray residency; falls back to a visible main window when the tray is unavailable |
 | Data governance | Cleanup by item count, age, and image lifecycle; pinned and favorited items are protected; one-click clear-all |
-| Data migration | Versioned schema migrations (6 to date) and automatic legacy data directory relocation |
+| Data migration | Versioned schema migrations (7 to date) and automatic legacy data directory relocation |
 
 ## Architecture
 
@@ -100,10 +111,10 @@ The security configuration is locked by tests (`src/tauri-security-config.test.j
 
 ## Data & Storage
 
-- **Engine**: SQLite in WAL mode via `rusqlite`; `sessions` and `clipboard_items` tables with 6 query indexes covering the timeline, type, session, pin/favorite, and hash-dedup paths.
+- **Engine**: SQLite in WAL mode via `rusqlite`; `sessions` and `clipboard_items` tables with 6 query indexes covering the timeline, type, session, pin/favorite, and hash-dedup paths, plus a trigram FTS5 external-content table accelerating full-text search.
 - **Dedup**: writes check `content_hash` within a 5-minute window — full-text hash for text, `link:`-prefixed normalized URL for links, dimensions + sampled bytes for images, preventing cross-type collisions.
 - **Images**: PNG files with relative paths only, archived under `images/<YYYY-MM-DD>/` as original + `_thumb` pairs; record deletion best-effort removes both files.
-- **Migrations**: a `schema_migrations` version table drives upgrades (6 versions to date, including converting legacy single-URL text records to the `link` type); legacy identifier directories are relocated on startup without overwriting newer data.
+- **Migrations**: a `schema_migrations` version table drives upgrades (7 versions to date, including legacy single-URL text-to-`link` conversion and FTS index backfill); legacy identifier directories are relocated on startup without overwriting newer data.
 - **Cleanup**: three dimensions — max items, retention days, image lifecycle — with pinned and favorited records excluded.
 
 Full schema and index definitions: [Database](./docs/DATABASE.md).
@@ -127,7 +138,7 @@ freeze screen snapshot → select region (drag / 8 handles / 1px nudge) → anno
 | Gate | Scope | Status |
 | --- | --- | --- |
 | `npm test` (Vitest + Testing Library) | 16 test files, 87 cases: UI interaction, pagination, settings, security config, window lifecycle | Enforced in CI |
-| `cargo test` | 57 Rust unit tests: database CRUD, migrations, session cleanup, path validation, settings | Enforced in CI |
+| `cargo test` | 62 Rust unit tests: database CRUD, migrations, FTS sync, session cleanup, path validation, settings | Enforced in CI |
 | `cargo clippy --all-targets -- -D warnings` | Zero warnings across all targets | Enforced in CI |
 | `cargo fmt --check` | Rust formatting | Enforced in CI |
 | Security config tests | CSP / asset scope assertions preventing silent boundary regressions | Enforced in CI |
@@ -144,7 +155,7 @@ Official installers are published on [GitHub Releases](https://github.com/s1oopX
 | `ClipMaster_x64_en-US.msi` | MSI package for traditional or enterprise deployment |
 | `SHA256SUMS.txt` | Checksums for release artifacts |
 
-Builds are not yet code-signed, so Windows SmartScreen may warn. Download only from this repository's Releases page and verify installers against the bundled SHA256 manifest. Artifact layout: [Release Artifacts](./docs/RELEASES.md).
+Builds are not yet code-signed, so Windows SmartScreen may warn. Download only from this repository's Releases page and verify installers against the bundled SHA256 manifest. Artifact layout: [Release Artifacts](./docs/RELEASES.md); signing plan and status: [Signing](./docs/SIGNING.md).
 
 ## Development
 
@@ -191,7 +202,7 @@ ClipMaster will remain a local-first, lightweight tool. The following are **expl
 
 ## Documentation
 
-[Architecture](./docs/ARCHITECTURE.md) · [API](./docs/API.md) · [Database](./docs/DATABASE.md) · [Workflow](./docs/WORKFLOW.md) · [Privacy](./docs/PRIVACY.md) · [FAQ](./docs/FAQ.md) · [Troubleshooting](./docs/TROUBLESHOOTING.md) · [Roadmap](./docs/ROADMAP.md) · [Changelog](./CHANGELOG.md)
+[Architecture](./docs/ARCHITECTURE.md) · [API](./docs/API.md) · [Database](./docs/DATABASE.md) · [Workflow](./docs/WORKFLOW.md) · [Privacy](./docs/PRIVACY.md) · [FAQ](./docs/FAQ.md) · [Troubleshooting](./docs/TROUBLESHOOTING.md) · [Signing](./docs/SIGNING.md) · [Roadmap](./docs/ROADMAP.md) · [Changelog](./CHANGELOG.md)
 
 ## Contributing
 

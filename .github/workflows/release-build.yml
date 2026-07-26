@@ -13,6 +13,9 @@ jobs:
   windows:
     name: Windows installers
     runs-on: windows-latest
+    outputs:
+      have-signing: ${{ steps.check-signing.outputs.have-signing }}
+      unsigned-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
 
     steps:
       - name: Checkout
@@ -58,6 +61,7 @@ jobs:
           $lines | Set-Content -LiteralPath "$bundleDir\SHA256SUMS.txt" -Encoding ascii
 
       - name: Upload installers
+        id: upload-unsigned
         uses: actions/upload-artifact@v7
         with:
           name: clipmaster-windows-installers
@@ -65,4 +69,51 @@ jobs:
             src-tauri/target/release/bundle/nsis/*setup.exe
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Check signing credentials
+        id: check-signing
+        shell: pwsh
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          $have = if ($env:SIGNPATH_API_TOKEN) { 'true' } else { 'false' }
+          "have-signing=$have" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+  # 可选签名：仅当仓库配置了 SignPath 凭据时运行（见 docs/SIGNING.md），
+  # 未配置时发布流程与未签名基线完全一致。
+  sign-installers:
+    name: Sign installers (SignPath)
+    needs: windows
+    if: needs.windows.outputs.have-signing == 'true'
+    runs-on: windows-latest
+
+    steps:
+      - name: Submit SignPath signing request
+        uses: signpath/github-action-submit-signing-request@v1.2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ needs.windows.outputs.unsigned-artifact-id }}
+          artifact-configuration-slug: installers
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Regenerate SHA256SUMS for signed artifacts
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem signed -Recurse -File | Where-Object { $_.Extension -in '.exe', '.msi' }
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
+          }
+          $lines | Set-Content -LiteralPath "signed\SHA256SUMS.txt" -Encoding ascii
+
+      - name: Upload signed installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: clipmaster-windows-installers-signed
+          path: signed/**
           if-no-files-found: error
