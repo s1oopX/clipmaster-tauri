@@ -28,7 +28,7 @@ fn search_items_only_returns_requested_date_key() {
         .search_items(
             "Alpha",
             Some("session_1"),
-            &today.date_key,
+            Some(&today.date_key),
             10,
             0,
             None,
@@ -42,7 +42,7 @@ fn search_items_only_returns_requested_date_key() {
         .search_items(
             "Alpha",
             Some("session_1"),
-            &other_date_key,
+            Some(&other_date_key),
             10,
             0,
             None,
@@ -53,13 +53,13 @@ fn search_items_only_returns_requested_date_key() {
     assert_eq!(other_day_results[0].id, other_day.id);
 
     let all_session_today_results = db
-        .search_items("Alpha", None, &today.date_key, 10, 0, None, false)
+        .search_items("Alpha", None, Some(&today.date_key), 10, 0, None, false)
         .unwrap();
     assert_eq!(all_session_today_results.len(), 1);
     assert_eq!(all_session_today_results[0].id, today.id);
 
     let all_session_other_day_results = db
-        .search_items("Alpha", None, &other_date_key, 10, 0, None, false)
+        .search_items("Alpha", None, Some(&other_date_key), 10, 0, None, false)
         .unwrap();
     assert_eq!(all_session_other_day_results.len(), 1);
     assert_eq!(all_session_other_day_results[0].id, other_day.id);
@@ -84,7 +84,7 @@ fn search_items_matches_cjk_substring_via_fts() {
         .unwrap();
 
     let results = db
-        .search_items("语义滑块", None, &hit.date_key, 10, 0, None, false)
+        .search_items("语义滑块", None, Some(&hit.date_key), 10, 0, None, false)
         .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, hit.id);
@@ -104,7 +104,15 @@ fn search_items_is_case_insensitive_via_fts() {
         .unwrap();
 
     let results = db
-        .search_items("assetprotocol", None, &item.date_key, 10, 0, None, false)
+        .search_items(
+            "assetprotocol",
+            None,
+            Some(&item.date_key),
+            10,
+            0,
+            None,
+            false,
+        )
         .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, item.id);
@@ -121,7 +129,7 @@ fn search_items_short_query_falls_back_to_like() {
 
     // 两个字符不足以命中 trigram 索引，应回退 LIKE 且仍能找到
     let results = db
-        .search_items("滑块", None, &item.date_key, 10, 0, None, false)
+        .search_items("滑块", None, Some(&item.date_key), 10, 0, None, false)
         .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, item.id);
@@ -139,14 +147,14 @@ fn search_items_fts_index_follows_annotation_update_and_delete() {
     db.update_item_annotation(&item.id, Some("重要令牌备注"))
         .unwrap();
     let annotated = db
-        .search_items("令牌备注", None, &item.date_key, 10, 0, None, false)
+        .search_items("令牌备注", None, Some(&item.date_key), 10, 0, None, false)
         .unwrap();
     assert_eq!(annotated.len(), 1);
     assert_eq!(annotated[0].id, item.id);
 
     db.delete_item(&item.id).unwrap();
     let after_delete = db
-        .search_items("令牌备注", None, &item.date_key, 10, 0, None, false)
+        .search_items("令牌备注", None, Some(&item.date_key), 10, 0, None, false)
         .unwrap();
     assert!(after_delete.is_empty());
 
@@ -184,23 +192,85 @@ fn search_items_treats_empty_and_like_wildcards_as_literals() {
         .unwrap();
 
     let empty_results = db
-        .search_items("   ", None, &percent_item.date_key, 10, 0, None, false)
+        .search_items(
+            "   ",
+            None,
+            Some(&percent_item.date_key),
+            10,
+            0,
+            None,
+            false,
+        )
         .unwrap();
     assert!(empty_results.is_empty());
 
     let percent_results = db
-        .search_items("%", None, &percent_item.date_key, 10, 0, None, false)
+        .search_items("%", None, Some(&percent_item.date_key), 10, 0, None, false)
         .unwrap();
     assert_eq!(percent_results.len(), 1);
     assert_eq!(percent_results[0].id, percent_item.id);
     assert_ne!(percent_results[0].id, percent_neighbor.id);
 
     let underscore_results = db
-        .search_items("_", None, &underscore_item.date_key, 10, 0, None, false)
+        .search_items(
+            "_",
+            None,
+            Some(&underscore_item.date_key),
+            10,
+            0,
+            None,
+            false,
+        )
         .unwrap();
     assert_eq!(underscore_results.len(), 1);
     assert_eq!(underscore_results[0].id, underscore_item.id);
     assert_ne!(underscore_results[0].id, underscore_neighbor.id);
+
+    let _ = fs::remove_dir_all(data_dir);
+}
+
+#[test]
+fn search_items_without_date_key_spans_all_dates() {
+    let (db, data_dir) = temp_database();
+    let today = db
+        .insert_item(
+            text_item_with_content("Alpha 里程碑纪要"),
+            DEFAULT_TIME_ZONE,
+        )
+        .unwrap();
+    let other_day = db
+        .insert_item(
+            text_item_with_content("Alpha 历史遗留记录"),
+            DEFAULT_TIME_ZONE,
+        )
+        .unwrap();
+    let other_date_key = if today.date_key == "2026-06-06" {
+        "2026-06-05".to_string()
+    } else {
+        "2026-06-06".to_string()
+    };
+
+    {
+        let conn = db.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE clipboard_items SET date_key = ?1 WHERE id = ?2",
+            params![other_date_key, other_day.id],
+        )
+        .unwrap();
+    }
+
+    // 不指定日期：两天的记录都能被搜到
+    let results = db
+        .search_items("Alpha", None, None, 10, 0, None, false)
+        .unwrap();
+    assert_eq!(results.len(), 2);
+
+    // 指定日期时仍然只命中该分区
+    let scoped = db
+        .search_items("Alpha", None, Some(&other_date_key), 10, 0, None, false)
+        .unwrap();
+    assert_eq!(scoped.len(), 1);
+    assert_eq!(scoped[0].id, other_day.id);
 
     let _ = fs::remove_dir_all(data_dir);
 }

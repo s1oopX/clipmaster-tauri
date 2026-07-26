@@ -50,15 +50,23 @@ impl ClipboardWriteState {
     pub fn consume_pending_hash(&self, hash: &str) -> bool {
         let mut pending = self.pending_hashes.lock();
         Self::prune_expired(&mut pending);
-        let Some(position) = pending
+        match pending
             .iter()
             .position(|pending_write| pending_write.hash == hash)
-        else {
-            return false;
-        };
-
-        pending.remove(position);
-        true
+        {
+            Some(position) => {
+                // 命中项之前排队的写入已被覆盖、永远不会被轮询观察到，
+                // 一并清除，避免它们滞留后误吞用户后续的真实复制。
+                pending.drain(..=position);
+                true
+            }
+            None => {
+                // 观察到的内容不是任何待消费的自写回，说明剪贴板已被外部
+                // 内容接管：此前排队的自写回全部过时，立即清空。
+                pending.clear();
+                false
+            }
+        }
     }
 
     pub fn forget_pending_hash(&self, hash: &str) {
@@ -97,79 +105,110 @@ impl ClipboardService {
         }
     }
 
-    /// 启动剪贴板监听服务
+    /// 启动剪贴板监听服务（带 panic 监督：轮询任务异常结束时自动重启）
     pub fn start(&self, app_handle: AppHandle) {
         let last_hash = Arc::clone(&self.last_hash);
         let last_sequence = Arc::clone(&self.last_sequence);
 
         tauri::async_runtime::spawn(async move {
-            let mut clipboard = loop {
-                match Clipboard::new() {
-                    Ok(clipboard) => break clipboard,
-                    Err(error) => {
-                        eprintln!("初始化剪贴板失败，将在 500ms 后重试: {}", error);
-                        sleep(Duration::from_millis(500)).await;
-                    }
-                }
-            };
-
             loop {
-                let settings = app_handle.state::<SettingsStore>();
-                if !settings.get().clipboard_monitor_enabled {
-                    sleep(Duration::from_millis(500)).await;
-                    continue;
-                }
+                let handle = tauri::async_runtime::spawn(Self::poll_loop(
+                    app_handle.clone(),
+                    Arc::clone(&last_hash),
+                    Arc::clone(&last_sequence),
+                ));
 
-                let clipboard_sequence = clipboard_sequence_number();
-
-                if Self::should_skip_sequence(&last_sequence, clipboard_sequence) {
-                    sleep(Duration::from_millis(500)).await;
-                    continue;
-                }
-
-                // 尝试读取剪贴板内容
-                if let Ok(content) = Self::get_clipboard_content(&mut clipboard) {
-                    let hash = Self::calculate_hash(&content);
-
-                    if Self::should_skip_self_write(&app_handle, &hash) {
-                        Self::mark_clipboard_item_saved(
-                            &last_hash,
-                            &last_sequence,
-                            &hash,
-                            clipboard_sequence,
-                        );
-                        sleep(Duration::from_millis(500)).await;
-                        continue;
+                match handle.await {
+                    Ok(()) => break,
+                    Err(error) => {
+                        eprintln!("剪贴板监听任务异常结束，2 秒后自动重启: {}", error);
+                        sleep(Duration::from_secs(2)).await;
                     }
+                }
+            }
+        });
+    }
 
-                    let hash_changed = {
-                        let last = last_hash.lock();
-                        hash.as_str() != last.as_str()
-                    };
-                    let should_save = clipboard_sequence.is_some() || hash_changed;
+    async fn poll_loop(
+        app_handle: AppHandle,
+        last_hash: Arc<Mutex<String>>,
+        last_sequence: Arc<Mutex<Option<u32>>>,
+    ) {
+        let mut clipboard = loop {
+            match Clipboard::new() {
+                Ok(clipboard) => break clipboard,
+                Err(error) => {
+                    eprintln!("初始化剪贴板失败，将在 500ms 后重试: {}", error);
+                    sleep(Duration::from_millis(500)).await;
+                }
+            }
+        };
 
-                    if should_save {
-                        // 保存到数据库
-                        match Self::save_clipboard_item(&app_handle, content, hash.clone()).await {
-                            Ok(()) => {
-                                Self::mark_clipboard_item_saved(
-                                    &last_hash,
-                                    &last_sequence,
-                                    &hash,
-                                    clipboard_sequence,
-                                );
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to save clipboard item: {}", e);
-                            }
+        loop {
+            let settings = app_handle.state::<SettingsStore>();
+            if !settings.get().clipboard_monitor_enabled {
+                sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+
+            let clipboard_sequence = clipboard_sequence_number();
+
+            if Self::should_skip_sequence(&last_sequence, clipboard_sequence) {
+                sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+
+            // 尊重密码管理器等来源的隐私标记：跳过且不读取内容
+            if clipboard_marked_private() {
+                if let Some(sequence) = clipboard_sequence {
+                    *last_sequence.lock() = Some(sequence);
+                }
+                sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+
+            // 尝试读取剪贴板内容
+            if let Ok(content) = Self::get_clipboard_content(&mut clipboard) {
+                let hash = Self::calculate_hash(&content);
+
+                if Self::should_skip_self_write(&app_handle, &hash) {
+                    Self::mark_clipboard_item_saved(
+                        &last_hash,
+                        &last_sequence,
+                        &hash,
+                        clipboard_sequence,
+                    );
+                    sleep(Duration::from_millis(500)).await;
+                    continue;
+                }
+
+                let hash_changed = {
+                    let last = last_hash.lock();
+                    hash.as_str() != last.as_str()
+                };
+                let should_save = clipboard_sequence.is_some() || hash_changed;
+
+                if should_save {
+                    // 保存到数据库
+                    match Self::save_clipboard_item(&app_handle, content, hash.clone()).await {
+                        Ok(()) => {
+                            Self::mark_clipboard_item_saved(
+                                &last_hash,
+                                &last_sequence,
+                                &hash,
+                                clipboard_sequence,
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to save clipboard item: {}", e);
                         }
                     }
                 }
-
-                // 每 500ms 检查一次
-                sleep(Duration::from_millis(500)).await;
             }
-        });
+
+            // 每 500ms 检查一次
+            sleep(Duration::from_millis(500)).await;
+        }
     }
 
     fn should_skip_sequence(
@@ -282,8 +321,19 @@ impl ClipboardService {
             }
         };
 
-        // 插入数据库
-        let saved_item = db.insert_item(item, &time_zone)?;
+        // 插入数据库；图片记录插入失败时回收刚落盘的文件，避免孤儿
+        let image_files = (item.image_path.clone(), item.thumbnail_path.clone());
+        let saved_item = match db.insert_item(item, &time_zone) {
+            Ok(saved_item) => saved_item,
+            Err(error) => {
+                if let Ok(app_data_dir) = app_data::resolve_app_data_dir(app_handle) {
+                    for relative_path in [image_files.0, image_files.1].into_iter().flatten() {
+                        let _ = fs::remove_file(app_data_dir.join(relative_path));
+                    }
+                }
+                return Err(error);
+            }
+        };
 
         // 通知前端
         app_handle.emit("clipboard:new-item", &saved_item)?;
@@ -349,6 +399,66 @@ impl ClipboardService {
     }
 }
 
+/// 剪贴板内容是否带有"请勿记录"的隐私标记。
+///
+/// 密码管理器（KeePass / 1Password / Bitwarden 等）复制密码时会设置
+/// `ExcludeClipboardContentFromMonitorProcessing` 或值为 0 的
+/// `CanIncludeInClipboardHistory` 剪贴板格式，剪贴板管理器应当遵守。
+#[cfg(target_os = "windows")]
+fn clipboard_marked_private() -> bool {
+    use std::sync::OnceLock;
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+        RegisterClipboardFormatW,
+    };
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+
+    fn register_format(name: &str) -> u32 {
+        let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe { RegisterClipboardFormatW(wide.as_ptr()) }
+    }
+
+    static EXCLUDE_FORMAT: OnceLock<u32> = OnceLock::new();
+    static CAN_INCLUDE_FORMAT: OnceLock<u32> = OnceLock::new();
+
+    let exclude_format = *EXCLUDE_FORMAT
+        .get_or_init(|| register_format("ExcludeClipboardContentFromMonitorProcessing"));
+    let can_include_format =
+        *CAN_INCLUDE_FORMAT.get_or_init(|| register_format("CanIncludeInClipboardHistory"));
+
+    unsafe {
+        if exclude_format != 0 && IsClipboardFormatAvailable(exclude_format) != 0 {
+            return true;
+        }
+
+        if can_include_format != 0 && IsClipboardFormatAvailable(can_include_format) != 0 {
+            // 格式存在时读取 DWORD 值：0 = 明确禁止入历史。
+            // 读取失败按隐私内容处理——写入方已明确表达了偏好。
+            if OpenClipboard(0) == 0 {
+                return true;
+            }
+            let mut private = true;
+            let handle = GetClipboardData(can_include_format);
+            if handle != 0 {
+                let pointer = GlobalLock(handle) as *const u32;
+                if !pointer.is_null() {
+                    private = *pointer == 0;
+                    GlobalUnlock(handle);
+                }
+            }
+            CloseClipboard();
+            return private;
+        }
+    }
+
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clipboard_marked_private() -> bool {
+    false
+}
+
 pub fn calculate_text_clipboard_hash(text: &str) -> String {
     if is_safe_web_url(text) {
         link_content_hash(text)
@@ -358,17 +468,14 @@ pub fn calculate_text_clipboard_hash(text: &str) -> String {
 }
 
 pub fn calculate_image_clipboard_hash(width: usize, height: usize, bytes: &[u8]) -> String {
-    let mut hash_data = Vec::new();
-
-    hash_data.extend_from_slice(&width.to_le_bytes());
-    hash_data.extend_from_slice(&height.to_le_bytes());
-
-    let sample_step = 100.min(bytes.len() / 100).max(1);
-    for i in (0..bytes.len()).step_by(sample_step) {
-        hash_data.push(bytes[i]);
-    }
-
-    format!("{:x}", md5::compute(&hash_data))
+    // 全量哈希：采样哈希会让小差异图片（光标、计时器数字）碰撞，
+    // 命中去重后新图被静默丢弃。哈希只在剪贴板序列号变化时计算一次，
+    // 全量 MD5 对 4K 截图也只有毫秒级开销。
+    let mut context = md5::Context::new();
+    context.consume(width.to_le_bytes());
+    context.consume(height.to_le_bytes());
+    context.consume(bytes);
+    format!("{:x}", context.compute())
 }
 
 impl Default for ClipboardService {
@@ -435,9 +542,33 @@ mod tests {
             state.suppress_next_hash(format!("hash-{index}"));
         }
 
-        assert!(!state.consume_pending_hash("hash-0"));
-        assert!(!state.consume_pending_hash("hash-1"));
+        // 只保留最近 16 条：最早两条被挤出，最早的幸存者是 hash-2
         assert!(state.consume_pending_hash("hash-2"));
+        assert!(state.consume_pending_hash("hash-3"));
+    }
+
+    #[test]
+    fn consuming_pending_hash_drops_older_queued_writes() {
+        let state = ClipboardWriteState::default();
+
+        state.suppress_next_hash("older".to_string());
+        state.suppress_next_hash("newer".to_string());
+
+        // 轮询先观察到较新的写入：更早排队的写入已被覆盖、不可能再被观察到
+        assert!(state.consume_pending_hash("newer"));
+        assert!(!state.consume_pending_hash("older"));
+    }
+
+    #[test]
+    fn external_content_clears_stale_pending_hashes() {
+        let state = ClipboardWriteState::default();
+
+        state.suppress_next_hash("self-write".to_string());
+
+        // 观察到外部内容后，滞留的自写回全部过时；
+        // 随后用户复制相同内容不应再被误吞
+        assert!(!state.consume_pending_hash("external"));
+        assert!(!state.consume_pending_hash("self-write"));
     }
 
     #[test]

@@ -53,7 +53,8 @@ pub async fn pin_image(app: AppHandle, image_path: String) -> Result<(), String>
         .map_err(|e| e.to_string())?;
 
     window.set_always_on_top(true).map_err(|e| e.to_string())?;
-    window.set_focus().map_err(|e| e.to_string())?;
+    // 刻意不抢焦点：贴图是参照物，不应打断用户当前输入；
+    // 且贴图窗监听 Esc 关闭，抢焦点会让用户在其他程序里的按键误关贴图。
 
     Ok(())
 }

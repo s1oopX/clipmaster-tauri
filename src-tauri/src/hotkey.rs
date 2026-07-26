@@ -32,17 +32,23 @@ impl HotkeyManager {
     }
 
     fn register_hotkeys(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
+        // 独立注册：一个快捷键被其他程序占用不应连累另一个，
+        // 部分可用优于全部静默失效；失败信息合并上报由调用方展示。
+        let mut errors = Vec::new();
+
         if let Err(error) = Self::register_screenshot_hotkey(app, &settings.screenshot_hotkey) {
-            let _ = Self::unregister_all(app);
-            return Err(error);
+            errors.push(error);
         }
 
         if let Err(error) = Self::register_main_window_hotkey(app, &settings.main_window_hotkey) {
-            let _ = Self::unregister_all(app);
-            return Err(error);
+            errors.push(error);
         }
 
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("；"))
+        }
     }
 
     fn register_screenshot_hotkey(app: &AppHandle, hotkey: &str) -> Result<(), String> {

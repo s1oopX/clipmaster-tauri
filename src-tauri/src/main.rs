@@ -9,6 +9,7 @@ mod database;
 mod dev_port;
 mod hotkey;
 mod link;
+mod maintenance;
 mod models;
 mod session;
 mod settings;
@@ -31,6 +32,15 @@ fn main() {
     dev_port::apply_project_dev_port_to_context(&mut context);
 
     let app = tauri::Builder::default()
+        // 单实例守卫：双开会导致双份剪贴板记录与快捷键注册冲突，
+        // 第二个实例只负责唤起已运行实例的主窗口后退出
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // 获取应用数据目录
@@ -57,7 +67,7 @@ fn main() {
             let show_main_window_on_start = settings_store.get().show_main_window_on_start;
 
             // 初始化数据库
-            let db = Database::new(app_data_dir).map_err(|error| {
+            let db = Database::new(app_data_dir.clone()).map_err(|error| {
                 startup_error("初始化历史数据库失败，请检查数据文件或磁盘权限", error)
             })?;
             if let Err(error) = db.rebuild_date_keys(&settings_store.get().time_zone) {
@@ -84,6 +94,22 @@ fn main() {
             // 启动剪贴板监听服务
             let clipboard_service = ClipboardService::new();
             clipboard_service.start(app.handle().clone());
+
+            // 后台清扫孤儿文件：删除失败/中途崩溃遗留的无主图片与冻结截图缓存
+            let sweep_handle = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                match maintenance::sweep_orphan_files(&app_data_dir, &sweep_handle) {
+                    Ok(summary) => {
+                        if summary.removed_images > 0 || summary.removed_cache_files > 0 {
+                            println!(
+                                "孤儿文件清扫完成：图片 {} 个，截图缓存 {} 个",
+                                summary.removed_images, summary.removed_cache_files
+                            );
+                        }
+                    }
+                    Err(error) => eprintln!("孤儿文件清扫失败，已跳过: {}", error),
+                }
+            });
 
             // 注册全局快捷键
             if let Err(e) = HotkeyManager::register(app.handle()) {
@@ -158,6 +184,13 @@ fn main() {
         });
 
     app.run(|app_handle, event| {
+        // 覆盖所有退出路径（托盘退出、无托盘关窗、系统关机）收尾会话；
+        // end_current_session 幂等，与托盘退出路径重复调用无害。
+        if matches!(event, tauri::RunEvent::Exit) {
+            tray::end_current_session(app_handle);
+            return;
+        }
+
         if let tauri::RunEvent::WindowEvent {
             label,
             event: tauri::WindowEvent::CloseRequested { api, .. },

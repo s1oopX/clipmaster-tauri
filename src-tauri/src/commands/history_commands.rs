@@ -1,10 +1,9 @@
 use chrono::NaiveDate;
 use tauri::{AppHandle, State};
 
-use crate::database::{date_key_now, Database};
+use crate::database::Database;
 use crate::models::{ClipboardDay, ClipboardItem, Session};
 use crate::session::SessionManager;
-use crate::settings::SettingsStore;
 
 use super::cleanup_commands::{cleanup_file_target_best_effort, cleanup_item_files_best_effort};
 
@@ -156,7 +155,6 @@ pub async fn clear_session(
 #[allow(clippy::too_many_arguments)]
 pub async fn search_items(
     db: State<'_, Database>,
-    settings: State<'_, SettingsStore>,
     query: String,
     session_id: Option<String>,
     date_key: Option<String>,
@@ -165,20 +163,22 @@ pub async fn search_items(
     item_type: Option<String>,
     favorite_only: Option<bool>,
 ) -> Result<Vec<ClipboardItem>, String> {
+    // 未指定日期 = 搜索全部历史（FTS 索引使跨天检索代价可控）
     let effective_date_key = date_key
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| date_key_now(&settings.get().time_zone));
+        .map(ToOwned::to_owned);
 
-    validate_date_key(&effective_date_key)?;
+    if let Some(date_key) = effective_date_key.as_deref() {
+        validate_date_key(date_key)?;
+    }
     let item_type = normalized_item_type(item_type.as_deref())?;
 
     db.search_items(
         &query,
         session_id.as_deref(),
-        &effective_date_key,
+        effective_date_key.as_deref(),
         bounded_limit(limit, 100, 500),
         bounded_offset(offset),
         item_type,

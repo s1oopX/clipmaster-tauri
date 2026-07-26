@@ -13,7 +13,7 @@ use super::{
 
 impl Database {
     pub fn rebuild_date_keys(&self, time_zone: &str) -> Result<()> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
 
         let items = {
@@ -38,7 +38,7 @@ impl Database {
 
     /// 插入剪贴板记录；同一设置时区自然日内的相同内容只刷新记录时间。
     pub fn insert_item(&self, item: CreateClipboardItem, time_zone: &str) -> Result<ClipboardItem> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let session_id = item.session_id.clone();
 
@@ -106,7 +106,7 @@ impl Database {
         item_type: Option<&str>,
         favorite_only: bool,
     ) -> Result<Vec<ClipboardItem>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
 
         let sql = format!(
             "SELECT {}
@@ -136,7 +136,7 @@ impl Database {
         limit: i32,
         offset: i32,
     ) -> Result<Vec<ClipboardItem>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
 
         let sql = format!(
             "SELECT {}
@@ -161,7 +161,7 @@ impl Database {
         content_hash: &str,
         time_zone: &str,
     ) -> Result<Option<ClipboardItem>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let timestamp = Utc::now().timestamp_millis();
         let date_key = date_key_from_timestamp(timestamp, time_zone);
 
@@ -170,7 +170,7 @@ impl Database {
 
     /// 获取单条剪贴板记录
     pub fn get_item(&self, item_id: &str) -> Result<Option<ClipboardItem>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
 
         let sql = format!(
             "SELECT {}
@@ -189,7 +189,7 @@ impl Database {
 
     /// 删除记录
     pub fn delete_item(&self, item_id: &str) -> Result<()> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let session_id: String = tx
             .query_row(
@@ -212,7 +212,7 @@ impl Database {
 
     /// 切换收藏状态
     pub fn toggle_favorite(&self, item_id: &str) -> Result<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
 
         let is_favorite: i32 = conn
             .query_row(
@@ -235,7 +235,7 @@ impl Database {
 
     /// 切换置顶状态
     pub fn toggle_pinned(&self, item_id: &str) -> Result<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
 
         let is_pinned: i32 = conn
             .query_row(
@@ -258,7 +258,7 @@ impl Database {
 
     /// 更新记录内容
     pub fn update_item_content(&self, item_id: &str, new_content: &str) -> Result<ClipboardItem> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let (item_type, date_key): (String, String) = conn
             .query_row(
                 "SELECT type, date_key FROM clipboard_items WHERE id = ?1",
@@ -324,21 +324,16 @@ impl Database {
             .map_err(Into::into)
     }
 
-    /// 更新记录标注，不修改原始内容和预览
+    /// 更新记录标注，不修改原始内容和预览。
+    /// 标注不再联动收藏状态：带标注的记录由清理逻辑直接保护，
+    /// 避免「加标注被强制收藏、删标注不还原」的幽灵收藏。
     pub fn update_item_annotation(&self, item_id: &str, annotation: Option<&str>) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
 
-        let updated = if annotation.is_some() {
-            conn.execute(
-                "UPDATE clipboard_items SET annotation = ?1, is_favorite = 1 WHERE id = ?2",
-                params![annotation, item_id],
-            )?
-        } else {
-            conn.execute(
-                "UPDATE clipboard_items SET annotation = ?1 WHERE id = ?2",
-                params![annotation, item_id],
-            )?
-        };
+        let updated = conn.execute(
+            "UPDATE clipboard_items SET annotation = ?1 WHERE id = ?2",
+            params![annotation, item_id],
+        )?;
 
         if updated == 0 {
             return Err(anyhow::anyhow!("记录不存在"));
@@ -349,7 +344,7 @@ impl Database {
 
     /// 获取可用日期列表
     pub fn get_available_days(&self, limit: i32) -> Result<Vec<ClipboardDay>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(
             "SELECT date_key, COUNT(*) AS item_count, MIN(timestamp), MAX(timestamp)
              FROM clipboard_items
@@ -381,7 +376,7 @@ impl Database {
         item_type: Option<&str>,
         favorite_only: bool,
     ) -> Result<Vec<ClipboardItem>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let sql = format!(
             "SELECT {}
              FROM clipboard_items
@@ -404,13 +399,13 @@ impl Database {
         Ok(items)
     }
 
-    /// 搜索记录
+    /// 搜索记录；`date_key` 为 None 时搜索全部日期
     #[allow(clippy::too_many_arguments)]
     pub fn search_items(
         &self,
         query: &str,
         session_id: Option<&str>,
-        date_key: &str,
+        date_key: Option<&str>,
         limit: i32,
         offset: i32,
         item_type: Option<&str>,
@@ -426,7 +421,7 @@ impl Database {
         };
         let search_param = if use_fts { &fts_phrase } else { &like_pattern };
 
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
 
         // 根据是否有 session_id 分别执行不同的查询
         let items = if let Some(sid) = session_id {
@@ -442,7 +437,7 @@ impl Database {
             let sql = format!(
                 "SELECT {}
                  FROM clipboard_items
-                 WHERE date_key = ?1
+                 WHERE (?1 IS NULL OR date_key = ?1)
                    AND session_id = ?2
                    AND (?6 IS NULL OR type = ?6)
                    AND (?7 = 0 OR is_favorite = 1)
@@ -480,7 +475,7 @@ impl Database {
             let sql = format!(
                 "SELECT {}
                  FROM clipboard_items
-                 WHERE date_key = ?1
+                 WHERE (?1 IS NULL OR date_key = ?1)
                    AND (?5 IS NULL OR type = ?5)
                    AND (?6 = 0 OR is_favorite = 1)
                    AND {}

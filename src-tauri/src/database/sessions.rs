@@ -9,7 +9,7 @@ use super::{cleanup::query_cleanup_file_targets, Database};
 impl Database {
     /// 创建会话
     pub fn create_session(&self, session_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let now = Utc::now().timestamp_millis();
 
         // 结束所有活跃会话
@@ -37,7 +37,7 @@ impl Database {
 
     /// 结束会话
     pub fn end_session(&self, session_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let now = Utc::now().timestamp_millis();
 
         // 统计记录数
@@ -58,7 +58,7 @@ impl Database {
 
     /// 获取当前会话
     pub fn get_current_session(&self) -> Result<Option<Session>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
 
         let result = conn.query_row(
             "SELECT id, start_time, end_time, item_count, is_active
@@ -84,7 +84,7 @@ impl Database {
 
     /// 获取会话列表
     pub fn get_sessions(&self, limit: i32) -> Result<Vec<Session>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, start_time, end_time, item_count, is_active
@@ -110,7 +110,7 @@ impl Database {
 
     /// 清空会话
     pub fn clear_session(&self, session_id: &str) -> Result<Vec<CleanupFileTarget>> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
 
         let session_exists: i32 = tx.query_row(

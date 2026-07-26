@@ -172,12 +172,13 @@ fn updating_annotation_requires_existing_record() {
     let annotated = db.get_item(&item.id).unwrap().unwrap();
     assert_eq!(annotated.annotation.as_deref(), Some("用于发票核对"));
     assert_eq!(annotated.content.as_deref(), Some("Alpha token"));
-    assert!(annotated.is_favorite);
+    // 标注不再联动收藏：保护由清理逻辑按 annotation 字段直接实现
+    assert!(!annotated.is_favorite);
 
     db.update_item_annotation(&item.id, None).unwrap();
     let cleared = db.get_item(&item.id).unwrap().unwrap();
     assert_eq!(cleared.annotation, None);
-    assert!(cleared.is_favorite);
+    assert!(!cleared.is_favorite);
 
     let error = db
         .update_item_annotation("missing-item", Some("不会保存"))

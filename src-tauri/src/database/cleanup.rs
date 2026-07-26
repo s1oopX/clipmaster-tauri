@@ -15,22 +15,26 @@ impl Database {
         max_items: i32,
         keep_days: i32,
     ) -> Result<Vec<ClipboardItem>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let keep_threshold =
             Utc::now().timestamp_millis() - (keep_days as i64 * 24 * 60 * 60 * 1000);
 
+        // 带标注的记录视为用户显式标记的重要内容，与置顶/收藏一样不参与自动清理
         let sql = format!(
             "SELECT {}
              FROM clipboard_items
              WHERE is_pinned = 0
                AND is_favorite = 0
+               AND (annotation IS NULL OR annotation = '')
                AND (
                     timestamp < ?2
                     OR id IN (
                         SELECT id FROM (
                             SELECT id
                             FROM clipboard_items
-                            WHERE is_pinned = 0 AND is_favorite = 0
+                            WHERE is_pinned = 0
+                              AND is_favorite = 0
+                              AND (annotation IS NULL OR annotation = '')
                             ORDER BY timestamp DESC
                             LIMIT -1 OFFSET ?1
                         )
@@ -49,13 +53,39 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    /// 数据库仍引用的全部图片相对路径（原图 + 缩略图），供启动孤儿清扫使用
+    pub fn referenced_image_paths(&self) -> Result<std::collections::HashSet<String>> {
+        let conn = self.lock_conn();
+        let mut stmt = conn.prepare(
+            "SELECT image_path, thumbnail_path
+             FROM clipboard_items
+             WHERE image_path IS NOT NULL OR thumbnail_path IS NOT NULL",
+        )?;
+
+        let mut paths = std::collections::HashSet::new();
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+            ))
+        })?;
+        for row in rows {
+            let (image_path, thumbnail_path) = row?;
+            for path in [image_path, thumbnail_path].into_iter().flatten() {
+                paths.insert(path.replace('\\', "/"));
+            }
+        }
+
+        Ok(paths)
+    }
+
     /// 删除多条记录
     pub fn delete_items(&self, item_ids: &[String]) -> Result<()> {
         if item_ids.is_empty() {
             return Ok(());
         }
 
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let mut affected_session_ids = Vec::new();
 
@@ -89,7 +119,7 @@ impl Database {
 
     /// 清空全部剪贴板历史，保留当前活动会话并重置计数。
     pub fn clear_all_history(&self) -> Result<(CleanupPlan, Vec<CleanupFileTarget>)> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let plan = query_cleanup_plan(
             &tx,

@@ -219,7 +219,7 @@ fn backfills_fts_index_for_legacy_rows() {
     };
 
     let results = db
-        .search_items("语义滑块", None, &date_key, 10, 0, None, false)
+        .search_items("语义滑块", None, Some(&date_key), 10, 0, None, false)
         .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, "legacy_text");

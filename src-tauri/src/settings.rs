@@ -88,7 +88,7 @@ impl SettingsStore {
         };
         let settings = Self::normalize(settings);
         if !path.exists() {
-            if let Err(error) = fs::write(&path, serde_json::to_string_pretty(&settings)?) {
+            if let Err(error) = write_settings_file(&path, &settings) {
                 eprintln!("写入默认设置失败，已继续启动: {}", error);
             }
         }
@@ -113,9 +113,10 @@ impl SettingsStore {
         validate_settings_hotkeys(&settings).map_err(anyhow::Error::msg)?;
         validate_dev_server_port(settings.dev_server_port).map_err(anyhow::Error::msg)?;
         let normalized = Self::normalize(settings);
-        let raw = serde_json::to_string_pretty(&normalized)?;
-        fs::write(&self.path, raw)?;
-        *self.current.lock().unwrap() = normalized.clone();
+        // 持有内存锁贯穿整个落盘过程，避免两次并发保存交错写文件
+        let mut current = self.current.lock().unwrap();
+        write_settings_file(&self.path, &normalized)?;
+        *current = normalized.clone();
         Ok(normalized)
     }
 
@@ -154,11 +155,27 @@ impl SettingsStore {
 }
 
 fn safe_fallback_settings() -> AppSettings {
+    // 设置文件损坏 ≠ 用户关闭了监听：保持核心功能开启，并强制显示主窗口，
+    // 让用户能察觉设置已被重置（损坏文件已另存备份）。
     AppSettings {
-        clipboard_monitor_enabled: false,
         show_main_window_on_start: true,
         ..AppSettings::default()
     }
+}
+
+/// 原子落盘：先写临时文件并 fsync，再 rename 覆盖，避免写一半崩溃留下损坏 JSON。
+fn write_settings_file(path: &Path, settings: &AppSettings) -> Result<()> {
+    use std::io::Write;
+
+    let raw = serde_json::to_string_pretty(settings)?;
+    let tmp_path = path.with_extension("json.tmp");
+    {
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(raw.as_bytes())?;
+        file.sync_all()?;
+    }
+    fs::rename(&tmp_path, path)?;
+    Ok(())
 }
 
 fn backup_corrupt_settings_file(path: &Path) -> Result<()> {
@@ -467,7 +484,7 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_settings_file_falls_back_to_visible_window_and_disabled_monitor() {
+    fn corrupt_settings_file_falls_back_to_visible_window_with_monitor_enabled() {
         let data_dir =
             std::env::temp_dir().join(format!("clipmaster-settings-{}", nanoid::nanoid!()));
         fs::create_dir_all(&data_dir).unwrap();
@@ -476,7 +493,8 @@ mod tests {
         let store = SettingsStore::new(&data_dir).unwrap();
         let settings = store.get();
 
-        assert!(!settings.clipboard_monitor_enabled);
+        // 设置文件损坏 ≠ 用户关闭监听：核心功能保持开启，主窗口强制显示
+        assert!(settings.clipboard_monitor_enabled);
         assert!(settings.show_main_window_on_start);
         assert!(fs::read_dir(&data_dir).unwrap().any(|entry| entry
             .unwrap()

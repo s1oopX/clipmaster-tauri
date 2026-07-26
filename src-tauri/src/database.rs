@@ -61,6 +61,14 @@ impl Database {
             conn: Mutex::new(conn),
         })
     }
+
+    /// 获取连接锁并从毒化状态恢复：SQLite 连接按语句保持一致，
+    /// 持锁线程 panic 不应让监听任务连锁死亡。
+    fn lock_conn(&self) -> std::sync::MutexGuard<'_, Connection> {
+        self.conn
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
 /// 为 trigram FTS5 构造子串匹配短语。trigram 索引要求至少 3 个字符才能命中，

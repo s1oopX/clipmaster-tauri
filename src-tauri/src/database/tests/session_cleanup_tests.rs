@@ -199,3 +199,30 @@ fn clearing_session_requires_existing_session_and_removes_records() {
 
     let _ = fs::remove_dir_all(data_dir);
 }
+
+#[test]
+fn annotated_items_are_protected_from_cleanup() {
+    let (db, data_dir) = temp_database();
+    let annotated = db
+        .insert_item(text_item_with_content("带标注的旧记录"), DEFAULT_TIME_ZONE)
+        .unwrap();
+    let plain = db
+        .insert_item(text_item_with_content("普通旧记录"), DEFAULT_TIME_ZONE)
+        .unwrap();
+    db.update_item_annotation(&annotated.id, Some("重要备注"))
+        .unwrap();
+
+    {
+        let conn = db.conn.lock().unwrap();
+        conn.execute("UPDATE clipboard_items SET timestamp = 0", [])
+            .unwrap();
+    }
+
+    // keep_days=1 且时间戳为 0：两条都过期，但带标注的必须被保护
+    let candidates = db.get_cleanup_candidates(100, 1).unwrap();
+    let candidate_ids: Vec<_> = candidates.iter().map(|item| item.id.as_str()).collect();
+    assert!(candidate_ids.contains(&plain.id.as_str()));
+    assert!(!candidate_ids.contains(&annotated.id.as_str()));
+
+    let _ = fs::remove_dir_all(data_dir);
+}
