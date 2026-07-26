@@ -1,10 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.1.7
 
 ### Features
 
 - 截图标注新增文字、步骤编号和橡皮擦工具；橡皮擦删除标注后可继续使用撤销/重做恢复操作。
+
+### Fixes
+
+- 修复 asset 协议 scope 误将应用标识符拼接两次（`$APPDATA/com.clipmaster.desktop/...`），导致图片缩略图、原图预览与冻结截图画面在移除 base64 兜底后全部 403 无法显示的问题。Tauri v2 的 `$APPDATA` 已解析为「数据目录/应用标识符」，scope 修正为 `$APPDATA/images/**` 与 `$APPDATA/screenshot-cache/**`，并同步更新安全配置测试。
+- 关于面板显示版本同步到 `0.1.7`。
+
+### Docs
+
+- 中英 README 全面重写：新增系统架构图、五层安全模型、数据与存储、截图管线和工程质量门禁章节。
+- CI 的 clippy 门禁补齐 `--all-targets`，与文档表述一致。
 
 ## 0.1.6
 

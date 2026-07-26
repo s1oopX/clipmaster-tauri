@@ -15,9 +15,11 @@ describe('Tauri security configuration', () => {
     expect(security.csp).toContain("style-src 'self'");
     expect(security.csp).toContain("object-src 'none'");
     expect(security.csp).not.toContain("'unsafe-inline'");
+    // $APPDATA 在 Tauri v2 中已解析为「数据目录/应用标识符」，scope 里不能再拼一次
+    // 标识符，否则 asset 协议对真实文件路径一律 403。
     expect(security.assetProtocol.scope.allow).toEqual([
-      '$APPDATA/com.clipmaster.desktop/images/**',
-      '$APPDATA/com.clipmaster.desktop/screenshot-cache/**',
+      '$APPDATA/images/**',
+      '$APPDATA/screenshot-cache/**',
     ]);
     expect(security.assetProtocol.scope.allow).not.toContain('$APPDATA/**');
   });
