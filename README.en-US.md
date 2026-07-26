@@ -4,10 +4,11 @@
 
 # ClipMaster
 
-A local-first Windows clipboard manager for recording, searching, and reusing text, links, images, and screenshots.
+A local-first clipboard manager for Windows: capture, search, and reuse text, links, images, and screenshots — nothing ever leaves your machine.
 
-[简体中文](./README.md) · [Latest Release](https://github.com/s1oopX/clipmaster-tauri/releases/latest) · [Roadmap](./docs/ROADMAP.md) · [Security](./SECURITY.md)
+[简体中文](./README.md) · [Download](https://github.com/s1oopX/clipmaster-tauri/releases/latest) · [Roadmap](./docs/ROADMAP.md) · [Security Policy](./SECURITY.md)
 
+[![CI](https://github.com/s1oopX/clipmaster-tauri/actions/workflows/ci.yml/badge.svg)](https://github.com/s1oopX/clipmaster-tauri/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4.svg)
 ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB.svg)
@@ -18,174 +19,184 @@ A local-first Windows clipboard manager for recording, searching, and reusing te
 
 ## Overview
 
-ClipMaster is a local Windows desktop utility for clipboard history, link reuse, image reuse, and screenshot workflows. It stores copied text, links, images, and captured screenshots on the local machine, then makes them searchable, reusable, pinnable, annotatable, and clearable.
+ClipMaster is a Windows desktop clipboard and screenshot tool built on Tauri 2: a Rust core owns clipboard monitoring, screenshot composition, image storage, and SQLite persistence, while a Svelte 5 UI running in WebView2 talks to the core exclusively through an ACL-guarded IPC command layer.
 
-The project is not a cloud clipboard, account-based sync service, or telemetry product. Its goal is to provide a lightweight and controllable local clipboard workspace for personal workflows, development, documentation, support, and repeated image reuse.
+Three principles drive the design:
 
-## Project Status
-
-The current release line is `0.1.6`. The project already covers everyday clipboard history, link detection and opening, image history, region screenshots, frozen-screen selection, basic annotation, pinned desktop images, global hotkeys, system tray behavior, settings, cleanup policies, data migration, and Windows packaging.
-
-Future development will keep the product lightweight: screenshots stay focused on cropping and simple annotation. OCR, scrolling screenshots, cloud sync, automatic updates, complex team/account systems, and rich-text-editor-style annotation are out of scope. See the [Roadmap](./docs/ROADMAP.md) for details.
-
-## Download and Installation
-
-Installers are published through [GitHub Releases](https://github.com/s1oopX/clipmaster-tauri/releases/latest).
-
-| File | Use case |
-| --- | --- |
-| `ClipMaster_0.1.6_x64-setup.exe` | Recommended installer for most Windows users |
-| `ClipMaster_0.1.6_x64_en-US.msi` | MSI package for traditional deployment or environments that require MSI |
-| `SHA256SUMS.txt` | Release artifact checksums |
-
-Current builds are not code-signed yet, so Windows SmartScreen may show a warning. Download installers only from this repository's Release page and verify them with the SHA256 file attached to the Release.
-
-For the local release artifact layout, see [Release Artifacts](./docs/RELEASES.md).
+1. **Local-first** — no cloud sync, no accounts, no telemetry. The process makes no outbound network requests; all data stays in the local app data directory.
+2. **Secure by default** — a strict CSP (no `unsafe-inline` anywhere), least-privilege capabilities isolated per window, an allowlisted asset protocol for file access, and backend path validation form four independent layers of defense.
+3. **Deliberately bounded scope** — clipboard history plus a lightweight capture-and-use screenshot flow; no OCR, scrolling capture, or rich-text annotation platform (see [Product Boundaries](#product-boundaries)).
 
 ## Features
 
-| Area | Capabilities |
+| Module | Capabilities |
 | --- | --- |
-| Clipboard history | Records text, links, and image clipboard content and copies items back to the clipboard |
-| Link workflow | Detects links, filters link records, and opens safe web links in the default browser |
-| Search and filtering | Supports content search, type filters, date filters, session history, and load-more paging |
-| Favorites and pins | Keeps important records easier to find |
-| Image workflow | Saves images, generates thumbnails, previews images, copies images, and pins images to the desktop |
-| Screenshot workflow | Region capture, frozen-screen selection, automatic clipboard copy, history saving, reselecting, rectangle/arrow/pen/blur/pixelate annotation, undo/redo |
-| Desktop image pinning | Opens images as always-on-top reference windows |
-| Global hotkeys | Shows/hides the main window, focuses search, and starts region screenshots |
-| System tray | Closing the main window hides it to the tray, with restore and quit actions; if tray setup fails, the main window stays visible |
-| Settings | Supports main-window hotkeys, screenshot hotkeys, capture delay, retention count, time zone, language, and optional autostart |
-| Cleanup | Supports count-based cleanup, age-based cleanup, image-file lifecycle cleanup, and full history clearing |
-| Migration | Includes legacy data directory migration and database schema migrations |
+| Clipboard history | 500ms polling capture of text / links / images, content-hash dedup within a 5-minute window, event-driven UI updates |
+| Link workflow | URLs recognized as a dedicated `link` type, normalized dedup, one-click open in the system default browser |
+| Search & filter | Content search, type / date / session filters, favorites and pinning, backend pagination |
+| Image workflow | PNG original + thumbnail pairs archived per day; preview, copy back, pin to desktop |
+| Region screenshot | Frozen-screen selection: drag, 8-handle resize, 1px arrow-key nudge; auto-copies to clipboard and saves to history |
+| Annotation | Rectangle / arrow / pen / text / step badges / blur / mosaic / eraser with full undo–redo; annotations composite into the final output |
+| Desktop pinning | Borderless always-on-top image windows with their own minimal permission set |
+| Global hotkeys | Toggle main window with search focus, launch region capture; dual-hotkey recording with conflict validation |
+| System tray | Close-to-tray residency; falls back to a visible main window when the tray is unavailable |
+| Data governance | Cleanup by item count, age, and image lifecycle; pinned and favorited items are protected; one-click clear-all |
+| Data migration | Versioned schema migrations (6 to date) and automatic legacy data directory relocation |
 
-## Product Boundary
+## Architecture
 
-ClipMaster will remain a local-first lightweight utility. Screenshot features are limited to cropping, basic shapes, arrows, pen marks, privacy masking, and undo/redo. It will not grow into an OCR tool, scrolling screenshot tool, cloud clipboard, auto-updating service, team collaboration product, account system, or rich annotation editor.
+```mermaid
+flowchart LR
+  subgraph UI["WebView2 · Svelte 5"]
+    MAIN["main window<br/>history / search / settings"]
+    SS["screenshot-selector<br/>frozen selection / annotation"]
+    PIN["pin-* windows"]
+  end
 
-## Screenshot Workflow
+  subgraph IPC["IPC boundary"]
+    CMD["30 Tauri commands<br/>per-window capability ACL"]
+    EVT["events<br/>clipboard:new-item / hotkey:*"]
+    ASSET["asset protocol<br/>read-only allowlisted dirs"]
+  end
 
-ClipMaster is designed for "capture and use immediately" screenshot workflows:
+  subgraph CORE["Rust core"]
+    CLIP["clipboard monitor<br/>hash dedup / event publish"]
+    SHOT["screenshot engine<br/>capture / composition"]
+    IMG["image store<br/>PNG + thumbnails"]
+    SYS["tray / global hotkeys / settings"]
+  end
 
-- Starting a screenshot first captures the active screen and opens a frozen image for selection.
-- The selection can be moved, resized with eight handles, and nudged by 1 pixel with arrow keys.
-- Confirming a screenshot saves it to history and writes it to the system clipboard, so it can be pasted immediately with `Ctrl+V`.
-- Rectangle, arrow, pen, blur, and pixelate annotations are included in the final image, with undo/redo support.
-- Users can reselect the capture area or pin the result directly to the desktop.
-- Mature screenshot app comparison and scope decisions are documented in [Screenshot Feature Review](./docs/SCREENSHOT_REVIEW.md).
+  subgraph DATA["Local storage"]
+    DB[("SQLite (WAL)<br/>sessions / clipboard_items")]
+    FS[("images/ · screenshot-cache/")]
+  end
 
-## Privacy and Data
+  UI --> CMD --> CORE
+  CORE --> EVT --> UI
+  FS --> ASSET --> UI
+  CLIP --> DB
+  SHOT --> IMG --> FS
+  IMG --> DB
+```
 
-ClipMaster keeps the local machine as its default trust boundary:
+- **Process model**: a single Rust process owns every privileged operation; the three window classes (`main` / `screenshot-selector` / `pin-*`) interact with the core only through IPC and events — the frontend never touches the file system or clipboard directly.
+- **Command layer**: 30 `#[tauri::command]` endpoints cover history CRUD, the screenshot lifecycle, image resolution, and window/settings management, with input validation centralized in the backend.
+- **Event flow**: new clipboard items and global hotkeys are emitted by the core and subscribed to by the UI — no frontend polling.
+- **Image path**: the database stores relative paths only; rendering goes through `resolve_image_asset` and the asset protocol, which serves two allowlisted directories read-only.
 
-- Clipboard history is stored in a local SQLite database.
-- Images, thumbnails, and screenshots are stored in the local app data directory.
-- The current version does not upload clipboard content, provide cloud sync, or include remote telemetry.
-- Clipboard content may include passwords, tokens, customer data, or sensitive screenshots. Pause monitoring before copying sensitive content, or use the full history clearing action in Advanced settings.
+## Security Model
 
-Default data directory:
+Clipboard history inherently contains passwords, tokens, and sensitive screenshots, so the security boundary is built as defense in depth — each layer fails independently:
+
+| Layer | Mechanism | Where |
+| --- | --- | --- |
+| Content Security Policy | Global CSP with `unsafe-inline` banned (`script-src 'self'; style-src 'self'`), eliminating the inline-injection surface | `tauri.conf.json` |
+| Window permission isolation | A dedicated capability per window class granting only required `core:` permissions (pin windows: drag / resize / close only) | `src-tauri/capabilities/` |
+| File access allowlist | Asset protocol restricted to read-only `$APPDATA/images/**` and `$APPDATA/screenshot-cache/**` | `tauri.conf.json` |
+| Path validation | Image paths must match the three-segment relative form `images/<date>/<file>`; absolute paths and `..` traversal rejected; external URLs pass through only after `http(s)` normalization | Rust command layer |
+| Network boundary | No telemetry, no auto-update, no outbound requests; link opening is delegated to the system browser | Global |
+
+The security configuration is locked by tests (`src/tauri-security-config.test.js`) — any regression of the CSP or asset scope fails CI. Vulnerability reporting is described in [SECURITY.md](./SECURITY.md).
+
+## Data & Storage
+
+- **Engine**: SQLite in WAL mode via `rusqlite`; `sessions` and `clipboard_items` tables with 6 query indexes covering the timeline, type, session, pin/favorite, and hash-dedup paths.
+- **Dedup**: writes check `content_hash` within a 5-minute window — full-text hash for text, `link:`-prefixed normalized URL for links, dimensions + sampled bytes for images, preventing cross-type collisions.
+- **Images**: PNG files with relative paths only, archived under `images/<YYYY-MM-DD>/` as original + `_thumb` pairs; record deletion best-effort removes both files.
+- **Migrations**: a `schema_migrations` version table drives upgrades (6 versions to date, including converting legacy single-URL text records to the `link` type); legacy identifier directories are relocated on startup without overwriting newer data.
+- **Cleanup**: three dimensions — max items, retention days, image lifecycle — with pinned and favorited records excluded.
+
+Full schema and index definitions: [Database](./docs/DATABASE.md).
+
+## Screenshot Pipeline
+
+Region capture is built for the capture-then-use path, composed entirely locally:
 
 ```text
-%APPDATA%/com.clipmaster.desktop/
+freeze screen snapshot → select region (drag / 8 handles / 1px nudge) → annotate (vector objects, undo/redo)
+→ composite & export → system clipboard + history → optionally re-select / pin to desktop
 ```
 
-See [Privacy](./docs/PRIVACY.md) and [Database](./docs/DATABASE.md) for more details.
+- The main window is hidden before capture so the frozen frame never contains the tool itself, and restored afterwards only if it was visible.
+- Annotations are object data rather than destructive pixel edits; erased annotations remain recoverable through the undo stack.
+- Blur and mosaic redact sensitive regions before the output leaves the editor.
+- Capability comparisons against mature screenshot tools: [Screenshot Feature Review](./docs/SCREENSHOT_REVIEW.md).
 
-## Tech Stack
+## Engineering Quality
 
-- Tauri 2
-- Rust 2021
-- Svelte 5
-- Vite 8
-- SQLite / rusqlite
-- Vitest / Svelte Testing Library
-- screenshots / arboard / image
+| Gate | Scope | Status |
+| --- | --- | --- |
+| `npm test` (Vitest + Testing Library) | 16 test files, 87 cases: UI interaction, pagination, settings, security config, window lifecycle | Enforced in CI |
+| `cargo test` | 57 Rust unit tests: database CRUD, migrations, session cleanup, path validation, settings | Enforced in CI |
+| `cargo clippy --all-targets -- -D warnings` | Zero warnings across all targets | Enforced in CI |
+| `cargo fmt --check` | Rust formatting | Enforced in CI |
+| Security config tests | CSP / asset scope assertions preventing silent boundary regressions | Enforced in CI |
 
-## Local Development
+The backend is modularized with per-file size limits (commands and database layers are fully split); the frontend is organized into 12 Svelte components.
 
-### Requirements
+## Download & Install
 
-- Windows 10/11
-- Node.js 18 or later
-- npm
-- Rust stable
-- Visual Studio Build Tools with the C++ workload
+Official installers are published on [GitHub Releases](https://github.com/s1oopX/clipmaster-tauri/releases/latest):
 
-### Install Dependencies
+| File | Use case |
+| --- | --- |
+| `ClipMaster_x64-setup.exe` | NSIS installer, recommended for most users |
+| `ClipMaster_x64_en-US.msi` | MSI package for traditional or enterprise deployment |
+| `SHA256SUMS.txt` | Checksums for release artifacts |
+
+Builds are not yet code-signed, so Windows SmartScreen may warn. Download only from this repository's Releases page and verify installers against the bundled SHA256 manifest. Artifact layout: [Release Artifacts](./docs/RELEASES.md).
+
+## Development
+
+Requirements: Windows 10/11 · Node.js 18+ · Rust stable · Visual Studio Build Tools (C++ workload).
 
 ```powershell
-npm install
+npm install          # install dependencies
+npm run tauri:dev    # start the dev window (default port 5174, switchable in Settings)
+npm run tauri:build  # build the exe plus NSIS / MSI installers
 ```
-
-### Start Development Mode
-
-```powershell
-npm run tauri:dev
-```
-
-The default development port is `5174`. The in-app settings panel can check port availability and switch ports. Local development configuration is written to `.clipmaster-dev.json`, which is intentionally ignored by Git.
-
-### Build the Windows App and Installers
-
-```powershell
-npm run tauri:build
-```
-
-Build artifacts are generated at:
-
-```text
-src-tauri/target/release/clipmaster.exe
-src-tauri/target/release/bundle/nsis/
-src-tauri/target/release/bundle/msi/
-```
-
-`node_modules`, `dist`, and `src-tauri/target` are generated development or build artifacts and should not be committed to the repository.
-
-## Common Commands
 
 | Command | Description |
 | --- | --- |
-| `npm run tauri:dev` | Start the Tauri development window |
-| `npm test` | Run frontend tests |
-| `npm run build` | Build frontend assets |
-| `npm run tauri:build` | Build the Windows desktop app and installers |
-| `cargo fmt --check` | Check Rust formatting |
-| `cargo check` | Check Rust compilation |
-| `cargo test` | Run Rust unit tests |
+| `npm test` | Frontend tests (Vitest) |
+| `npm run build` | Frontend production build |
+| `cargo test` | Rust unit tests (run inside `src-tauri/`) |
+| `cargo clippy --all-targets -- -D warnings` | Rust lints |
+| `cargo fmt --check` | Rust formatting check |
 
-## Project Structure
+Build outputs land in `src-tauri/target/release/` (exe) and its `bundle/nsis/` and `bundle/msi/` subdirectories.
+
+## Project Layout
 
 ```text
-src/                 Svelte frontend entry and page logic
-src/components/      Frontend components
-src/lib/             Frontend API, configuration, and UI helpers
-src-tauri/src/       Rust backend, database, clipboard, tray, commands, and settings
-src-tauri/icons/     Application icons
-docs/                Architecture, API, database, workflow, roadmap, and troubleshooting docs
-public/              Static assets
-scripts/             Local development scripts
+src/                 Svelte frontend: entry, page logic, tests
+src/components/      12 UI components (history panel, settings, pin shell, dialogs)
+src/screenshot/      Screenshot window: selection, annotation, rendering, hit testing
+src/lib/             IPC wrappers, config, UI utilities
+src-tauri/src/       Rust core: commands / database / clipboard / tray / hotkey
+src-tauri/capabilities/  Per-window permission declarations (main / pin / screenshot)
+docs/                Architecture, API, database, privacy, troubleshooting, roadmap
+scripts/             Dev port management and launch scripts
 ```
+
+## Product Boundaries
+
+ClipMaster will remain a local-first, lightweight tool. The following are **explicitly out of scope**: OCR, scrolling capture, cloud sync, auto-update, team/account systems, and rich-text annotation platforms. Screenshot features focus on cropping, basic shapes, and privacy redaction; rationale and decisions are recorded in the [Roadmap](./docs/ROADMAP.md).
+
+## Privacy
+
+- Clipboard history, images, and screenshots are stored under `%APPDATA%/com.clipmaster.desktop/` — never uploaded, synced, or phoned home.
+- Pause monitoring before copying secrets, or clear all history at any time.
+- Details: [Privacy](./docs/PRIVACY.md).
 
 ## Documentation
 
-- [Roadmap](./docs/ROADMAP.md)
-- [Next Steps](./docs/NEXT_STEPS.md)
-- [Architecture](./docs/ARCHITECTURE.md)
-- [API](./docs/API.md)
-- [Database](./docs/DATABASE.md)
-- [Workflow](./docs/WORKFLOW.md)
-- [Privacy and Data](./docs/PRIVACY.md)
-- [FAQ](./docs/FAQ.md)
-- [Security Policy](./SECURITY.md)
-- [Troubleshooting](./docs/TROUBLESHOOTING.md)
-- [Changelog](./CHANGELOG.md)
+[Architecture](./docs/ARCHITECTURE.md) · [API](./docs/API.md) · [Database](./docs/DATABASE.md) · [Workflow](./docs/WORKFLOW.md) · [Privacy](./docs/PRIVACY.md) · [FAQ](./docs/FAQ.md) · [Troubleshooting](./docs/TROUBLESHOOTING.md) · [Roadmap](./docs/ROADMAP.md) · [Changelog](./CHANGELOG.md)
 
 ## Contributing
 
-Issues, suggestions, and pull requests are welcome. Before making changes, review the [development workflow](./docs/WORKFLOW.md), then add the relevant frontend tests, Rust tests, or packaging checks for the scope of the change.
-
-If a report involves clipboard content, screenshots, tokens, passwords, or other sensitive data, do not paste real content into public issues. For security issues, see the [Security Policy](./SECURITY.md).
+Issues and pull requests are welcome. Please read the [development workflow](./docs/WORKFLOW.md) first and add frontend / Rust tests appropriate to your change. Never paste real clipboard content, tokens, or passwords into public issues; report security problems through the [Security Policy](./SECURITY.md).
 
 ## License
 
-ClipMaster is open-sourced under the [MIT License](./LICENSE).
+[MIT License](./LICENSE)
