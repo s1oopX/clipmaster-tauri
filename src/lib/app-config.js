@@ -40,7 +40,7 @@ export const filters = [
   { id: 'image', label: '图片' },
 ];
 
-export const appVersion = '0.1.7';
+export const appVersion = '0.1.8';
 export const githubProfileUrl = 'https://github.com/s1oopX';
 export const githubRepositoryUrl = 'https://github.com/s1oopX/clipmaster-tauri';
 export const githubIssuesUrl = `${githubRepositoryUrl}/issues`;
