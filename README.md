@@ -30,13 +30,18 @@ ClipMaster 是一款面向 Windows 桌面的本地剪贴板与截图工具，采
 ## 界面预览
 
 <p align="center">
-  <img src="./docs/assets/screenshot-main.png" width="390" alt="主窗口：剪贴板历史、图片缩略图与链接识别" />
-  <img src="./docs/assets/screenshot-settings.png" width="390" alt="设置面板：常规 / 日期语言 / 高级 / 关于" />
+  <img src="./docs/assets/history.webp" width="272" alt="剪贴板历史：文本条目、快捷操作与日期筛选" />
+  <img src="./docs/assets/links.webp" width="272" alt="链接视图：URL 自动识别为独立类型" />
+  <img src="./docs/assets/images.webp" width="272" alt="图片视图：缩略图网格与预览" />
 </p>
 <p align="center">
-  <img src="./docs/assets/screenshot-pin.png" width="620" alt="桌面贴图：无边框置顶小窗" />
+  <img src="./docs/assets/settings.webp" width="272" alt="设置：清理策略、快捷键与高级选项" />
+  <img src="./docs/assets/screenshot-pin.png" width="540" alt="桌面贴图：无边框置顶小窗" />
 </p>
-<p align="center"><sub>主窗口（历史 / 搜索 / 图片预览） · 设置面板 · 桌面贴图窗口</sub></p>
+<p align="center"><sub>三类内容各有独立视图（文本 / 链接 / 图片）· 设置与清理策略 · 桌面贴图窗口</sub></p>
+
+**为什么按类型拆视图而不是一条流水**：三类内容的找回方式本来就不同 —— 文本靠搜索，链接靠识别出的
+地址，图片靠缩略图。混在一条时间线里，三种都变难找。
 
 ## 核心特性
 
@@ -53,6 +58,48 @@ ClipMaster 是一款面向 Windows 桌面的本地剪贴板与截图工具，采
 | 系统托盘 | 关窗即驻留托盘；托盘不可用时自动保持主窗口可见兜底 |
 | 数据治理 | 按条数 / 天数 / 图片生命周期清理，收藏与置顶受保护；一键清空全部历史 |
 | 数据迁移 | 版本化 schema migration（当前 7 版）与旧数据目录自动迁移 |
+
+## 技术栈
+
+| 层 | 组件 |
+| --- | --- |
+| 桌面框架 | Tauri 2（`protocol-asset` + `tray-icon`）· WebView2 |
+| 界面 | Svelte 5 · Vite · Lucide 图标 · flatpickr（日期筛选） |
+| 内核 | Rust 2021 · tokio（定时）· parking_lot（锁）· anyhow（错误） |
+| 剪贴板与截图 | arboard（剪贴板）· screenshots（屏幕捕获）· image（编码合成） |
+| 存储 | rusqlite（SQLite bundled，WAL + FTS5 trigram） |
+| 系统集成 | tauri-plugin-global-shortcut · tauri-plugin-single-instance |
+| 时间与标识 | chrono · chrono-tz · nanoid · md5（内容哈希去重） |
+| 测试 | Vitest + Testing Library（前端）· `cargo test`（Rust） |
+
+SQLite 用 `bundled` 特性静态编译进二进制，不依赖系统库 —— 桌面分发时少一类「用户机器上没有那个 DLL」
+的故障。
+
+## 关键决策
+
+| 决策 | 选择 | 否决的方案 | 代价 |
+| --- | --- | --- | --- |
+| 桌面框架 | Tauri 2（WebView2 + Rust） | Electron | 依赖系统 WebView2；渲染差异要自己兜 |
+| 数据边界 | 全部留在本机，无账号无同步 | 云同步 / 账号体系 | 换机器要手动迁移数据目录 |
+| 采集方式 | 500ms 轮询 | 系统剪贴板事件钩子 | 有最长 500ms 延迟；换来跨版本行为稳定 |
+| 内容分类 | 文本 / 链接 / 图片三类独立视图 | 一条统一流水 | 三套列表逻辑，但三类都好找 |
+| 置顶与收藏 | 拆成两种标记 | 只做一种「标星」 | 两个字段两套 UI，但对应两种时间尺度 |
+| 截图归属 | 截图直接进剪贴板历史 | 独立截图工具 | 历史里混入图片，需要图片生命周期策略 |
+| 标注实现 | 矢量对象 + 撤销栈 | 直接改像素 | 内存里要维护对象树，但橡皮擦后仍可撤销 |
+| 权限模型 | 每类窗口独立 Capability | 全局统一权限 | 三份权限声明要各自维护 |
+
+几条值得展开：
+
+**为什么置顶与收藏是两个东西。** 置顶服务「马上还要用」，收藏服务「以后可能用」—— 两种时间尺度。
+合成一个标记后，短期高频项会把长期收藏挤下去，或者反过来。两者都不参与自动清理，但排序位置不同。
+
+**为什么截图不做成独立工具。** 截图和复制在使用上是同一类动作：刚产生、马上要用、之后可能还要找回。
+拆成两个工具意味着两套历史、两个搜索入口，而用户找一张两小时前截的图时并不记得它当初是「截」的
+还是「复制」的。
+
+**为什么「暂停采集」是必需项而不是锦上添花。** 剪贴板是最敏感的数据流之一 —— 密码管理器复制的口令、
+终端里复制的 token 都会经过它。处理这类内容前能一键停下采集，是这类工具成立的前提；事后清理是补救，
+事前暂停才是控制。
 
 ## 系统架构
 
@@ -138,7 +185,7 @@ flowchart LR
 | 门禁 | 范围 | 现状 |
 | --- | --- | --- |
 | `npm test`（Vitest + Testing Library） | 16 个测试文件、87 个用例：UI 交互、分页、设置、安全配置、窗口生命周期 | CI 强制 |
-| `cargo test` | 62 个 Rust 单元测试：数据库 CRUD、迁移、FTS 同步、会话清理、路径校验、设置 | CI 强制 |
+| `cargo test` | 68 个 Rust 单元测试（67 通过 / 1 ignored）：数据库 CRUD、迁移、FTS 同步、会话清理、路径校验、设置 | CI 强制 |
 | `cargo clippy --all-targets -- -D warnings` | 全 target 零警告 | CI 强制 |
 | `cargo fmt --check` | Rust 格式 | CI 强制 |
 | 安全配置测试 | CSP / asset scope 断言锁定，防止安全边界静默回退 | CI 强制 |

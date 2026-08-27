@@ -30,13 +30,19 @@ Three principles drive the design:
 ## Screenshots
 
 <p align="center">
-  <img src="./docs/assets/screenshot-main.png" width="390" alt="Main window: clipboard history with image thumbnails and link detection" />
-  <img src="./docs/assets/screenshot-settings.png" width="390" alt="Settings panel: general / locale / advanced / about" />
+  <img src="./docs/assets/history.webp" width="272" alt="Clipboard history: text entries, quick actions and date filter" />
+  <img src="./docs/assets/links.webp" width="272" alt="Links view: URLs detected as their own type" />
+  <img src="./docs/assets/images.webp" width="272" alt="Images view: thumbnail grid with preview" />
 </p>
 <p align="center">
-  <img src="./docs/assets/screenshot-pin.png" width="620" alt="Desktop pinning: borderless always-on-top window" />
+  <img src="./docs/assets/settings.webp" width="272" alt="Settings: retention policy, hotkeys and advanced options" />
+  <img src="./docs/assets/screenshot-pin.png" width="540" alt="Desktop pinning: borderless always-on-top window" />
 </p>
-<p align="center"><sub>Main window (history / search / image preview) · Settings panel · Pinned image window</sub></p>
+<p align="center"><sub>Separate views per content type (text / links / images) · Settings and retention · Pinned image window</sub></p>
+
+**Why split views instead of one stream**: the three content types are recovered differently — text by
+search, links by their detected address, images by thumbnail. Merged into a single timeline, all three
+get harder to find.
 
 ## Features
 
@@ -53,6 +59,52 @@ Three principles drive the design:
 | System tray | Close-to-tray residency; falls back to a visible main window when the tray is unavailable |
 | Data governance | Cleanup by item count, age, and image lifecycle; pinned and favorited items are protected; one-click clear-all |
 | Data migration | Versioned schema migrations (7 to date) and automatic legacy data directory relocation |
+
+## Tech Stack
+
+| Layer | Components |
+| --- | --- |
+| Desktop shell | Tauri 2 (`protocol-asset` + `tray-icon`) · WebView2 |
+| UI | Svelte 5 · Vite · Lucide icons · flatpickr (date filtering) |
+| Core | Rust 2021 · tokio (timers) · parking_lot (locks) · anyhow (errors) |
+| Clipboard & capture | arboard (clipboard) · screenshots (screen capture) · image (encode/compose) |
+| Storage | rusqlite (SQLite bundled, WAL + FTS5 trigram) |
+| System integration | tauri-plugin-global-shortcut · tauri-plugin-single-instance |
+| Time & identity | chrono · chrono-tz · nanoid · md5 (content-hash dedupe) |
+| Tests | Vitest + Testing Library (frontend) · `cargo test` (Rust) |
+
+SQLite is compiled in via the `bundled` feature rather than linked against a system library — one fewer
+class of "that DLL isn't on the user's machine" failure at distribution time.
+
+## Key Decisions
+
+| Decision | Choice | Rejected | Cost |
+| --- | --- | --- | --- |
+| Desktop framework | Tauri 2 (WebView2 + Rust) | Electron | Depends on system WebView2; rendering differences are on us |
+| Data boundary | Everything stays local, no account, no sync | Cloud sync / accounts | Moving machines means relocating the data directory by hand |
+| Capture method | 500ms polling | OS clipboard event hooks | Up to 500ms latency, in exchange for stable cross-version behavior |
+| Content typing | Separate views for text / links / images | One unified stream | Three list implementations, but all three stay findable |
+| Pin vs. favorite | Two distinct markers | A single "star" | Two fields and two UIs, but they map to two time horizons |
+| Screenshot placement | Captures land in clipboard history | A separate capture tool | Images mix into history, requiring an image lifecycle policy |
+| Annotation model | Vector objects + undo stack | Direct pixel edits | An object tree in memory, but erasing stays undoable |
+| Permission model | Per-window Capability | One global permission set | Three permission manifests to maintain |
+
+Three worth expanding:
+
+**Why pin and favorite are separate.** Pinning serves "needed again in a minute", favoriting serves
+"might need this later" — two different time horizons. Merged into one marker, short-lived high-frequency
+items push long-term keeps out of view, or the reverse. Neither participates in automatic cleanup, but
+they sort differently.
+
+**Why capture isn't a separate tool.** Screenshotting and copying are the same class of action: just
+produced, needed immediately, possibly retrieved later. Splitting them means two histories and two search
+entry points — while a user hunting for an image from two hours ago rarely remembers whether it was
+captured or copied.
+
+**Why "pause capture" is a requirement, not a nicety.** The clipboard is one of the most sensitive data
+streams on a machine — passwords from a password manager and tokens from a terminal both pass through it.
+Being able to stop collection before handling that content is a precondition for this class of tool.
+Clearing history afterwards is damage control; pausing beforehand is control.
 
 ## Architecture
 
@@ -138,7 +190,7 @@ freeze screen snapshot → select region (drag / 8 handles / 1px nudge) → anno
 | Gate | Scope | Status |
 | --- | --- | --- |
 | `npm test` (Vitest + Testing Library) | 16 test files, 87 cases: UI interaction, pagination, settings, security config, window lifecycle | Enforced in CI |
-| `cargo test` | 62 Rust unit tests: database CRUD, migrations, FTS sync, session cleanup, path validation, settings | Enforced in CI |
+| `cargo test` | 68 Rust unit tests (67 passing / 1 ignored): database CRUD, migrations, FTS sync, session cleanup, path validation, settings | Enforced in CI |
 | `cargo clippy --all-targets -- -D warnings` | Zero warnings across all targets | Enforced in CI |
 | `cargo fmt --check` | Rust formatting | Enforced in CI |
 | Security config tests | CSP / asset scope assertions preventing silent boundary regressions | Enforced in CI |
