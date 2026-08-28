@@ -49,23 +49,32 @@ ClipMaster 坚持以下原则：
 flowchart TB
     classDef os fill:#ffffff,stroke:#3b82f6,stroke-width:1.5px,color:#1e40af,rx:5px,ry:5px;
     classDef rust fill:#ffffff,stroke:#ef4444,stroke-width:1.5px,color:#b91c1c,rx:5px,ry:5px;
-    classDef ui fill:#ffffff,stroke:#2563eb,stroke-width:1.5px,color:#1d4ed8,rx:5px,ry:5px;
     classDef db fill:#ffffff,stroke:#f59e0b,stroke-width:1.5px,color:#b45309,rx:5px,ry:5px;
+    classDef ui fill:#ffffff,stroke:#10b981,stroke-width:1.5px,color:#047857,rx:5px,ry:5px;
 
-    %% 1. 系统级交互 (顶层)
-    OS["操作系统事件层 (系统剪贴板监听 · Alt + V 全局快捷键唤醒)"]:::os
+    %% 1. 系统级事件接入 (顶层并排)
+    SYS_EVENT["操作系统剪贴板 Hook<br/>(Win32 / macOS / Linux 剪贴板事件监听)"]:::os
+    GLOBAL_HOTKEY["全局快捷键唤醒 (Alt + V)<br/>(秒级窗口呼出 · 焦点自适应恢复)"]:::os
 
-    %% 2. Tauri Rust 核心层 (中层)
-    CORE["Tauri Rust 高性能内核<br/>(剪贴板 Hook · 敏感词过滤 · WAL 写入 · IPC 异步事件桥接)"]:::rust
+    %% 2. Tauri Rust 核心安全与调度中枢 (中层双核)
+    SECURITY_PIPE["🛡️ 隐私与脱敏过滤管道<br/>• 密码管理器 (1Password/Bitwarden) 标记探测<br/>• 正则私钥 / Token / 敏感词静默丢弃<br/>• 文本 / 链接 / 图片多模态类型自动识别归类"]:::rust
 
-    %% 3. 数据与渲染层 (底层双核)
-    DB[("本地 SQLite 数据库<br/>(历史记录 · 收藏置顶 · 标签索引)")]:::db
-    UI["轻量前端 UI 单页<br/>(虚拟滚动渲染 · 毫秒级拼音/模糊搜索)"]:::ui
+    CORE_ENGINE["⚡ Tauri Rust 核心调度引擎<br/>• 零网络外联机制 (离线安全守卫)<br/>• WAL 模式异步批量事务提交<br/>• Tauri IPC 零拷贝二进制事件桥接"]:::rust
 
-    %% 纵向饱满流转
-    OS -->|"系统级 Hook 捕获"| CORE
-    CORE -->|"本地事务落盘"| DB
-    CORE -->|"Tauri IPC 零拷贝传输"| UI
+    %% 3. 本地存储与多视图渲染层 (底层双核)
+    LOCAL_DB[("💾 本地嵌入式 SQLite (WAL 模式)<br/>• 文本 / 链接 / 图片多模态分类索引表<br/>• 历史记录生命周期自动清理 (7/30/90天)<br/>• 收藏置顶 · 拼音倒排索引")]:::db
+
+    FRONTEND_UI["🖥️ 轻量前端 UI (三独立视图交互)<br/>• 📝 文本视图：虚拟列表滚动 + 拼音模糊检索<br/>• 🔗 链接视图：URL 提取 + 默认浏览器直达<br/>• 🖼️ 图片视图：缩略图网格 + 原图快速查看"]:::ui
+
+    %% 纵向饱满流转 (大字号、结构分明)
+    SYS_EVENT -->|"剪贴板变更"| SECURITY_PIPE
+    GLOBAL_HOTKEY -->|"唤醒指令"| CORE_ENGINE
+
+    SECURITY_PIPE -->|"合规数据分发"| CORE_ENGINE
+
+    CORE_ENGINE -->|"本地事务落盘"| LOCAL_DB
+    CORE_ENGINE ==>|"IPC 毫秒级推流"| FRONTEND_UI
+    LOCAL_DB <-->|"本地历史直读"| FRONTEND_UI
 ```
 
 ---
