@@ -46,16 +46,26 @@ ClipMaster 坚持以下原则：
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'edgeLabelBackground': '#ffffff', 'mainBkg': '#ffffff', 'lineColor': '#64748b' }}}%%
-flowchart LR
-    classDef os fill:#ffffff,stroke:#64748b,stroke-width:1.5px,color:#334155,rx:4px,ry:4px;
-    classDef rust fill:#ffffff,stroke:#ef4444,stroke-width:1.5px,color:#b91c1c,rx:4px,ry:4px;
-    classDef ui fill:#ffffff,stroke:#3b82f6,stroke-width:1.5px,color:#1e40af,rx:4px,ry:4px;
-    classDef db fill:#ffffff,stroke:#f59e0b,stroke-width:1.5px,color:#b45309,rx:4px,ry:4px;
+flowchart TB
+    classDef os fill:#ffffff,stroke:#3b82f6,stroke-width:1.5px,color:#1e40af,rx:5px,ry:5px;
+    classDef rust fill:#ffffff,stroke:#ef4444,stroke-width:1.5px,color:#b91c1c,rx:5px,ry:5px;
+    classDef ui fill:#ffffff,stroke:#2563eb,stroke-width:1.5px,color:#1d4ed8,rx:5px,ry:5px;
+    classDef db fill:#ffffff,stroke:#f59e0b,stroke-width:1.5px,color:#b45309,rx:5px,ry:5px;
 
-    OS["操作系统剪贴板事件"]:::os -->|"系统级 Hook"| CORE["Tauri Rust 内核<br/>(剪贴板监听 / 敏感词过滤)"]:::rust
-    CORE -->|"本地 WAL 写入"| DB[("本地 SQLite 数据库<br/>(历史记录 / 收藏)")]:::db
-    HOTKEY["全局快捷键 (Alt + V)"]:::os -->|"唤醒窗口"| CORE
-    CORE -->|"Tauri IPC 传输"| UI["轻量前端 UI<br/>(虚拟列表渲染 / 模糊搜索)"]:::ui
+    %% 1. 系统级交互 (顶层)
+    OS["操作系统事件层 (系统剪贴板监听 · Alt + V 全局快捷键唤醒)"]:::os
+
+    %% 2. Tauri Rust 核心层 (中层)
+    CORE["Tauri Rust 高性能内核<br/>(剪贴板 Hook · 敏感词过滤 · WAL 写入 · IPC 异步事件桥接)"]:::rust
+
+    %% 3. 数据与渲染层 (底层双核)
+    DB[("本地 SQLite 数据库<br/>(历史记录 · 收藏置顶 · 标签索引)")]:::db
+    UI["轻量前端 UI 单页<br/>(虚拟滚动渲染 · 毫秒级拼音/模糊搜索)"]:::ui
+
+    %% 纵向饱满流转
+    OS -->|"系统级 Hook 捕获"| CORE
+    CORE -->|"本地事务落盘"| DB
+    CORE -->|"Tauri IPC 零拷贝传输"| UI
 ```
 
 ---
