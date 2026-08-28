@@ -8,8 +8,8 @@
 数据纯本地 SQLite 存储，支持全局快捷键秒级呼出、敏感信息正则自动过滤与模糊搜索。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/Rust-1.75+-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Tauri](https://img.shields.io/badge/Tauri-v2.0-24C8D8?logo=tauri&logoColor=white)](https://tauri.app/)
+[![Rust](https://img.shields.io/badge/Rust-1.75+-DEA584.svg?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Tauri](https://img.shields.io/badge/Tauri-v2.0-24C8D8.svg?logo=tauri&logoColor=white)](https://tauri.app/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#系统要求)
 [![Memory](https://img.shields.io/badge/RAM-%3C%2030MB-brightgreen.svg)](#关键决策)
 
@@ -45,17 +45,15 @@ ClipMaster 坚持以下原则：
 ## 架构与数据流
 
 ```mermaid
-%%{init: {'theme': 'neutral', 'themeVariables': { 'clusterBkg': '#ffffff', 'clusterBorder': '#d0d7de', 'primaryColor': '#f6f8fa', 'primaryBorderColor': '#d0d7de', 'lineColor': '#6e7681' }}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'edgeLabelBackground': '#ffffff', 'mainBkg': '#ffffff', 'lineColor': '#64748b' }}}%%
 flowchart LR
-    classDef os fill:#f6f8fa,stroke:#d0d7de,stroke-width:1.5px,color:#1f2328,rx:4px,ry:4px;
-    classDef rust fill:#fff0f2,stroke:#f85149,stroke-width:1.5px,color:#8e1519,rx:4px,ry:4px;
-    classDef ui fill:#e6f4ff,stroke:#58a6ff,stroke-width:1.5px,color:#0969da,rx:4px,ry:4px;
-    classDef db fill:#fff9eb,stroke:#d4a72c,stroke-width:1.5px,color:#7d4e00,rx:4px,ry:4px;
+    classDef os fill:#ffffff,stroke:#64748b,stroke-width:1.5px,color:#334155,rx:4px,ry:4px;
+    classDef rust fill:#ffffff,stroke:#ef4444,stroke-width:1.5px,color:#b91c1c,rx:4px,ry:4px;
+    classDef ui fill:#ffffff,stroke:#3b82f6,stroke-width:1.5px,color:#1e40af,rx:4px,ry:4px;
+    classDef db fill:#ffffff,stroke:#f59e0b,stroke-width:1.5px,color:#b45309,rx:4px,ry:4px;
 
     OS["操作系统剪贴板事件"]:::os -->|"系统级 Hook"| CORE["Tauri Rust 内核<br/>(剪贴板监听 / 敏感词过滤)"]:::rust
-    
     CORE -->|"本地 WAL 写入"| DB[("本地 SQLite 数据库<br/>(历史记录 / 收藏)")]:::db
-    
     HOTKEY["全局快捷键 (Alt + V)"]:::os -->|"唤醒窗口"| CORE
     CORE -->|"Tauri IPC 传输"| UI["轻量前端 UI<br/>(虚拟列表渲染 / 模糊搜索)"]:::ui
 ```
